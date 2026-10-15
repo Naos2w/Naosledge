@@ -17,6 +17,7 @@
     "node": ">=20.9.0"
   },
   "dependencies": {
+    "@neondatabase/auth": "0.6.0-beta",
     "@neondatabase/postgrest-js": "0.2.0-beta",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.117.3",

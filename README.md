@@ -1,6 +1,6 @@
 # Naosledge v3 · Minimal Dark Liquid Glass
 
-一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。現階段程式碼的後端仍是 Supabase SDK；使用者已另外建立 **Neon Free 專案**作為預定替代後端，實際切換須先通過隔離權限驗收。AI 摘要留待第二階段。
+一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。現階段可透過環境旗標選擇原本的 Supabase 實作，或已通過隔離驗收的 **Neon Free 測試模式**；正式環境仍維持 Supabase 預設路徑，Neon production 尚未啟用。AI 摘要留待第二階段。
 
 > v3 在先前版本的基礎上加入 Dark Liquid Glass 與流暢動畫，保留文章資料結構、Supabase RLS、登入及資料存取邏輯。v1、v2 保留為歷史版本。
 
@@ -8,7 +8,7 @@
 
 GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的虛構文章與不需登入的模擬後台。離線互動預覽另存於 ChatGPT 專案成果中，不是正式網站，也不會把筆記寫入 Supabase。
 
-目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待 Neon 正式權限整合與 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。Neon **隔離分支**已完成真實 Better Auth／JWT／Data API／PostgreSQL RLS 與站長 CRUD 驗證，合成帳號／文章已清除；但 Neon **`production` 沒有文章資料表，原網站程式也尚未切換到 Neon**。詳見 [Neon 隔離整合驗收報告](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
+目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待 Neon 正式權限整合與 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。Neon **隔離分支**已完成真實 Better Auth／JWT／Data API／PostgreSQL RLS 與站長 CRUD 驗證，合成帳號／文章已清除；而 **Next.js 網站已可在 Neon Sandbox 模式下以真正的 Auth／Data API 完成登入、草稿、發布、編輯及刪除**；Neon `production` 仍沒有文章資料表，且正式網站尚未部署。詳見 [Neon 隔離整合驗收報告](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
 
 ## v3 視覺與互動設計
 
@@ -55,7 +55,26 @@ npm run test:browser:local
 
 這個腳本使用 `playwright-core` 及本機瀏覽器，建立只綁定 **127.0.0.1** 的假 Supabase HTTP 服務與臨時 Next 開發伺服器，完成公開首頁、文章、假站長登入、手機 Markdown 工具、快速返回後的本機草稿恢復、假資料草稿→發布流程與動態介面檢查。所有帳號與文章都是**合成測試資料**，不會連接任何真實 Supabase 專案，也不會把模擬權限繞過寫進正式網站。截圖保存在 Windows 暫存目錄，不提交 GitHub。
 
-為降低 GitHub Actions 時間與用量，瀏覽器腳本**僅在 MSI 本機手動執行**，不加入 PR CI。另有 `npm run verify:neon:sandbox:manual`，需先由操作者確認經 Neon Connector 核准的隔離分支與公開測試端點，並對合成站長 ID 進行受控授權／驗後清理；**絕不可接到 CI 或對 `production` 執行**。隔離 Neon Auth／JWT／RLS／CRUD 已經實測成功，完整去敏證據見 [Neon 測試報告](docs/NEON_INTEGRATION_READINESS.md)。這不代表正式站長與網站路由已經切換 Neon。
+為降低 GitHub Actions 時間與用量，瀏覽器腳本**僅在 MSI 本機手動執行**，不加入 PR CI。另有 `npm run verify:neon:sandbox:manual`，需先由操作者確認經 Neon Connector 核准的隔離分支與公開測試端點，並對合成站長 ID 進行受控授權／驗後清理；**絕不可接到 CI 或對 `production` 執行**。隔離 Neon Auth／JWT／RLS／CRUD 已經實測成功，完整去敏證據見 [Neon 測試報告](docs/NEON_INTEGRATION_READINESS.md)。目前可選擇 Neon Sandbox 後端實際執行網站路由，但不代表 Neon production、真實站長或正式部署已完成。
+
+### Neon Sandbox 真實網站驗收（完全不碰 production）
+
+使用者已授權在獨立 Neon Free 的 `naosledge-integration-sandbox-20261015` 分支驗證全網站。現有 PR 新增「**後端模式切換**」：預設 `NAOSLEDGE_BACKEND=supabase`，明確設定下列**伺服器和前端一致**的旗標後，才走 Neon：
+
+```env
+NAOSLEDGE_BACKEND=neon
+NEXT_PUBLIC_NAOSLEDGE_BACKEND=neon
+NAOSLEDGE_NEON_BRANCH_ID=br-quiet-sunset-b4xx4pnx
+NEON_AUTH_BASE_URL=https://YOUR_APPROVED_SANDBOX.neonauth.c-6.us-east-2.aws.neon.tech/neondb/auth
+NEON_DATA_API_URL=https://YOUR_APPROVED_SANDBOX.apirest.c-6.us-east-2.aws.neon.tech/neondb/rest/v1
+NEON_AUTH_COOKIE_SECRET=YOUR_PRIVATE_RANDOM_32PLUS_CHARACTER_SECRET
+```
+
+上面網址是**格式範例**，不是正式連線設定。測試腳本會使用已核准的公開 Sandbox endpoint，在每次啟動本機 Next.js 時**於記憶體產生新的 Cookie Secret**，不存入檔案、GitHub 或 CI。Neon Sandbox 的後端設定硬性核對允許的 branch ID 及 endpoint，**任何 production 或其他分支會被拒絕**。
+
+MSI 手動測試：以合成 Better Auth 身分登入，執行非站長拒絕、站長工作室、儲存草稿、匿名 404、發布後匿名 200、編輯、刪除後 404、登出。Neon Data API 只會看到其官方簽發的 Bearer JWT，**不以解碼的未驗簽 claims 或客戶端 Email 作為站長授權**。使用 `npm run verify:neon:sandbox:manual` 並設 `NAOSLEDGE_NEON_WEBSITE_BROWSER=1` 可附加真實網站 Chrome E2E，但**需要受控 Neon Connector 暫時授予合成站長 ID**，驗後務必清理；不得交給 GitHub Actions 自動執行。
+
+2026-10-15 實際跑完後，已再次查核測試分支 `posts=0`、`blog_admins=0`、合成 Auth users=0。正式 `production` 仍無文章表，網站未部署。完整驗收與後續決策見 [Neon 實測紀錄](docs/NEON_INTEGRATION_READINESS.md)。
 
 ### 長文章閱讀導覽
 
@@ -76,7 +95,7 @@ Markdown 編輯器提供標題、粗體、斜體、清單、連結、**圖片**�
 - 下載內容是可閱讀的 Markdown 檔，開頭含少量 Naosledge 標題、slug、摘要、分類、標籤與學習日期資訊，正文維持原本 Markdown 格式。檔名會使用安全的文章 slug。
 - 再匯入這份檔案時，可還原文章資訊與正文；一般 `.md`（沒有 Naosledge 標記）則只匯入正文，保留目前標題與文章設定。
 - 匯入前會要求確認是否覆寫編輯器內容，按取消就會保留原稿；限制檔案最大 1 MB、正文最多 200,000 字元。
-- **匯入只會變更本機編輯器狀態與本機暫存，永遠不會自動發布**。需要同步網站，仍必須按「儲存草稿」或「發布文章」；在還沒有 Supabase 專用資料庫時，這兩個雲端操作仍不能使用。
+- **匯入只會變更本機編輯器狀態與本機暫存，永遠不會自動發布**。需要同步網站，仍必須按「儲存草稿」或「發布文章」；在已驗證的 Neon Sandbox 模式下可使用真正的草稿與發布功能；正式網站尚未上線，請勿把測試資料當成正式內容。
 - 本機瀏覽器的 `localStorage` 可能被瀏覽器清除，因此長文建議定期下載 `.md` 備份，並自行保存在安全的資料夾。匯出檔案可能含個人未公開文字，請不要直接放到公開 GitHub Repository。
 
 MSI Chrome 已使用合成筆記驗證實際檔案下載、匯入確認／取消、資訊恢復，以及整個流程沒有寫入假資料庫。

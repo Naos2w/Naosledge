@@ -2,6 +2,7 @@
 import { useState, type FormEvent } from "react";
 import { ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { signInNeon, confirmNeonAdmin } from "@/app/neon-auth-actions";
 
 export default function StudioLogin() {
   const [email,setEmail]=useState("");
@@ -11,6 +12,22 @@ export default function StudioLogin() {
   async function login(event:FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
     try {
+      if (process.env.NEXT_PUBLIC_NAOSLEDGE_BACKEND === "neon") {
+        const result = await signInNeon(email, password);
+        if (!result.ok) {
+          setError(result.error || "登入失敗，請確認管理員帳號與密碼。");
+          return;
+        }
+        // The official server SDK sets the HTTP-only cookie; a second request
+        // verifies this identity against blog_admins via the REAL Neon JWT/RLS.
+        const authorized = await confirmNeonAdmin();
+        if (!authorized.ok) {
+          setError(authorized.error || "此帳號沒有站長權限。");
+          return;
+        }
+        window.location.assign("/studio");
+        return;
+      }
       const supabase = createClient();
       const { data: signedIn, error: authError } = await supabase.auth.signInWithPassword({email,password});
       if (authError || !signedIn.user) {

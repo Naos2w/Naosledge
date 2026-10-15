@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth";
 import { isPostId, validatePostInput } from "@/lib/post-validation";
+import { backend } from "@/lib/backend";
+import { neonAuth } from "@/lib/neon/auth-server";
 
 export type ActionResult = { ok: true; id: string } | { ok: false; error: string };
 
@@ -52,6 +54,10 @@ export async function deletePost(id: unknown): Promise<{ok:boolean;error?:string
 }
 
 export async function signOut() {
+  if (backend() === "neon") {
+    await neonAuth().signOut();
+    redirect("/");
+  }
   const { createClient } = await import("@/lib/supabase/server");
   const supabase = await createClient();
   await supabase.auth.signOut();

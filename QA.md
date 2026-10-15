@@ -116,9 +116,19 @@
 - 再次以 Neon Connector 唯讀確認 production 仍是預設分支、public 仍沒有 Naosledge 資料表；現有 Supabase、正式部署與 main 均未修改。
 - Neon Auth 官方 beta SDK 重試標準 npm 安裝曾成功，但存在 Better Auth peer 相依警告；未經正式應用整合，已卸載避免 CI 額外引入約 201 個未使用依賴。
 
+## 2026-10-15：Next.js 網站切換到 Neon Sandbox（真實瀏覽器）
+
+- 使用者明確同意在既有 Draft PR #1 修改網站程式，建立 `NAOSLEDGE_BACKEND=neon` 的**可選測試模式**，且 `NEXT_PUBLIC_NAOSLEDGE_BACKEND` 必須一致；預設仍保留 Supabase 路徑作為回退。Neon 設定硬性限制原授權的 `br-quiet-sunset-b4xx4pnx` branch 與同一組 Auth/Data API endpoint，拒絕 production。
+- 改接官方 `@neondatabase/auth/next/server` 伺服器端 SDK、HTTP-only Cookie、`proxy.ts` 的 Studio Middleware；由 Neon Auth `/get-session` 傳回真正簽署的 JWT，再交由 Data API/Postgres RLS 驗證站長權限，**不依賴本地自簽 JWT 或使用者可編輯 Email**。
+- `lib/auth.ts`、`lib/posts.ts`、`app/actions.ts` 與原 Studio 頁面已能在 Sandbox 模式運作，包含登入、匿名公開查詢、草稿、發布、修改、刪除、登出；Supabase 舊路徑也維持可用。
+- MSI Chrome 真實 Next.js + Neon Sandbox E2E，`NEON_WEBSITE_BROWSER_SUCCESS` / `SANDBOX_SMOKE_SUCCESS` **exit 0**：匿名不能進 Studio、非站長拒絕並登出、合成站長可以登入、真實 Server Action 儲存草稿、匿名草稿 404、發布匿名 200、修改同步、刪除匿名 404、登出後拒絕；瀏覽器 JavaScript 錯誤數 0。
+- 驗後已刪除 2 位臨時 Better Auth 合成使用者、臨時站長授權與文章，Neon 線上確認 `posts=0`、`blog_admins=0`、合成 Auth users=0；再次核對 `production` 未建立文章表，也未動現有 Supabase。
+- 正式建置在 Neon Sandbox 環境亦已編譯成功，並修正登入與新增筆記頁需 `dynamic = "force-dynamic"` 的預渲染警告；新建 `tests/backend.test.mjs` 驗證後端模式須明確一致。
+- Auth 官方 beta SDK 已成功安裝並實測 HTTP-only Cookie；npm 曾有 Better Auth peer 相依警告，正式發布前仍須再次追蹤相容性、安全稽核與部署環境設定。
+
 ## 尚未完成 / 限制
 
-- **隔離 Neon 已通過真實 Auth、Data API、RLS、CRUD**；但正式網站執行路徑仍是 Supabase SDK，Neon production 沒有套用文章資料表，也沒有停用公開註冊或設定真實站長。
+- **Sandbox 的實際網站整合已完整通過**；Neon `production` 沒有套用文章資料表、Data API 或正式 Auth 安全政策，還沒有真實站長帳號或正式公開部署。
 - 尚未部署 Vercel；網站無真實資料時不代表服務已上線。
 - 沒有真實 iPhone/Safari、Android Chrome、Lighthouse 或 VoiceOver/TalkBack 驗收。
 - 2026-10-14 的離線預覽文章／發布／儲存皆為瀏覽器內的**示範資料**，不代表正式站長權限已驗證。

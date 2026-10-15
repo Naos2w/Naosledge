@@ -11,7 +11,7 @@
 - 2026-10-15 使用者已同意在 Supabase **Naos** 組織、Singapore（`ap-southeast-1`）建立專案；成本工具當時回報建立費用 **$0/月**。但 Supabase 建立請求因 **2 個免費活躍專案的額度上限**失敗，未建立任何 Naosledge 資料庫。
 - 現有活躍專案為 Mushroooooms、Go Travel；使用者已決定**繼續使用免費方案，不停用或更動現有專案**，本階段只允許無資料庫開發與測試。
 - 後續如要新建資料庫、搬遷、暫停專案或升級付費，須先取得新的明確授權；不得沿用之前建立失敗時的費用核准自行重試。
-- **新決策與實測（2026-10-15）**：使用者已自行建立獨立的 **Neon「Naosledge」Free 專案**，並另外授權**只在非 `production` 的測試分支**建立 Data API、套用候選 Migration 和執行合成 Auth／JWT／RLS／CRUD 驗收。測試分支 `naosledge-integration-sandbox-20261015` 已完成上述項目並全數通過；兩個合成帳號、文章與管理員授權已清理為零。**正式 `production` 仍無 Naosledge 文章表，網站程式仍使用 Supabase SDK，尚未切換或部署 Neon。** 證據與待核准事項見 [`NEON_INTEGRATION_READINESS.md`](NEON_INTEGRATION_READINESS.md)。
+- **新決策與實測（2026-10-15）**：使用者已自行建立獨立的 **Neon「Naosledge」Free 專案**，並另外授權**只在非 `production` 的測試分支**建立 Data API、套用候選 Migration 和執行合成 Auth／JWT／RLS／CRUD 驗收。測試分支 `naosledge-integration-sandbox-20261015` 已完成上述項目並全數通過；兩個合成帳號、文章與管理員授權已清理為零。**正式 `production` 仍無 Naosledge 文章表；網站已新增 Neon Sandbox 模式並通過實際 Next.js 瀏覽器驗收，但正式環境尚未部署，也沒有啟用 Neon production。** 證據與待核准事項見 [`NEON_INTEGRATION_READINESS.md`](NEON_INTEGRATION_READINESS.md)。
 
 ## Supabase 資料庫啟用：目前暫停
 
@@ -23,7 +23,7 @@
 
 使用者已選擇 **Neon Free 專案作為獨立後端**，且已核准的**隔離測試分支／Data API／候選 SQL／合成帳號**操作全部完成並驗收通過，臨時測試資料已清除。
 
-下一個需要 Owner 新授權的項目是：**將 Next.js 正式程式改接 Neon Auth/Data API，先在已建好的隔離分支實際測試本機網站**；經驗收合格後，再另行確認是否將 Migration、Data API 與單一站長安全政策套用到 Neon **`production`**。**現有 Supabase、Neon `production`、正式站長帳號、網域／部署、PR #1 合併**都不在原本隔離分支授權範圍內。PR 保持 Draft，保持免費和可還原。
+**Next.js 在 Sandbox 模式已完整改接 Neon Auth/Data API 並通過真實 Chrome 登入／CRUD 驗收。**下一個需要 Owner 新授權的項目是：**是否允許對 Neon `production` 套用已驗證的 Migration、啟用 Data API，以及設定正式站長專屬安全政策**。**現有 Supabase、Neon `production`、正式站長帳號、網域／部署、PR #1 合併**都不在原本隔離分支授權範圍內。PR 保持 Draft，保持免費和可還原。
 
 ## 離線驗證（可以立即執行，無資料庫依賴）
 
@@ -34,7 +34,7 @@ npm run typecheck
 npm run build
 ```
 
-此外已用 PGlite 於本機執行尚未套用的 Neon migration 與合成帳號 RLS 權限測試（`npm run test:neon:rls`）；此結果只證明離線 PostgreSQL RLS 邏輯，**不能代表 Neon 真實 JWT 驗證、線上登入或文章發布已通過**。
+此外用 PGlite 執行 Neon Migration／RLS 的本機測試（`npm run test:neon:rls`）；並已在受控 Neon Sandbox 使用**真正的 Auth JWT + PostgreSQL RLS + Next.js Chrome**完成登入、發草稿、發布、編輯、刪除與登出驗收。**此結果僅適用 Sandbox，不代表正式 Neon production 或真實站長已部署。**
 
 ## 站長帳號：使用者操作
 

@@ -85,7 +85,7 @@ async function signedUpUser(role) {
   const session = requireSuccess(await call(a + "/get-session", {cookie}), role + " session");
   const token = session.headers.get("set-auth-jwt");
   if (jwtSubject(token) !== id) throw new Error(role + ": signed JWT subject does not match");
-  return {id,token,role};
+  return {id,token,role,email,password};
 }
 async function list(table, token, params="select=*") {
   return requireSuccess(await call(d + "/" + table + "?" + params, {token}), "list " + table);
@@ -182,6 +182,10 @@ try {
   assert.equal(ids(await list("posts",anon,draftQuery)).length,0);
   createdSlug = undefined;
   console.log("PASS owner DELETE and anonymous no longer sees post");
+  if (process.env.NAOSLEDGE_NEON_WEBSITE_BROWSER === "1") {
+    const {verifyNeonBrowser} = await import("./neon-website-browser.mjs");
+    await verifyNeonBrowser({owner,guest,authUrl:a,dataApiUrl:d,branch});
+  }
   console.log("SANDBOX_SMOKE_SUCCESS all live Auth/JWT/Data API/RLS/CRUD assertions passed");
 } catch(error) {
   const message = String(error?.message||"unknown").slice(0,400);
