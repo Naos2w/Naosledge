@@ -259,10 +259,29 @@ body{
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
  .site-header,.hero-margin,.search-form,.trail-calendar,.trail-recent,.studio-metrics>div,.editor-settings,.login-form{background:var(--sheet)}
 }
+/* Writing shortcuts live on a quiet glass strip. The document stays opaque. */
+.markdown-toolbar{
+  display:flex;gap:7px;max-width:100%;min-width:0;overflow-x:auto;
+  scrollbar-width:thin;overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;padding:10px 0 12px;
+}
+.markdown-tool{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  flex:0 0 auto;min-height:44px;padding:9px 13px;white-space:nowrap;
+  border-radius:12px;border:1px solid var(--glass-line);
+  color:var(--ink-soft);background:var(--glass);font-size:12px;
+  transition:transform .2s var(--ease-glass),border-color .2s ease,background .2s ease,color .2s ease;
+}
+.markdown-tool:hover{color:var(--accent);border-color:var(--rule-strong);background:var(--accent-tint)}
+.markdown-tool:active{transform:scale(.97)}
 /* Compact touch ergonomics and iOS no-zoom form typography. */
 @media(max-width:580px){
   .icon-button,.header-admin{min-height:44px;min-width:44px}
   .chip{min-height:44px;font-size:12px}
   .search-form input,.field-group input,.slug-field input,.login-form input,.editor-excerpt-input,.content-textarea{font-size:16px}
   .preview-switch,.button-ghost,.studio-signout{min-height:44px}
+  .markdown-toolbar{gap:6px}
+  .markdown-tool{min-height:44px;padding:8px 12px}
+  .editor-top-right{max-width:100%;gap:8px;flex-wrap:wrap}
+  .autosave-text{max-width:100%;overflow-wrap:anywhere}
 }

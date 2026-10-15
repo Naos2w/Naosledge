@@ -1,13 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Check, Eye, FileEdit, Globe2, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bold, Check, Code2, Eye, FileEdit, Globe2, Heading2, Italic, Link2, List, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import Markdown from "@/components/markdown";
 import { savePost, deletePost } from "@/app/actions";
 import { slugify, todayTaipei } from "@/lib/format";
+import { applyMarkdownTool, type MarkdownTool } from "@/lib/markdown-editor";
 import type { Post, PostInput, PostStatus } from "@/lib/types";
+
+const markdownTools = [
+  { key: "heading", label: "標題", icon: Heading2 },
+  { key: "bold", label: "粗體", icon: Bold },
+  { key: "italic", label: "斜體", icon: Italic },
+  { key: "list", label: "清單", icon: List },
+  { key: "link", label: "連結", icon: Link2 },
+  { key: "code", label: "程式碼", icon: Code2 },
+] as const;
 
 export default function StudioEditor({initial}: {initial?:Post}) {
   const router = useRouter();
@@ -24,6 +34,8 @@ export default function StudioEditor({initial}: {initial?:Post}) {
   const [error,setError] = useState("");
   const [localStatus,setLocalStatus] = useState("所有變更會在此裝置暫存");
   const manualSlug = useRef(Boolean(initial));
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const didCommit = useRef(false);
   const draftKey = `naosledge-local-draft-${initial?.id || "new"}`;
   // Keep compatible with browser-local drafts written by the old brand.
   const legacyDraftKey = `learnlog-local-draft-${initial?.id || "new"}`;
@@ -54,16 +66,70 @@ export default function StudioEditor({initial}: {initial?:Post}) {
     restored.current = true;
   }, [draftKey,initial]);
 
+  function saveLocalNow() {
+    if (!restored.current || didCommit.current) return;
+    try {
+      localStorage.setItem(draftKey, JSON.stringify({
+        title, slug, excerpt, content, tagsText, category, learnedOn, savedAt: Date.now(),
+      }));
+      setLocalStatus("已暫存在這台裝置 · 點選儲存才會同步到網站");
+    } catch {
+      setLocalStatus("暫存失敗，請儘速點選儲存");
+    }
+  }
+
   useEffect(() => {
-    if (!restored.current) return;
+    if (!restored.current || didCommit.current) return;
     setLocalStatus("正在暫存變更…");
+    // Also flush when a tab closes or a note field loses focus on mobile.
+    const flush = () => {
+      if (didCommit.current) return false;
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({
+          title, slug, excerpt, content, tagsText, category, learnedOn, savedAt: Date.now(),
+        }));
+        return true;
+      } catch { return false; }
+    };
     const timer = window.setTimeout(() => {
-      try {localStorage.setItem(draftKey, JSON.stringify({title,slug,excerpt,content,tagsText,category,learnedOn,savedAt:Date.now()}));
-        setLocalStatus("已自動暫存在這台裝置 · 點選儲存才會同步到網站"); }
-      catch {setLocalStatus("暫存失敗，請儘速點選儲存");}
+      if (didCommit.current) return;
+      setLocalStatus(flush()
+        ? "已暫存在這台裝置 · 點選儲存才會同步到網站"
+        : "暫存失敗，請儘速點選儲存");
     }, 700);
-    return () => window.clearTimeout(timer);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pagehide", flush);
+    };
   }, [title,slug,excerpt,content,tagsText,category,learnedOn,draftKey]);
+
+  function applyTool(tool: MarkdownTool) {
+    const editor = editorRef.current;
+    if (!editor) return;
+    const change = applyMarkdownTool(content, editor.selectionStart, editor.selectionEnd, tool);
+    if (change.text.length > 200_000) {
+      setError("文章內容不得超過 200,000 字元。");
+      return;
+    }
+    setError("");
+    setContent(change.text);
+    requestAnimationFrame(() => {
+      const target = editorRef.current;
+      if (!target) return;
+      target.focus({preventScroll: true});
+      target.setSelectionRange(change.selectionStart, change.selectionEnd);
+    });
+  }
+
+  function onEditorKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey) return;
+    const tool = event.key.toLowerCase() === "b" ? "bold" : event.key.toLowerCase() === "k" ? "link" : null;
+    if (tool) {
+      event.preventDefault();
+      applyTool(tool);
+    }
+  }
 
   function updateTitle(next:string) {
     setTitle(next);
@@ -75,6 +141,8 @@ export default function StudioEditor({initial}: {initial?:Post}) {
   }
 
   async function persist(next:PostStatus) {
+    if (initial?.status === "published" && next === "draft" &&
+        !window.confirm("這篇文章目前已公開。下架後讀者將無法再看到它，確定要改為草稿嗎？")) return;
     setError(""); setBusy(true);
     const payload:PostInput = {
       id:initial?.id,title,slug,excerpt,content_md:content,
@@ -84,6 +152,7 @@ export default function StudioEditor({initial}: {initial?:Post}) {
     try {
       const result = await savePost(payload);
       if (!result.ok) {setError(result.error); return;}
+      didCommit.current = true;
       localStorage.removeItem(draftKey);
       localStorage.removeItem(legacyDraftKey);
       setStatus(next);
@@ -97,6 +166,7 @@ export default function StudioEditor({initial}: {initial?:Post}) {
     setBusy(true); setError("");
     try { const result = await deletePost(initial.id);
       if (!result.ok) {setError(result.error||"刪除失敗");return;}
+      didCommit.current = true;
       localStorage.removeItem(draftKey);
       localStorage.removeItem(legacyDraftKey); router.replace("/studio"); router.refresh();
     } catch {setError("無法刪除文章，請重試。");}
@@ -104,34 +174,46 @@ export default function StudioEditor({initial}: {initial?:Post}) {
   }
 
   return <section className="editor-page container">
-    <div className="editor-topbar"><Link href="/studio" className="back-link"><ArrowLeft size={17}/> 返回工作室</Link>
+    <div className="editor-topbar"><Link href="/studio" className="back-link" onClick={saveLocalNow}><ArrowLeft size={17}/> 返回工作室</Link>
       <div className="editor-top-right"><span className="autosave-text"><Check size={13}/> {localStatus}</span><span className={status==="published"?"status-pill published":"status-pill draft"}>{status==="published"?"已發布":"草稿"}</span></div>
     </div>
     <div className="editor-title-row"><div><span className="section-kicker">WRITING DESK / {initial ? "EDIT ENTRY" : "NEW ENTRY"}</span><h1>{initial?"編輯筆記":"寫一篇新的筆記"}<span className="title-period">.</span></h1></div>
       <div className="editor-actions">
         {initial && <button type="button" className="delete-button" disabled={busy} onClick={remove} aria-label="永久刪除文章" title="永久刪除文章"><Trash2 size={17}/></button>}
-        <button type="button" className="button-ghost" disabled={busy} onClick={()=>persist("draft")}><Save size={16}/> 儲存草稿</button>
+        <button type="button" className="button-ghost" disabled={busy} onClick={()=>persist("draft")}><Save size={16}/> {initial?.status === "published" ? "下架為草稿" : "儲存草稿"}</button>
         <button type="button" className="button-primary" disabled={busy} onClick={()=>persist("published")}><Globe2 size={16}/> {status==="published"?"更新公開文章":"發布文章"}<ArrowUpRight size={16}/></button>
       </div>
     </div>
-    {error && <div className="editor-error" role="alert">{error}</div>}
+    {error && <div className="editor-error" role="alert" id="editor-error">{error}</div>}
     <div className="editor-workspace">
       <div className="editor-document">
         <div className="editor-paper-top"><span>NAOSLEDGE / MANUSCRIPT</span><span>{learnedOn}</span></div>
         <label htmlFor="post-title" className="visually-hidden">筆記標題（必填）</label>
-        <input id="post-title" maxLength={160} value={title} onChange={e=>updateTitle(e.target.value)} placeholder="這篇筆記的標題…" className="editor-title-input"/>
+        <input id="post-title" maxLength={160} value={title} onChange={e=>updateTitle(e.target.value)} onBlur={saveLocalNow} placeholder="這篇筆記的標題…" className="editor-title-input"/>
         <label htmlFor="post-excerpt" className="visually-hidden">文章摘要</label>
-        <textarea id="post-excerpt" rows={2} maxLength={400} value={excerpt} onChange={e=>setExcerpt(e.target.value)} placeholder="用一兩句話，記下這篇筆記的重點（可選）" className="editor-excerpt-input"/>
+        <textarea id="post-excerpt" rows={2} maxLength={400} value={excerpt} onChange={e=>setExcerpt(e.target.value)} onBlur={saveLocalNow} placeholder="用一兩句話，記下這篇筆記的重點（可選）" className="editor-excerpt-input"/>
         <div className="editor-content-bar"><span>CONTENT / MARKDOWN</span><button type="button" onClick={()=>setPreview(!preview)} className="preview-switch" aria-pressed={preview}>{preview?<FileEdit size={16}/>:<Eye size={16}/>} {preview?"返回編輯":"文章預覽"}</button></div>
-        {preview?<div className="editor-md-preview"><Markdown content={content || "*目前還沒有內容。*"}/></div>
-          :<><label htmlFor="post-content" className="visually-hidden">文章內容（Markdown，必填）</label><textarea id="post-content" className="content-textarea" maxLength={200000} value={content} onChange={e=>setContent(e.target.value)} placeholder={"從今天最有意思的一件事開始。\n\n## 我學到了什麼？\n\n寫下你的理解、範例和資料來源…"} spellCheck={false}/></>}
+{!preview && <div className="markdown-toolbar" role="group" aria-label="Markdown 格式工具列">
+          {markdownTools.map(({key,label,icon:Icon}) => <button key={key} type="button"
+            className="markdown-tool" title={key==="bold" ? "粗體（Ctrl/⌘+B）" : key==="link" ? "連結（Ctrl/⌘+K）" : label}
+            aria-label={label} aria-controls="post-content"
+            onMouseDown={event=>event.preventDefault()} onClick={()=>applyTool(key)}>
+            <Icon size={16} aria-hidden="true"/><span>{label}</span>
+          </button>)}
+        </div>}
+        {preview?<div className="editor-md-preview" role="region" aria-label="文章 Markdown 預覽"><Markdown content={content || "*目前還沒有內容。*"}/></div>
+          :<><label htmlFor="post-content" className="visually-hidden">文章內容（Markdown，必填）</label>
+            <textarea ref={editorRef} id="post-content" className="content-textarea" maxLength={200000}
+              value={content} onChange={e=>setContent(e.target.value)} onBlur={saveLocalNow} onKeyDown={onEditorKeyDown}
+              placeholder={"從今天最有意思的一件事開始。\n\n## 我學到了什麼？\n\n寫下你的理解、範例和資料來源…"}
+              aria-describedby={error ? "editor-error" : undefined} spellCheck={false}/></>}
         <div className="editor-paper-foot"><span>WRITE. REVISE. RETURN.</span><span>{content.length.toLocaleString("zh-TW")} / 200,000 字元</span></div>
       </div>
       <aside className="editor-settings" aria-label="文章設定"><div className="editor-sidebar-head"><span className="section-kicker">PUBLISHING DETAILS</span><h2>文章設定</h2></div>
-        <div className="field-group"><label htmlFor="post-date">學習日期</label><input id="post-date" type="date" value={learnedOn} onChange={e=>setLearnedOn(e.target.value)}/></div>
-        <div className="field-group"><label htmlFor="post-category">分類</label><input id="post-category" maxLength={36} value={category} onChange={e=>setCategory(e.target.value)} placeholder="例如：技術、閱讀、生活"/></div>
-        <div className="field-group"><label htmlFor="post-tags">標籤 <span className="sub-label">以逗號分隔</span></label><input id="post-tags" value={tagsText} onChange={e=>setTagsText(e.target.value)} placeholder="Git, 設計, 閱讀筆記"/></div>
-        <div className="field-group"><label htmlFor="post-slug">文章網址 <span className="sub-label">英文 slug</span></label><div className="slug-field"><span>/notes/</span><input id="post-slug" value={slug} onChange={e=>{manualSlug.current=true;setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,120));}} placeholder="my-learning-note"/></div></div>
+        <div className="field-group"><label htmlFor="post-date">學習日期</label><input id="post-date" type="date" value={learnedOn} onChange={e=>setLearnedOn(e.target.value)} onBlur={saveLocalNow}/></div>
+        <div className="field-group"><label htmlFor="post-category">分類</label><input id="post-category" maxLength={36} value={category} onChange={e=>setCategory(e.target.value)} onBlur={saveLocalNow} placeholder="例如：技術、閱讀、生活"/></div>
+        <div className="field-group"><label htmlFor="post-tags">標籤 <span className="sub-label">以逗號分隔</span></label><input id="post-tags" value={tagsText} onChange={e=>setTagsText(e.target.value)} onBlur={saveLocalNow} placeholder="Git, 設計, 閱讀筆記"/></div>
+        <div className="field-group"><label htmlFor="post-slug">文章網址 <span className="sub-label">英文 slug</span></label><div className="slug-field"><span>/notes/</span><input id="post-slug" value={slug} onChange={e=>{manualSlug.current=true;setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,120));}} onBlur={saveLocalNow} placeholder="my-learning-note"/></div></div>
         <div className="editor-help"><strong>儲存與公開</strong><p>內容會先暫存在目前裝置。點選「儲存草稿」才會同步到雲端；點選「發布文章」後，所有訪客都能閱讀。</p><div className="editor-mini-rule"/><strong>Markdown 快捷參考</strong><code>## 小標題</code><code>**重點**</code><code>- 清單</code><code>```程式碼```</code></div>
       </aside>
     </div>

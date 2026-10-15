@@ -38,6 +38,18 @@
 - Node.js 內建 coverage 報告顯示**新抽離的兩個純函式模組** `post-validation.ts` 與 `search-params.ts` 為 100% 行、分支、函式覆蓋；**並非整站覆蓋率**。
 - GitHub Actions PR CI 新增 `npm run test:unit`，與 TypeScript 及正式建置一起驗證；線上 CI 結果需以最新 commit 對應的 workflow run 為準。
 
+## 2026-10-15：手機編輯器與無資料庫 Chrome 驗收
+
+- 依據已安裝的 `ui-ux-pro-max`、`design-director`、`motion-design` 規範，在正式寫作編輯器新增六個 Markdown 快捷按鈕：標題、粗體、斜體、清單、連結、程式碼；支持 `Ctrl/⌘+B`、`Ctrl/⌘+K`、已選文字包裹與選取範圍復原。
+- 手機工具列在 375px 寬度橫向捲動，按鈕最小觸控高度 44px；正文仍維持可閱讀的實色背景與 reduced-motion 既有設定。
+- 本機草稿除 700ms debounce 外，也在輸入欄位失焦、返回工作室及頁面 pagehide 時嘗試立即暫存；暫存失敗會正確回報，**不會當作已同步雲端**。
+- 已發布文章的操作由「儲存草稿」改成明確「下架為草稿」，需先確認才可執行，避免意外下架。
+- 新增 `tests/markdown-editor.test.mjs`；MSI 本機 Node.js 24 單元測試擴充至 **23／23 通過**。
+- 安裝並鎖定 `playwright-core` 供**MSI 本機**執行 `npm run test:browser:local`，此指令使用已安裝的 Chrome／Edge，以及兩個**只綁定 127.0.0.1** 的臨時服務（Next dev + 假 Supabase），不連任何正式資料庫。
+- 實際 Chrome Smoke **exit 0**：首頁 1440／1024／768／375px 無水平溢出、搜尋、標籤、Markdown 閱讀、明暗主題保存、reduced-motion、匿名工作室轉址，模擬站長登入，手機編輯器工具列與預覽，快速離開後恢復本機草稿，下架確認可取消，以及透過**假 PostgREST 記憶體**完成草稿儲存→匿名 404→發布→匿名可閱讀。
+- Chrome JavaScript `pageerror` 為零；截圖只在 MSI 暫存資料夾，不提交 GitHub。為避免 GitHub Actions 額外下載瀏覽器與增加執行時間，**本機瀏覽器 Smoke 不加入遠端 CI**。
+- 上述「登入、草稿 404、發布」只驗證**合成假服務下的應用程式流程**，絕不代表真正 Supabase Auth／資料列政策（RLS）的安全驗收。
+
 ## 尚未完成 / 限制
 
 - 尚未建立／指定 **Naosledge 專用 Supabase**，因此尚未測試真實登入、CRUD 與 RLS 端到端整合。
