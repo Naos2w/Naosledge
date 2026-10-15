@@ -396,6 +396,15 @@ try {
   assert.ok(await page.getByRole("textbox", { name: "電子郵件" }).isVisible());
   console.log("PASS: unauthenticated visitor cannot access writing desk");
 
+  // Neon password recovery must never appear in the Supabase compatibility mode.
+  assert.equal(await page.locator('a[href="/forgot-password"]').count(), 0);
+  let recoveryResponse = await page.goto(origin + "/forgot-password", {waitUntil:"networkidle"});
+  assert.equal(recoveryResponse.status(), 404);
+  recoveryResponse = await page.goto(origin + "/reset-password?token=syntheticOnly123456789", {waitUntil:"networkidle"});
+  assert.equal(recoveryResponse.status(), 404);
+  await page.goto(origin + "/login", {waitUntil:"networkidle"});
+  console.log("PASS: Neon recovery pages remain blocked in Supabase mode");
+
   // Test-only fake login: never a real Supabase project or usable credential.
   await page.getByRole("textbox", { name: "電子郵件" }).fill("offline-studio@example.invalid");
   await page.getByLabel("密碼").fill("synthetic-only-password");
@@ -440,18 +449,22 @@ try {
   assert.doesNotMatch(backupFile, /offline-studio@example|synthetic-only-password/);
 
   await editor.fill("尚未還原的臨時內容");
-  page.once("dialog", async (dialog) => {
-    assert.match(dialog.message(), /取代目前編輯器/);
-    await dialog.dismiss();
-  });
-  await page.locator("#markdown-backup-file").setInputFiles({
-    name:"mobile-backup.md", mimeType:"text/markdown", buffer:Buffer.from(backupFile),
-  });
+  await Promise.all([
+    page.waitForEvent("dialog").then(async (dialog) => {
+      assert.match(dialog.message(), /取代目前編輯器/);
+      await dialog.dismiss();
+    }),
+    page.locator("#markdown-backup-file").setInputFiles({
+      name:"mobile-backup.md", mimeType:"text/markdown", buffer:Buffer.from(backupFile),
+    }),
+  ]);
   assert.equal(await editor.inputValue(), "尚未還原的臨時內容", "Cancel must keep current draft");
-  page.once("dialog", async (dialog) => { await dialog.accept(); });
-  await page.locator("#markdown-backup-file").setInputFiles({
-    name:"mobile-backup.md", mimeType:"text/markdown", buffer:Buffer.from(backupFile),
-  });
+  await Promise.all([
+    page.waitForEvent("dialog").then((dialog) => dialog.accept()),
+    page.locator("#markdown-backup-file").setInputFiles({
+      name:"mobile-backup.md", mimeType:"text/markdown", buffer:Buffer.from(backupFile),
+    }),
+  ]);
   await page.waitForFunction(() =>
     document.querySelector("#post-content")?.value === "**今天**測試 Markdown");
   assert.equal(await page.locator("#post-title").inputValue(), "手機寫作測試");

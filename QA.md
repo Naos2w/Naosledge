@@ -1,6 +1,17 @@
 # Naosledge v3 — UI / QA 驗證
 
-驗證日期：2026-10-14
+驗證日期：2026-10-14 起，最新更新 2026-10-16
+
+## 2026-10-16：站長帳號啟用 / 密碼恢復前置（Sandbox-only）
+
+- 先前已依 Owner 提供的 Email，透過 Neon Connector **只在 Naosledge Production** 建立 1 位 Auth user；實體唯讀核對 Email 未驗證、credential account 的 password 仍為 NULL，`public.blog_admins=0`。**沒有設定或取得密碼，不得直接視為可登入站長**。
+- Neon Console 僅顯示 Auth 設定，不保證有使用者密碼重設按鈕；依據本機已釘選的 `@neondatabase/auth@0.6.0-beta` 與 Better Auth 端點，透過 `requestPasswordReset`／`resetPassword` 建立自助設定流程，由 Neon 發送／核對一次性 Token。應用程式**不自製、不儲存 Token，也不寫入密碼資料庫**。
+- 新增 `/forgot-password`、`/reset-password` 與登入頁入口；只在**已核准的 Neon Sandbox backend** 顯示。伺服器端檢查 Email、Token、12–128 字元的新密碼，回覆不揭露帳號是否存在的訊息；重設 Callback URL 嚴格限制為明確設定的 `http://localhost:<port>/reset-password`，不能由訪客指定外部網址。
+- Reset Token 由 Better Auth 回傳並於瀏覽器頁面使用，頁面 Hydration 後清除 query string；不出現在 console、Git、CI、文件或伺服器錯誤訊息。
+- MSI `npm run test:unit`、`npm run typecheck`、`npm run build` 通過；`npm run test:browser:neon-recovery:local` 的獨立 Chrome 測試 **NEON_RECOVERY_UI_SUCCESS**，驗證頁面、無效 Token 提示、雙重密碼不一致拒絕、網址 Token 清除，且**無 Auth/Data API 網路呼叫、沒有寄信／觸碰線上資料**。
+- `npm run test:browser:local` 全套既有 Supabase 相容回歸 **exit 0**；新確認兩個恢復頁在 Supabase 相容模式均 404、登入頁不會顯示 Neon 重設入口。既有 Playwright 重複確認視窗處理競態一併修正。
+- **剩餘待 Owner 授權與操作**：Production Auth 公開註冊／Email 驗證政策、可在 iPhone 開啟且與 Neon Trusted Domains 一致的 HTTPS 網站／預覽，以及由 Owner 本人點選重設信、設定密碼、確認 Email。**目前沒有真正寄出 Yahoo 重設信，也未在 Production 執行 Token 或密碼流程，更沒有站長權限、Vercel 部署、PR 合併。**
+- 重要限制：**設定／重設密碼本身不會將 `emailVerified` 改成 true**；正式站長授權與登入測試前必須另行完成 Email 所有權驗證。
 
 ## 2026-10-15：Neon Production 經另行核准完成初始建置（最新狀態）
 

@@ -1,6 +1,6 @@
 # Naosledge v3 — 正式上線前置與驗收清單
 
-更新：2026-10-15。**Neon Production 已獲新的明確授權，完成專用 Data API 與 21 項初始 Migration；正式站長、Auth 安全政策、網站 Production 模式、Vercel 部署仍待核准。** PR #1 保持 Draft。本文件是狀態與後續驗收清單，不是其他操作的授權。
+更新：2026-10-16。**Neon Production 已完成 Data API 與 Migration，並有一個尚未驗證 Email、尚未設定密碼的 Owner Auth 帳號；管理員授權仍為 0。** Auth 安全政策、網站 Production 模式、Vercel 部署仍待核准。PR #1 保持 Draft。本文件是狀態與後續驗收清單，不是其他操作的授權。
 
 ## 實際狀態（先核對，再決定下一步）
 
@@ -13,7 +13,7 @@
 | Neon | 獨立 `Naosledge` Free 專案（`bitter-silence-36632892`，AWS `us-east-2`，PostgreSQL 18） |
 | Sandbox | `naosledge-integration-sandbox-20261015`（`br-quiet-sunset-b4xx4pnx`）；`posts`／`blog_admins`、RLS、Data API 及真正的 Auth／JWT／Next.js Chrome CRUD 已驗收 |
 | Production | 預設 `production`（`br-aged-sound-b43h5r2c`）；Data API **active**、`public.posts` / `blog_admins` 已建立、RLS 6 項；兩張表均 **0 筆** |
-| 正式站長與網域 | 尚未建立／核准；Vercel Preview 和 Production 都尚未部署 |
+| 正式帳號與網域 | Neon Auth 已建立 1 個待啟用的 Owner 帳號（未驗證 Email、密碼尚未設定）；`blog_admins=0`；Vercel Preview／Production 尚未部署 |
 | 舊 Supabase | 僅作為程式回退路徑；既有 Mushroooooms、Go Travel 專案不得更動、共用或重用密鑰 |
 
 Sandbox 使用合成帳號與文章測試後已清理。**2026-10-15 另經 Owner 明確授權**，對指定 Neon Production 套用與 Sandbox 相同的初始 SQL 並啟用 Data API；已由資料庫唯讀查證 RLS／GRANT／索引與空表。**Production 仍未執行真實站長／瀏覽器端到端驗收，也未開站。** 詳細記錄見 [Neon 整合報告](NEON_INTEGRATION_READINESS.md) 和 [QA](../QA.md)。
@@ -33,15 +33,24 @@ npm run test:unit
 npm run typecheck
 npm run build
 npm run test:browser:local
+npm run test:browser:neon-recovery:local
 ```
 
 `npm run test:unit` 已包括 `tests/neon-rls.test.mjs` 的**本機 PGlite 模擬**。本機 Chrome 腳本使用綁定 127.0.0.1 的合成服務，**不是**真實 Neon 生產權限驗證。真正 Neon Sandbox 的 `npm run verify:neon:sandbox:manual` 需要事先核准並以合成帳號執行及清理，**不可自動加入 CI，也不需要為了日常回歸重跑**。
+
+## 密碼設定流程：目前僅具備 Sandbox 前端／離線驗證
+
+- 既有 Production Auth 帳號不能因為已建立而認定可以登入；目前 Email 尚未驗證，且沒有密碼與站長權限。
+- 已在 Draft PR 加入 `/forgot-password` 和 `/reset-password`：Neon Better Auth 負責寄送一次性重設連結、驗證 Token、更新密碼；本網站不會自行簽發 Token 或儲存密碼。
+- 現有實作**硬性限定 Neon Sandbox 與 `http://localhost`**。`npm run test:browser:neon-recovery:local` 是無實際帳號、無寄信、無 Auth API/資料庫請求的 Chrome UI 安全回歸；不能用此證明正式 Email 收信或重設成功。
+- **正式帳號啟用的後續順序：** 由 Owner 決定正式 HTTPS 網址與可信預覽部署；另核准 Auth 安全政策（建議關閉公開註冊及強制 Email 驗證）；在受控 HTTPS 網站實測密碼重設信和本人信箱驗證；驗證成功後再由受控 Owner 權限將經確認的 `neon_auth.user.id` 加入 `public.blog_admins`。
+- **密碼重設不等於信箱驗證**：必須另行確認 `emailVerified=true`，且完整測試管理員 Session／RLS。沒有正式網址、Cookie Secret 或明確授權前，不能擅自啟用 Production 網站或對使用者寄出真正的重設信。
 
 ## 需要 Owner 明確授權的關卡
 
 **關卡 1 — 正式 Neon 資料庫：已完成（2026-10-15）。** Owner 另行核准了 Neon `Naosledge` Free 專案的 `production`（`br-aged-sound-b43h5r2c`）啟用 Data API（Neon Auth，`public` schema，`add_default_grants=false`）及執行同一份已驗證的 `neon/migrations/001_initial_blog.sql`。21 項 SQL 在單一交易中成功，已唯讀核對兩張表均 RLS enabled、6 項 policies、角色 GRANT 與 0 筆應用資料。未建立快照（確認目前無排程與既有 Snapshot）；變更是無舊應用表上的建立操作，未進行破壞性資料修改。正式 Auth／網站端到端權限測試尚待後續關卡。
 
-**關卡 2 — 正式 Auth 安全政策與站長。** 目前 Neon Managed Better Auth 存在，但原始設定允許公開註冊且未強制 Email 驗證。正式上線前需核准關閉公開註冊及信箱驗證策略；由 Owner 以安全管道建立自己的站長帳號，確認真正的 Neon Auth `user.id`（**文字 ID，不是預設 Supabase UUID**），只在正確的正式資料庫授權 `public.blog_admins`。不能自動猜測身分、替 Owner 建立真實憑證或從聊天輸出敏感資訊。
+**關卡 2 — 正式 Auth 安全政策與站長：部分完成。** 已依 Owner 指定的 Email 在正確 Production 分支建立**一個 Neon Auth 帳號**；唯讀核對 Email 未驗證、Credential 的密碼仍為空、`blog_admins=0`，**不能登入或發布**。Neon Managed Better Auth 仍允許公開註冊，且不強制 Email 驗證。正式上線前要由 Owner 核准關閉公開註冊、要求 Email 驗證／確認寄信政策，並在可信 HTTPS 網站由本人完成密碼設定及信箱驗證。只在身分驗證完成後，才可用真實 Neon Auth `user.id`（轉文字）授權 `public.blog_admins`；不得自行推定本人已通過驗證。
 
 **關卡 3 — 正式網站程式設定。** **現有程式的 Neon 模式仍硬性限定已核准的 Sandbox branch 與端點；不能只把 `.env` 換成 Production URL 就部署。** 在 PR 開發分支可以準備受審查的生產設定方案，但在正式 Auth 安全政策、Owner 站長身分及另行授權前，不啟用、使用或部署 Production 站點；需要確認正確 Auth/Data API 端點、Cookie Secret 與失敗時關閉行為。保持 fail-closed，避免預設連到錯誤資料庫。
 

@@ -119,6 +119,7 @@ MSI Chrome 已使用合成筆記驗證實際檔案下載、匯入確認／取消
 | `/notes/[slug]` | 已發布文章；草稿不可公開閱讀 |
 | `/about` | 關於 Naosledge |
 | `/login` | 站長登入（無公開註冊） |
+| `/forgot-password`、`/reset-password` | Neon Sandbox 專用密碼啟用／重設流程；非 Neon 模式 404，未對外部署 |
 | `/studio` | 受保護的文章管理工作室 |
 | `/studio/new`、`/studio/[id]` | 新增／編輯草稿或公開文章 |
 | `/sitemap.xml` | 已發布文章 Sitemap |
@@ -138,11 +139,14 @@ npm run test:unit
 npm run typecheck
 npm run build
 npm run test:browser:local
+npm run test:browser:neon-recovery:local
 ```
 
 `test:browser:local` 以 MSI 上已安裝的 Chrome／Edge、127.0.0.1 的假 Supabase 執行合成瀏覽器測試；不需真實登入。若僅啟動 `npm run dev`，預設 Supabase 模式在沒有**Naosledge 專屬**資料庫設定時，實際文章載入／登入不會正常運作，不能誤認為已部署。
 
 ### 已完成的 Neon Sandbox 模式
+
+**2026-10-16 新增帳號啟用準備：** 登入頁增加「忘記密碼／首次設定密碼」入口，經由 Neon Better Auth 的 `requestPasswordReset`／`resetPassword` API 處理，由服務端限制回呼為明確的 `localhost` Sandbox 網址。MSI Chrome 已驗證頁面、無效 Token、輸入安全規則，以及 Token 從網址移除；**沒有真正寄信或在 Production 重設密碼**。正式 Auth 已建立一個待啟用帳號（Email 未驗證、尚未有密碼與 `blog_admins` 權限）；仍需先完成安全 HTTPS 網域、Auth 設定與本人驗證，才能開始正式站長登入。
 
 在明確設定後端旗標、核准的 Sandbox branch ID、相應 Auth／Data API HTTPS URL 及**私有** Cookie Secret 後，現有 Next.js 網站已可使用真正 Neon Auth／JWT 與 RLS。僅可在核准的 Sandbox 模式用受控、合成帳號驗證，**不可設為 Neon Production**；細節見 [隔離整合報告](docs/NEON_INTEGRATION_READINESS.md)。
 
@@ -163,9 +167,9 @@ npm run test:browser:local
 ## 驗證範圍與限制
 
 - 320、375、768、1024、1440px 的 MSI 本機 Chrome／合成瀏覽器測試涵蓋導覽、Markdown、搜尋、草稿、無障礙與 SEO 安全預設；尚未以 iPhone Safari 做實機驗收。
-- 2026-10-15 在 MSI 執行單元測試 **65/65 PASS**（含 PGlite 子測試）、TypeScript 與正式建置成功；最新 GitHub CI 亦成功。CI 沒有實際連接 Neon。
+- 2026-10-16 在 MSI 重新執行完整單元測試（含 PGlite RLS 與新增密碼重設安全規則）、TypeScript 與正式建置，均成功；目前 CI 仍只做離線測試，不會連接 Neon。
 - **真實 Neon Sandbox** 已在受控環境完成 Better Auth／JWT／Data API／RLS、登入與網站文章 CRUD，合成測試文章、授權及帳號已清理；**不能當作 Neon Production 的安全驗收**。
-- Neon `production` 已完成應用 SQL、6 項 RLS Policy 與 Data API 啟用；正式站長帳號、Production 網站模式、網域與 Vercel 部署均未完成。
+- Neon `production` 已完成應用 SQL、6 項 RLS Policy 與 Data API 啟用；一個正式 Auth 帳號已建立但尚未驗證 Email／設定密碼／授予站長權限，Production 網站模式、網域與 Vercel 部署均未完成。
 - 目前未加入 AI、公開留言、圖片上傳、完整文章歷史版本或讀者公開註冊。
 - 編輯器本機草稿儲存不是雲端同步；在已驗證的 Sandbox 模式仍須明確點選「儲存草稿／發布文章」，才會送出真正的資料庫操作。
 - 首頁搜尋最多比對 300 篇已發布文章；資料量增長後，需另評估後端全文搜尋效能。

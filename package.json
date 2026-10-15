@@ -11,6 +11,7 @@
     "test:neon:rls": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/neon-rls.test.mjs",
     "verify:neon:sandbox:manual": "node scripts/verify-neon-sandbox.mjs",
     "test:browser:local": "node scripts/smoke-browser.mjs",
+    "test:browser:neon-recovery:local": "node scripts/smoke-neon-recovery-ui.mjs",
     "verify:anonymous": "node --env-file=.env.local scripts/verify-anonymous-access.mjs"
   },
   "engines": {

@@ -57,6 +57,9 @@ export default function StudioLogin() {
     <label htmlFor="password">密碼</label><input id="password" type="password" required autoComplete="current-password" placeholder="輸入密碼" value={password} onChange={e=>setPassword(e.target.value)}/>
     {error&&<p className="form-error" role="alert">{error}</p>}
     <button className="button-primary login-submit" disabled={busy} type="submit">{busy?"登入中…":"進入工作室"}<ArrowRight size={17}/></button>
-    <div className="login-note">這裡只開放站長登入，沒有公開註冊。</div>
+    <div className="login-note">這裡只開放站長登入，沒有公開註冊。{
+      process.env.NEXT_PUBLIC_NAOSLEDGE_BACKEND === "neon" &&
+      <><br/><a className="text-link" href="/forgot-password">忘記密碼／首次設定密碼</a></>
+    }</div>
   </form>;
 }
