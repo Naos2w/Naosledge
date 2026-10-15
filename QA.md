@@ -104,11 +104,21 @@
 - 新增 `tests/neon-rls.test.mjs`，使用 `@electric-sql/pglite` 在**本機記憶體 PostgreSQL**執行 migration 及合成身份權限測試，包括：匿名只能讀公開文章、非站長不具寫入權限、站長讀草稿／新增／更新與防止冒用其他作者、不可自行授權站長、資料表限制。此測試**並非 Neon 線上 PostgreSQL 18 或 JWT 驗簽**。
 - Neon Better Auth 官方 beta SDK 目前在 MSI 嚴格 npm 安裝遇到 Better Auth peer dependency 警告／逾時，**沒有強制接到登入路由**。
 - 另新增未啟用的 `lib/neon/data-api.ts` 與合成 `tests/neon-data-api.test.mjs`，用獨立 Neon PostgREST SDK 驗證 URL、Bearer JWT 傳遞、查詢格式，以及 JWT 缺失時不得送出網路請求，**不連真實 Neon 端點**。
-- 專用 Neon integration 文件：[`docs/NEON_INTEGRATION_READINESS.md`](docs/NEON_INTEGRATION_READINESS.md)。在明確允許隔離測試分支與測試 SQL 前，**沒有建立 Neon 分支、沒有修改 production、沒有啟用 Data API 或建立文章表，更沒有變更既有 Supabase 服務**。
+- 專用 Neon integration 文件：[`docs/NEON_INTEGRATION_READINESS.md`](docs/NEON_INTEGRATION_READINESS.md)。以上是**先前未獲授權時的歷史狀態**；使用者後續已授權並完成隔離分支真實測試，詳見下節。
+
+## 2026-10-15：Neon Free 真正的隔離端對端測試
+
+- 已獲使用者明確許可建立獨立分支 `br-quiet-sunset-b4xx4pnx`（不是 default/primary）。首度嘗試自訂 Free 休眠時間被 HTTP 412 拒絕，改用免費預設配置建立成功。
+- 只在隔離分支啟用 Neon Data API，關閉預設自動 GRANT；21 個 Migration SQL 語句以單一 transaction 套用。Neon PostgreSQL 18.6 實際核對 posts 與 blog_admins 均啟用 RLS（文章 5 policies、站長表 1 policy）。
+- 真實隔離 Auth JWT 與 Data API 驗證：匿名 JWT 可取得、匿名讀取 blog_admins 被 403/42501 拒絕；兩個 @example.com 合成帳號可登入取得真實 JWT；一般使用者不能新增或更新，授權合成站長可建立草稿、發布、公開讀取、刪除，且不能冒用他人作者 ID。
+- 手動腳本 `scripts/verify-neon-sandbox.mjs` exit 0 且報告 `SANDBOX_SMOKE_SUCCESS`；未將任何臨時密碼、Cookie、JWT 或真實帳號資料寫入 Git。
+- 驗收後清理兩個合成 Auth 帳號、合成站長授權及測試文章，Neon 真實 SQL 確認 posts=0、blog_admins=0、匹配合成 Auth users=0；保留空白隔離分支與 RLS 供後續用。
+- 再次以 Neon Connector 唯讀確認 production 仍是預設分支、public 仍沒有 Naosledge 資料表；現有 Supabase、正式部署與 main 均未修改。
+- Neon Auth 官方 beta SDK 重試標準 npm 安裝曾成功，但存在 Better Auth peer 相依警告；未經正式應用整合，已卸載避免 CI 額外引入約 201 個未使用依賴。
 
 ## 尚未完成 / 限制
 
-- 尚未在 Neon 獨立測試分支啟用 Data API、執行真正的 Auth JWT / RLS / CRUD 驗收；目前正式網站執行路徑仍是 Supabase SDK。
+- **隔離 Neon 已通過真實 Auth、Data API、RLS、CRUD**；但正式網站執行路徑仍是 Supabase SDK，Neon production 沒有套用文章資料表，也沒有停用公開註冊或設定真實站長。
 - 尚未部署 Vercel；網站無真實資料時不代表服務已上線。
 - 沒有真實 iPhone/Safari、Android Chrome、Lighthouse 或 VoiceOver/TalkBack 驗收。
 - 2026-10-14 的離線預覽文章／發布／儲存皆為瀏覽器內的**示範資料**，不代表正式站長權限已驗證。

@@ -8,7 +8,7 @@
 
 GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的虛構文章與不需登入的模擬後台。離線互動預覽另存於 ChatGPT 專案成果中，不是正式網站，也不會把筆記寫入 Supabase。
 
-目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待 Neon 正式權限整合與 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。目前 Neon 專案已可唯讀存取，但**沒有任何 Naosledge 應用資料表、Neon Data API 尚未啟用，原程式也尚未切換到 Neon**。詳見 [Neon 整合前置與本機 RLS 測試](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
+目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待 Neon 正式權限整合與 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。Neon **隔離分支**已完成真實 Better Auth／JWT／Data API／PostgreSQL RLS 與站長 CRUD 驗證，合成帳號／文章已清除；但 Neon **`production` 沒有文章資料表，原網站程式也尚未切換到 Neon**。詳見 [Neon 隔離整合驗收報告](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
 
 ## v3 視覺與互動設計
 
@@ -45,7 +45,7 @@ npm run typecheck
 npm run build
 ```
 
-單元測試使用 Node.js 24 內建測試工具，不連接任何 Supabase 或 Neon 線上資料庫、不產生帳號或外部費用。涵蓋不可信任的文章資料、草稿／發布限制、日期、UUID、異常搜尋網址，以及 Markdown 格式化。`tests/neon-rls.test.mjs` 另透過本機 PGlite 記憶體 PostgreSQL 模擬 Neon 官方的身分角色與 RLS，真實執行 `neon/migrations/001_initial_blog.sql` 的權限回歸測試；**SQL 尚未套用到線上 Neon**。GitHub Actions PR CI 會自動執行單元測試、TypeScript 和建置檢查。
+單元測試使用 Node.js 24 內建測試工具，不連接任何 Supabase 或 Neon 線上資料庫、不產生帳號或外部費用。涵蓋不可信任的文章資料、草稿／發布限制、日期、UUID、異常搜尋網址，以及 Markdown 格式化。`tests/neon-rls.test.mjs` 另透過本機 PGlite 記憶體 PostgreSQL 模擬 Neon 官方的身分角色與 RLS，真實執行 `neon/migrations/001_initial_blog.sql` 的權限回歸測試；**SQL 已在核准的 Neon 隔離分支套用並實測，未套用到 `production`**。GitHub Actions PR CI 會自動執行單元測試、TypeScript 和建置檢查。隔離 Neon 分支的真實 Auth／Data API 測試採**人工限定分支的手動腳本**，不自動執行、不新增真實帳號，也不將任何臨時密碼或 JWT 記錄進 GitHub。
 
 若在 MSI（已安裝 Chrome／Edge）要進一步測試**真實 Next.js 網站與手機編輯器**，可執行：
 
@@ -55,7 +55,7 @@ npm run test:browser:local
 
 這個腳本使用 `playwright-core` 及本機瀏覽器，建立只綁定 **127.0.0.1** 的假 Supabase HTTP 服務與臨時 Next 開發伺服器，完成公開首頁、文章、假站長登入、手機 Markdown 工具、快速返回後的本機草稿恢復、假資料草稿→發布流程與動態介面檢查。所有帳號與文章都是**合成測試資料**，不會連接任何真實 Supabase 專案，也不會把模擬權限繞過寫進正式網站。截圖保存在 Windows 暫存目錄，不提交 GitHub。
 
-為降低 GitHub Actions 時間與用量，瀏覽器腳本**僅在 MSI 本機手動執行**，不加入 PR CI。**假資料 RLS、假登入測試通過，不代表正式 Supabase Auth 或 RLS 已通過；正式資料庫仍未建立。**
+為降低 GitHub Actions 時間與用量，瀏覽器腳本**僅在 MSI 本機手動執行**，不加入 PR CI。另有 `npm run verify:neon:sandbox:manual`，需先由操作者確認經 Neon Connector 核准的隔離分支與公開測試端點，並對合成站長 ID 進行受控授權／驗後清理；**絕不可接到 CI 或對 `production` 執行**。隔離 Neon Auth／JWT／RLS／CRUD 已經實測成功，完整去敏證據見 [Neon 測試報告](docs/NEON_INTEGRATION_READINESS.md)。這不代表正式站長與網站路由已經切換 Neon。
 
 ### 長文章閱讀導覽
 

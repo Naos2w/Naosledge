@@ -11,7 +11,7 @@
 - 2026-10-15 使用者已同意在 Supabase **Naos** 組織、Singapore（`ap-southeast-1`）建立專案；成本工具當時回報建立費用 **$0/月**。但 Supabase 建立請求因 **2 個免費活躍專案的額度上限**失敗，未建立任何 Naosledge 資料庫。
 - 現有活躍專案為 Mushroooooms、Go Travel；使用者已決定**繼續使用免費方案，不停用或更動現有專案**，本階段只允許無資料庫開發與測試。
 - 後續如要新建資料庫、搬遷、暫停專案或升級付費，須先取得新的明確授權；不得沿用之前建立失敗時的費用核准自行重試。
-- **新決策（2026-10-15）**：使用者已自行建立獨立的 **Neon「Naosledge」Free 專案**。目前只做了讀取狀態的檢查；分支 `production`、資料庫 `neondb`、Better Auth 和 Storage 已存在，`public` 應用表仍為 0、Data API 尚未啟用。**現有正式站程式仍是 Supabase SDK，沒有切換 Neon，也沒有雲端 Migration。** Neon 的完整測試／權限與待授權項目詳見 [`NEON_INTEGRATION_READINESS.md`](NEON_INTEGRATION_READINESS.md)。
+- **新決策與實測（2026-10-15）**：使用者已自行建立獨立的 **Neon「Naosledge」Free 專案**，並另外授權**只在非 `production` 的測試分支**建立 Data API、套用候選 Migration 和執行合成 Auth／JWT／RLS／CRUD 驗收。測試分支 `naosledge-integration-sandbox-20261015` 已完成上述項目並全數通過；兩個合成帳號、文章與管理員授權已清理為零。**正式 `production` 仍無 Naosledge 文章表，網站程式仍使用 Supabase SDK，尚未切換或部署 Neon。** 證據與待核准事項見 [`NEON_INTEGRATION_READINESS.md`](NEON_INTEGRATION_READINESS.md)。
 
 ## Supabase 資料庫啟用：目前暫停
 
@@ -21,9 +21,9 @@
 
 已完成的無資料庫功能包含 Dark Liquid Glass UI、行動導覽、Markdown 文章閱讀／圖片／目錄、程式碼複製、站長編輯器與本機 Markdown 備份。離線測試使用合成帳號與資料，**不能據此宣稱線上正式資料庫已驗收或公開網站已上線**。
 
-使用者已選擇建立 **Neon Free 專案作為同樣免費的獨立後端**，不再需要在「繼續等 Supabase」和「改 GitHub 靜態網站」之間重新二選一。下一個需要 Owner 明確允許的範圍是：**只在新 Neon 專案建立可辨識、非 `production` 的隔離測試分支；在該分支啟用 Data API，套用 `neon/migrations/001_initial_blog.sql` 並寫入合成測試資料，以驗證 Better Auth JWT、RLS 和文章 CRUD**。
+使用者已選擇 **Neon Free 專案作為獨立後端**，且已核准的**隔離測試分支／Data API／候選 SQL／合成帳號**操作全部完成並驗收通過，臨時測試資料已清除。
 
-上述任何雲端寫入都尚未獲得此次專用測試分支的具體授權，因此維持停止。**正式 `production` 分支、現有 Supabase、真實站長帳號、網域／部署以及 PR #1 合併**也都不在測試分支授權範圍內。PR 保持 Draft，保持免費和可還原。
+下一個需要 Owner 新授權的項目是：**將 Next.js 正式程式改接 Neon Auth/Data API，先在已建好的隔離分支實際測試本機網站**；經驗收合格後，再另行確認是否將 Migration、Data API 與單一站長安全政策套用到 Neon **`production`**。**現有 Supabase、Neon `production`、正式站長帳號、網域／部署、PR #1 合併**都不在原本隔離分支授權範圍內。PR 保持 Draft，保持免費和可還原。
 
 ## 離線驗證（可以立即執行，無資料庫依賴）
 

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs",
     "test:neon:rls": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/neon-rls.test.mjs",
+    "verify:neon:sandbox:manual": "node scripts/verify-neon-sandbox.mjs",
     "test:browser:local": "node scripts/smoke-browser.mjs",
     "verify:anonymous": "node --env-file=.env.local scripts/verify-anonymous-access.mjs"
   },
