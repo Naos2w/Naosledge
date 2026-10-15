@@ -70,6 +70,15 @@
 - MSI 真實 Chrome + **僅限 127.0.0.1 的合成假 Supabase** 驗證 **exit 0**：手機 375px 圖片不溢出、HTTPS 圖片在 Playwright 攔截下成功載入（合成 SVG）、保留 alt／圖說、lazy/async/no-referrer 屬性、HTTP 不安全圖片未發出請求；原有登入、筆記編輯、假資料草稿／發布流程也維持通過。瀏覽器截圖僅在 MSI 暫存資料夾。
 - 尚未用真實圖片伺服器、實際 Supabase Storage 或使用者上傳照片驗收；外部圖片伺服器仍可能取得讀者 IP，請依隱私需求選擇站內圖片。
 
+## 2026-10-15：長文目錄、閱讀進度與複製程式碼
+
+- 新增 `lib/article-outline.ts`：使用現有 unified/remark 解析 Markdown AST，為中文、英文、重複標題生成唯一錨點；fenced code 內的假標題不會出現在目錄。Markdown 標題與文章目錄使用同一個命名規則。
+- 文章側欄新增「文章目錄」，小螢幕換成可水平捲動的觸控章節列；文章正文長度超出可視範圍時，頂端呈現不造成 React 捲動重繪的閱讀進度條。
+- 新增 `components/code-snippet.tsx` 的一鍵程式碼複製及明確成功／失敗回饋，增加文章尾端「回到文章開頭」連結。
+- MSI Node 單元測試擴充到 **42／42 通過**，涵蓋 Markdown AST 解析、Setext 標題、重複錨點、Unicode 及 fenced code；`npm run typecheck`、`npm run build` 本地通過。
+- Chrome 真實瀏覽器搭配**僅限 127.0.0.1 的合成假 Supabase**執行 `npm run test:browser:local` 成功（exit 0）：長文章錨點可跳轉、手機章節按鈕至少 44px、閱讀進度會更新，複製程式碼能透過 Clipboard API 取得正確文字，既有搜尋／圖片／草稿流程亦通過。
+- 本批測試屬 UI 與假資料流程，不代表真實 Supabase RLS 已驗收，亦不代表已在 iOS Safari 或 TalkBack 上執行實測。
+
 ## 尚未完成 / 限制
 
 - 尚未建立／指定 **Naosledge 專用 Supabase**，因此尚未測試真實登入、CRUD 與 RLS 端到端整合。

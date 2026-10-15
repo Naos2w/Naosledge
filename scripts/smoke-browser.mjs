@@ -51,6 +51,9 @@ const posts = [
     created_at: "2026-10-14T00:00:00Z", updated_at: "2026-10-14T00:00:00Z",
   },
 ];
+// Give the article genuine scroll depth and a repeated heading for TOC coverage.
+posts[0].content_md += "\n\n```ts\nconst answer = 42;\n```\n\n## 延伸閱讀\n\n" +
+  Array.from({length: 32}, (_, i) => `第 ${i + 1} 段：${"將重要的理解記錄下來，並在未來重新整理。".repeat(5)}`).join("\n\n");
 
 // Synthetic identity and signed token exist only inside this test process.
 const mockUser = {
@@ -208,6 +211,7 @@ try {
   await waitForServer(origin, child);
   browser = await chromium.launch({ executablePath: chromePath, headless: true, args: ["--no-sandbox"] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], {origin});
   // Images are fulfilled entirely in-memory; never contact example.invalid hosts.
   let blockedRemoteRequests = 0;
   let syntheticImageRequests = 0;
@@ -274,6 +278,30 @@ try {
   assert.equal(await page.locator(".article-content").count(), 1);
   assert.match(await page.locator(".article-content").innerText(), /Rebase/);
   assert.equal(await page.locator("article h1").count(), 1, "Article title is the only H1");
+  const toc = page.getByRole("navigation", {name:"文章目錄"});
+  assert.equal(await toc.locator("a").count(), 4, "Four article headings in navigation");
+  const sections = await toc.locator("a").evaluateAll((links) => links.map((a) => {
+    const target = document.getElementById(decodeURIComponent(a.hash.slice(1)));
+    return {id:decodeURIComponent(a.hash.slice(1)), found:Boolean(target), text:target?.textContent?.trim()};
+  }));
+  assert.ok(sections.every((x)=>x.found), `Every TOC link should reach an actual heading: ${JSON.stringify(sections)}`);
+  assert.equal(sections.filter((s)=>s.id.startsWith("延伸閱讀")).length, 2, "Repeated heading gets unique anchor");
+  const progress = page.locator(".article-reading-progress span");
+  assert.equal(await progress.count(), 1);
+  await toc.locator("a").last().click();
+  await page.waitForFunction(() => window.scrollY > 100);
+  const scrollPosition = await progress.evaluate((el) => getComputedStyle(el).transform);
+  assert.notEqual(scrollPosition, "matrix(0, 0, 0, 1, 0, 0)", "Reading progress advances on scroll");
+  console.log("PASS: Markdown headings match accessible TOC links and reading progress advances");
+
+  const codeCopy = page.getByRole("button", {name: "複製程式碼"});
+  assert.equal(await codeCopy.count(), 1, "Fenced code exposes one accessible copy action");
+  await codeCopy.click();
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), "const answer = 42;");
+  assert.ok(await page.getByRole("button", {name: "程式碼已複製"}).isVisible());
+  assert.ok(await page.getByRole("link", {name: /回到文章開頭/}).isVisible());
+  console.log("PASS: code-block copy and back-to-top navigation");
+
   assert.ok(await page.locator(".article-content h2").count() >= 1, "Markdown H1 becomes H2");
   assert.ok(await page.locator(".article-content h3").count() >= 1, "Markdown H2 becomes H3");
   const inside = page.locator(".article-content a[href='/about']");
@@ -305,6 +333,9 @@ try {
   assert.ok(syntheticImageRequests >= 1, "Synthetic image was served locally");
   assert.equal(blockedRemoteRequests, 0, "Unsafe image URL did not trigger a request");
   await page.setViewportSize({width: 375, height: 812});
+  assert.equal(await toc.locator("a").count(), 4, "TOC still present on phone");
+  const mobileTocHeight = await toc.locator("a").first().evaluate((el) => el.getBoundingClientRect().height);
+  assert.ok(mobileTocHeight >= 44, `Mobile TOC target too small: ${mobileTocHeight}`);
   await safeImage.scrollIntoViewIfNeeded();
   const imageBounds = await page.evaluate(() => {
     const img = document.querySelector(".article-content img[alt='架構流程示意圖']");
