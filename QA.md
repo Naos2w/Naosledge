@@ -96,9 +96,19 @@
 - MSI Chrome 本機合成資料驗證 **exit 0**：320／375／768／1024／1440px 首頁沒有水平溢出、手機選單鍵盤切換／收合／跳頁正確，原有 SEO、長文章、圖片、備份、草稿與合成發布流程也全部通過。
 - 尚未在真實 iPhone Safari、Android TalkBack 或 VoiceOver 驗收；瀏覽器測試只代表 MSI 上的 Chrome。
 
+## 2026-10-15：Neon Free 後端整合前置與本機 PostgreSQL 權限驗證
+
+- 使用者已自行建立 Neon Free 的「Naosledge」專案。連線後透過 Neon MCP **只讀**確認：`production` 分支 ready 但沒有保護；`neondb` 為 PostgreSQL 18.6，`public` 尚無應用表，`neon_auth` 為 Neon 管理的 Better Auth 資料表；Storage enabled 且沒有 Bucket，**Neon Data API 尚未建立**。
+- Auth 配置已啟用 Email/Password，但**允許公開註冊，且沒有要求信箱驗證**；正式單一站長網站必須在驗收前處理。分支位於 AWS us-east-2，台灣訪客延遲日後需評估。
+- 新增完全獨立的 `neon/migrations/001_initial_blog.sql` **待核准草案**，將 Supabase `auth.users` UUID 轉為 Neon Better Auth 的 `text` ID，並使用 Neon `anonymous`、`authenticated` 角色和 `auth.user_id()` 函數建立可公開閱讀／站長專屬寫入的最小 GRANT+RLS。沒有更動 `supabase/schema.sql`。
+- 新增 `tests/neon-rls.test.mjs`，使用 `@electric-sql/pglite` 在**本機記憶體 PostgreSQL**執行 migration 及合成身份權限測試，包括：匿名只能讀公開文章、非站長不具寫入權限、站長讀草稿／新增／更新與防止冒用其他作者、不可自行授權站長、資料表限制。此測試**並非 Neon 線上 PostgreSQL 18 或 JWT 驗簽**。
+- Neon Better Auth 官方 beta SDK 目前在 MSI 嚴格 npm 安裝遇到 Better Auth peer dependency 警告／逾時，**沒有強制接到登入路由**。
+- 另新增未啟用的 `lib/neon/data-api.ts` 與合成 `tests/neon-data-api.test.mjs`，用獨立 Neon PostgREST SDK 驗證 URL、Bearer JWT 傳遞、查詢格式，以及 JWT 缺失時不得送出網路請求，**不連真實 Neon 端點**。
+- 專用 Neon integration 文件：[`docs/NEON_INTEGRATION_READINESS.md`](docs/NEON_INTEGRATION_READINESS.md)。在明確允許隔離測試分支與測試 SQL 前，**沒有建立 Neon 分支、沒有修改 production、沒有啟用 Data API 或建立文章表，更沒有變更既有 Supabase 服務**。
+
 ## 尚未完成 / 限制
 
-- 尚未建立／指定 **Naosledge 專用 Supabase**，因此尚未測試真實登入、CRUD 與 RLS 端到端整合。
+- 尚未在 Neon 獨立測試分支啟用 Data API、執行真正的 Auth JWT / RLS / CRUD 驗收；目前正式網站執行路徑仍是 Supabase SDK。
 - 尚未部署 Vercel；網站無真實資料時不代表服務已上線。
 - 沒有真實 iPhone/Safari、Android Chrome、Lighthouse 或 VoiceOver/TalkBack 驗收。
 - 2026-10-14 的離線預覽文章／發布／儲存皆為瀏覽器內的**示範資料**，不代表正式站長權限已驗證。

@@ -1,6 +1,6 @@
 # Naosledge v3 · Minimal Dark Liquid Glass
 
-一個使用 **Next.js + Supabase** 的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。AI 摘要留待第二階段。
+一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。現階段程式碼的後端仍是 Supabase SDK；使用者已另外建立 **Neon Free 專案**作為預定替代後端，實際切換須先通過隔離權限驗收。AI 摘要留待第二階段。
 
 > v3 在先前版本的基礎上加入 Dark Liquid Glass 與流暢動畫，保留文章資料結構、Supabase RLS、登入及資料存取邏輯。v1、v2 保留為歷史版本。
 
@@ -8,7 +8,7 @@
 
 GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的虛構文章與不需登入的模擬後台。離線互動預覽另存於 ChatGPT 專案成果中，不是正式網站，也不會把筆記寫入 Supabase。
 
-目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待專用 Supabase、真實權限驗收與 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有資料庫或擅自升級方案。詳細決策與上線檢查見 [`docs/DEPLOY_READINESS.md`](docs/DEPLOY_READINESS.md)。
+目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待 Neon 正式權限整合與 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。目前 Neon 專案已可唯讀存取，但**沒有任何 Naosledge 應用資料表、Neon Data API 尚未啟用，原程式也尚未切換到 Neon**。詳見 [Neon 整合前置與本機 RLS 測試](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
 
 ## v3 視覺與互動設計
 
@@ -40,11 +40,12 @@ SEO 仍須等待**正式 HTTPS 網域與真實文章**完成後驗收；設定�
 ```powershell
 npm ci --include=dev --no-audit --no-fund
 npm run test:unit
+npm run test:neon:rls
 npm run typecheck
 npm run build
 ```
 
-單元測試使用 Node.js 24 內建測試工具，不連接任何 Supabase 專案、不產生帳號或外部費用。涵蓋不可信任的文章資料、草稿／發布限制、日期、UUID、異常搜尋網址，以及 Markdown 格式化。GitHub Actions PR CI 會自動執行單元測試、TypeScript 和建置檢查。
+單元測試使用 Node.js 24 內建測試工具，不連接任何 Supabase 或 Neon 線上資料庫、不產生帳號或外部費用。涵蓋不可信任的文章資料、草稿／發布限制、日期、UUID、異常搜尋網址，以及 Markdown 格式化。`tests/neon-rls.test.mjs` 另透過本機 PGlite 記憶體 PostgreSQL 模擬 Neon 官方的身分角色與 RLS，真實執行 `neon/migrations/001_initial_blog.sql` 的權限回歸測試；**SQL 尚未套用到線上 Neon**。GitHub Actions PR CI 會自動執行單元測試、TypeScript 和建置檢查。
 
 若在 MSI（已安裝 Chrome／Edge）要進一步測試**真實 Next.js 網站與手機編輯器**，可執行：
 
@@ -105,7 +106,7 @@ MSI Chrome 已使用合成筆記驗證實際檔案下載、匯入確認／取消
 
 ## 本機啟動正式網站
 
-需求：Node.js 22+、npm、**Naosledge 專用 Supabase 專案**。請勿將本專案 SQL 執行到其他既有產品資料庫。
+目前既有執行路徑需求：Node.js 22+、npm、**專用 Supabase 專案（尚未建立，僅供現有 SDK 程式碼測試）**。已建立的 Neon Free 專案**不能直接使用以下 Supabase 環境變數**；請待獨立 Neon 資料庫／Auth／Data API 權限驗收及程式切換後，才連接正式服務。不得將任何 SQL 執行到其他產品資料庫。
 
 ```bash
 git clone https://github.com/Naos2w/Naosledge.git
@@ -143,7 +144,7 @@ npm run dev
 5. 在 `.env.local` 設定 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` 與 `NEXT_PUBLIC_SITE_URL`。請**不要**把 `service_role`、secret key 或其他私密憑證放在公開環境變數或 Git。
 6. 開啟 `/login` 登入站長，前往 `/studio` 新增文章，先測試草稿不可被未登入訪客查看，再測試發布文章。
 
-v3 未修改任何 Supabase schema 或 RLS；若已有 v1 專用資料庫，保留其原始表與資料即可，不要重複建立或覆蓋。
+v3 的原 Supabase SQL 仍維持未套用狀態；`neon/migrations/001_initial_blog.sql` 是另一份**尚未套用的 Neon migration**，不可用於 Supabase，也不可未授權在 Neon `production` 分支執行。
 
 ## 部署到 Vercel
 
