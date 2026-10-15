@@ -34,7 +34,7 @@ const posts = [
     slug: "git-rebase-notes",
     title: "Git Rebase 的學習筆記",
     excerpt: "整理 Git Rebase 工作流程。",
-    content_md: "## 今天學到的事\n\nRebase 會重新安排 commit 歷史。",
+    content_md: "# 今日摘要\n\nRebase 會重新安排 commit 歷史。\n\n## 延伸閱讀\n\n[關於這裡](/about) · [MDN](https://developer.mozilla.org/)\n\n| 項目 | 說明 |\n| --- | --- |\n| 超長內容 | abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789 |",
     tags: ["Git", "開發"], category: "技術", status: "published",
     learned_on: "2026-10-15", published_at: "2026-10-15T00:00:00Z",
     created_at: "2026-10-15T00:00:00Z", updated_at: "2026-10-15T00:00:00Z",
@@ -233,9 +233,24 @@ try {
     }
   }
 
+  // A local-only website must not advertise localhost as a canonical domain.
+  const robotsResponse = await fetch(origin + "/robots.txt");
+  assert.equal(robotsResponse.status, 200);
+  assert.match(await robotsResponse.text(), /Disallow:\s*\//i);
+  const sitemapResponse = await fetch(origin + "/sitemap.xml");
+  assert.equal(sitemapResponse.status, 200);
+  const sitemapXml = await sitemapResponse.text();
+  assert.doesNotMatch(sitemapXml, /localhost|127\.0\.0\.1|git-rebase-notes/i);
+  assert.equal(await page.locator('link[rel="canonical"]').count(), 0);
+  assert.match(await page.locator('meta[name="robots"]').getAttribute("content"), /noindex/i);
+  assert.equal(await page.locator(".heatmap-grid [role='listitem']").count(), 35);
+  assert.ok((await page.locator(".heatmap-grid [role='listitem']").first().getAttribute("aria-label"))?.includes("篇公開筆記"));
+  console.log("PASS: local SEO does not advertise test URLs; 35 learning days are screen-reader labelled");
+
   await page.goto(origin + "/?q=Rebase&q=unrelated", { waitUntil: "networkidle" });
   assert.equal(await page.locator(".index-row").count(), 1);
   console.log("PASS: repeated query parameters are handled");
+  assert.match(await page.locator('meta[name="robots"]').getAttribute("content"), /noindex/i);
 
   await page.goto(origin + "/?tag=%E8%A8%AD%E8%A8%88", { waitUntil: "networkidle" });
   assert.equal(await page.locator(".index-row").count(), 1);
@@ -244,7 +259,20 @@ try {
   await page.goto(origin + "/notes/git-rebase-notes", { waitUntil: "networkidle" });
   assert.equal(await page.locator(".article-content").count(), 1);
   assert.match(await page.locator(".article-content").innerText(), /Rebase/);
-  console.log("PASS: public article renders Markdown");
+  assert.equal(await page.locator("article h1").count(), 1, "Article title is the only H1");
+  assert.ok(await page.locator(".article-content h2").count() >= 1, "Markdown H1 becomes H2");
+  assert.ok(await page.locator(".article-content h3").count() >= 1, "Markdown H2 becomes H3");
+  const inside = page.locator(".article-content a[href='/about']");
+  assert.equal(await inside.getAttribute("target"), null, "Internal link stays in same tab");
+  const outside = page.locator(".article-content a[href='https://developer.mozilla.org/']");
+  assert.equal(await outside.getAttribute("target"), "_blank");
+  assert.match(await outside.getAttribute("rel"), /noopener/);
+  const scrollTable = page.getByRole("region", {name: /文章資料表/});
+  assert.equal(await scrollTable.getAttribute("tabindex"), "0");
+  const scrollDims = await scrollTable.evaluate((el) => ({width:el.clientWidth, full:el.scrollWidth}));
+  assert.ok(scrollDims.full > scrollDims.width, `Wide table should be keyboard scrollable: ${JSON.stringify(scrollDims)}`);
+  assert.equal(await page.locator('script[type="application/ld+json"]').count(), 0, "No localhost structured URLs");
+  console.log("PASS: Markdown heading levels, links and keyboard-scrollable wide table");
 
   await page.goto(origin + "/", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "切換淺色模式" }).click();

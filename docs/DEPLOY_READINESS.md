@@ -51,6 +51,8 @@ NEXT_PUBLIC_SITE_URL=https://YOUR_DEPLOYED_DOMAIN
 
 本機把設定放在 Git 忽略的 `.env.local`；Vercel 用專案環境變數管理。不要使用 `service_role`、`sb_secret_`、站長密碼或他人專案金鑰。
 
+**SEO 上線條件（2026-10-15）**：`NEXT_PUBLIC_SITE_URL` 必須設定為經使用者確認的**正式 HTTPS 網域根目錄**。沒有符合條件的網址時，Naosledge 會回覆 `robots.txt Disallow: /`、不發布可索引的 Sitemap／canonical／JSON-LD。這是避免在開發期誤收錄的刻意設計；若未來真的部署，必須先完成網域、專屬資料庫與真實權限的完整驗收。切勿僅為了讓 sitemap 非空而填入不存在或不屬於你的網址。
+
 ## 線上權限驗收（必做，不可只看 CI 成功）
 
 1. 用未登入瀏覽器讀公開首頁、文章頁；必須僅能看到 `published`。

@@ -1,8 +1,14 @@
 import type { MetadataRoute } from "next";
 import { publishedPosts } from "@/lib/posts";
+import { articleCanonical, getPublicSiteOrigin } from "@/lib/seo";
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const root = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+  const origin = getPublicSiteOrigin();
+  if (!origin) return [];
   const posts = await publishedPosts();
-  return [{url:root,lastModified:new Date()}, {url:`${root}/about`,lastModified:new Date()},
-    ...posts.map((p)=>({url:`${root}/notes/${p.slug}`,lastModified:new Date(p.updated_at)}))];
+  return [
+    {url: origin},
+    {url: `${origin}/about`},
+    ...posts.map((p) => ({url: articleCanonical(p.slug, origin), lastModified: new Date(p.updated_at)})),
+  ];
 }

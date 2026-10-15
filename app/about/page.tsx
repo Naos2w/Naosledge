@@ -1,6 +1,18 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, ArrowUpRight } from "lucide-react";
-export const metadata = {title:"關於這裡"};
+import { getPublicSiteOrigin } from "@/lib/seo";
+
+const origin = getPublicSiteOrigin();
+export const metadata: Metadata = {
+  title: "關於這裡",
+  alternates: origin ? {canonical: `${origin}/about`} : undefined,
+  openGraph: {
+    title: "關於 Naosledge",
+    description: "為什麼開始記錄每天學到的事情，以及這本公開筆記想留下什麼。",
+    ...(origin ? {url: `${origin}/about`} : {}),
+  },
+};
 export default function About() {
   return <section className="about-page container"><Link href="/" className="back-link"><ArrowLeft size={16}/> 返回首頁</Link>
     <div className="about-layout"><div className="about-sidebar"><span>AN OPEN NOTEBOOK</span><strong>ABOUT<br/>NAOSLEDGE.</strong><span>01 / 03</span></div>

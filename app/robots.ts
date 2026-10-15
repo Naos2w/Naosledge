@@ -1,5 +1,12 @@
 import type { MetadataRoute } from "next";
+import { getPublicSiteOrigin } from "@/lib/seo";
+
 export default function robots(): MetadataRoute.Robots {
-  const root = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
-  return { rules:[{userAgent:"*",allow:"/",disallow:["/studio","/studio/","/login"]}],sitemap:`${root}/sitemap.xml`};
+  const origin = getPublicSiteOrigin();
+  // No verified production domain yet: do not advertise a localhost sitemap.
+  if (!origin) return {rules: [{userAgent: "*", disallow: "/"}]};
+  return {
+    rules: [{userAgent: "*", allow: "/", disallow: ["/studio", "/login"]}],
+    sitemap: `${origin}/sitemap.xml`,
+  };
 }

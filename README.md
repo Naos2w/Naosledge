@@ -26,6 +26,15 @@ GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的
 
 完整設計規則在 [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)。
 
+## 公開文章 SEO 與閱讀無障礙
+
+- **正式網域尚未確定時採安全預設**：未提供有效 HTTPS `NEXT_PUBLIC_SITE_URL` 時，不輸出指向 localhost 的 canonical、Sitemap 網址或 BlogPosting 結構化資料；robots 會拒絕爬取，避免錯把本機或預覽站當成正式網站。
+- 日後使用者確認正式網域並部署時，才以明確設定的網域產生首頁／關於頁／文章 canonical、Open Graph／Twitter 分享中繼資料、已發布文章 Sitemap，以及只包含公開文章的 JSON-LD。
+- 搜尋和標籤篩選結果不會建立重複可索引頁面；站長登入與管理工作室不會收錄。
+- Markdown 正文的標題階層接在文章標題 H1 之後；站內連結保留原分頁，站外連結才開新分頁。寬表格可用鍵盤聚焦並水平捲動；35 天學習活動提供逐日螢幕閱讀器標籤。
+
+SEO 仍須等待**正式 HTTPS 網域與真實文章**完成後驗收；設定合法網址只代表具備產生 metadata 的條件，不代表已部署或被搜尋引擎收錄。
+
 ## 不連接資料庫的開發測試
 
 ```powershell

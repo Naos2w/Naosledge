@@ -50,6 +50,17 @@
 - Chrome JavaScript `pageerror` 為零；截圖只在 MSI 暫存資料夾，不提交 GitHub。為避免 GitHub Actions 額外下載瀏覽器與增加執行時間，**本機瀏覽器 Smoke 不加入遠端 CI**。
 - 上述「登入、草稿 404、發布」只驗證**合成假服務下的應用程式流程**，絕不代表真正 Supabase Auth／資料列政策（RLS）的安全驗收。
 
+## 2026-10-15：SEO 安全預設與文章閱讀無障礙
+
+- 新增 `lib/seo.ts` 將公開網域來源限制在**明確設定的 HTTPS 網域**，拒絕 localhost、IP、測試／範例網域、含路徑的錯誤網域與帳密網址。
+- 網域尚未設定時：`robots.txt` 拒絕索引，`sitemap.xml` 不含 localhost 或示範文章，頁面無 localhost canonical、文章 JSON-LD；未來正式網域設定後才生成文章 canonical、Open Graph 分享欄位、Twitter 中繼資料和 BlogPosting JSON-LD。
+- 搜尋／標籤結果設定 noindex，避免建立重複的搜尋索引。
+- 使用 `React.cache` 降低同一篇文章的 metadata 與頁面重複查詢；此優化不取代正式資料庫效能測試。
+- 文章 Markdown H1 轉為 H2，維持頁面文章標題唯一 H1；站內連結維持同分頁、外部連結採新分頁；表格在窄螢幕有可鍵盤聚焦的橫向捲動區。
+- 35 天學習日曆由一張整體圖片語意改成逐日標示的可存取清單。
+- `npm run test:unit` **29／29 通過**；`npm run typecheck`、`npm run build` **exit 0**；MSI 的 `npm run test:browser:local` **exit 0**，包含 SEO fail-closed、逐日活動標籤、標題階層、內外連結、可捲動表格、既有手機／編輯／發布合成流程與 JS error = 0。
+- **未驗收範圍**：沒有實際正式網址、真實 Supabase 文章、Google Search Console 或搜尋引擎收錄；不可將本機 SEO 測試視為正式上線驗收。
+
 ## 尚未完成 / 限制
 
 - 尚未建立／指定 **Naosledge 專用 Supabase**，因此尚未測試真實登入、CRUD 與 RLS 端到端整合。

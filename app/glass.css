@@ -202,6 +202,12 @@ body{
 .markdown-body h1,.markdown-body h2,.markdown-body h3,.markdown-body strong{color:var(--ink)}
 .markdown-body a{color:var(--accent)}
 .markdown-body pre{background:rgba(4,8,16,.43);border:1px solid var(--rule);border-radius:12px}
+.markdown-body h4,.markdown-body h5,.markdown-body h6{color:var(--ink);line-height:1.55}
+.markdown-body h4{font-size:18px;margin:1.8em 0 .7em}
+.markdown-body h5,.markdown-body h6{font-size:16px;margin:1.6em 0 .6em}
+.markdown-table-scroll{overflow-x:auto;max-width:100%;border:1px solid var(--rule);border-radius:12px;scrollbar-width:thin;margin:20px 0}
+.markdown-table-scroll table{display:table;width:max-content;min-width:100%;max-width:none;overflow:visible;margin:0}
+.markdown-table-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 /* Writing desk: vitreous sidebar, solid manuscript, explicit actions. */
 .studio-hero h1,.editor-title-row h1{letter-spacing:-.06em}
 .studio-metrics{gap:12px}

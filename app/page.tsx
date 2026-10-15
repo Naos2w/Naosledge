@@ -1,12 +1,23 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight, Search, X } from "lucide-react";
 import PostCard from "@/components/post-card";
 import { formatDate, todayTaipei } from "@/lib/format";
 import { publishedPosts } from "@/lib/posts";
 import { normalizedQueryParam } from "@/lib/search-params";
+import { getPublicSiteOrigin } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 type Params = {q?: string | string[]; tag?: string | string[]};
+export async function generateMetadata({searchParams}: {searchParams: Promise<Params>}): Promise<Metadata> {
+  const {q, tag} = await searchParams;
+  const origin = getPublicSiteOrigin();
+  const filtered = normalizedQueryParam(q, 80) || normalizedQueryParam(tag, 36);
+  return {
+    ...(filtered ? { robots: {index: false, follow: Boolean(origin)} } : {}),
+    alternates: origin ? {canonical: origin} : undefined,
+  };
+}
 export default async function Home({searchParams}: {searchParams:Promise<Params>}) {
   const {q, tag} = await searchParams;
   const searchText = normalizedQueryParam(q, 80);
@@ -56,7 +67,8 @@ export default async function Home({searchParams}: {searchParams:Promise<Params>
     <section className="trail-section container" id="timeline" aria-labelledby="trail-heading"><div className="section-line"/>
       <div className="section-header"><div><div className="section-kicker">02 / DAY BY DAY</div><h2 id="trail-heading">學習足跡<span className="title-period">.</span></h2></div><p>把零散的日子，慢慢連成線。</p></div>
       <div className="trail-layout"><div className="trail-calendar"><div className="trail-subhead"><strong>最近 35 天</strong><span>LEARNING FREQUENCY</span></div>
-        <div className="heatmap-grid" role="img" aria-label="最近 35 天公開筆記活動日曆">{days.map(({date,count})=><span key={date} className={`heat-cell heat-level-${Math.min(count,3)}`} title={`${date}：${count} 篇公開筆記`}/>)}</div>
+        <div className="heatmap-grid" role="list" aria-label="最近 35 天公開筆記活動日曆">{days.map(({date,count})=><time key={date} dateTime={date} role="listitem"
+          aria-label={`${formatDate(date)}：${count} 篇公開筆記`} className={`heat-cell heat-level-${Math.min(count,3)}`} title={`${date}：${count} 篇公開筆記`}/>)}</div>
         <div className="trail-legend"><span>{formatDate(days[0].date)} — {formatDate(days[34].date)}</span><span className="legend-scale">少 <i className="heat-level-0"/><i className="heat-level-1"/><i className="heat-level-2"/><i className="heat-level-3"/> 多</span></div></div>
         <div className="trail-recent"><div className="trail-subhead"><strong>依學習日期回顧</strong><span>RECENTLY LEARNED</span></div>
           {recent.length?recent.map((p)=><Link href={`/notes/${p.slug}`} className="timeline-row" key={p.id}><time>{formatDate(p.learned_on,false)}</time><span>{p.title}</span><ArrowUpRight size={16}/></Link>):<p className="timeline-empty">還沒有學習紀錄。</p>}
