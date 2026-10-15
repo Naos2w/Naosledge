@@ -1,6 +1,6 @@
 # Naosledge v3 — 正式上線前置與驗收清單
 
-更新：2026-10-15。**目前僅完成 Neon Free Sandbox 整合驗收；Production 未授權、網站未部署、PR #1 維持 Draft。** 本文件是待核准的執行清單，不是執行授權。
+更新：2026-10-15。**Neon Production 已獲新的明確授權，完成專用 Data API 與 21 項初始 Migration；正式站長、Auth 安全政策、網站 Production 模式、Vercel 部署仍待核准。** PR #1 保持 Draft。本文件是狀態與後續驗收清單，不是其他操作的授權。
 
 ## 實際狀態（先核對，再決定下一步）
 
@@ -12,11 +12,11 @@
 | 本機／CI | 本機單元測試、TypeScript、正式建置與 Chrome 回歸已通過；GitHub Actions [Run #38722751700](https://github.com/Naos2w/Naosledge/actions/runs/38722751700) 成功 |
 | Neon | 獨立 `Naosledge` Free 專案（`bitter-silence-36632892`，AWS `us-east-2`，PostgreSQL 18） |
 | Sandbox | `naosledge-integration-sandbox-20261015`（`br-quiet-sunset-b4xx4pnx`）；`posts`／`blog_admins`、RLS、Data API 及真正的 Auth／JWT／Next.js Chrome CRUD 已驗收 |
-| Production | 預設 `production`（`br-aged-sound-b43h5r2c`）；**尚無 Naosledge 應用表，也未啟用 Data API** |
+| Production | 預設 `production`（`br-aged-sound-b43h5r2c`）；Data API **active**、`public.posts` / `blog_admins` 已建立、RLS 6 項；兩張表均 **0 筆** |
 | 正式站長與網域 | 尚未建立／核准；Vercel Preview 和 Production 都尚未部署 |
 | 舊 Supabase | 僅作為程式回退路徑；既有 Mushroooooms、Go Travel 專案不得更動、共用或重用密鑰 |
 
-Sandbox 使用合成帳號與文章測試後已清理。詳細記錄見 [Neon Sandbox 真實整合報告](NEON_INTEGRATION_READINESS.md) 和 [QA](../QA.md)。線上正式環境**沒有**因此通過驗收。
+Sandbox 使用合成帳號與文章測試後已清理。**2026-10-15 另經 Owner 明確授權**，對指定 Neon Production 套用與 Sandbox 相同的初始 SQL 並啟用 Data API；已由資料庫唯讀查證 RLS／GRANT／索引與空表。**Production 仍未執行真實站長／瀏覽器端到端驗收，也未開站。** 詳細記錄見 [Neon 整合報告](NEON_INTEGRATION_READINESS.md) 和 [QA](../QA.md)。
 
 ## 現階段可執行的工作（不需要 Owner 介入）
 
@@ -39,17 +39,17 @@ npm run test:browser:local
 
 ## 需要 Owner 明確授權的關卡
 
-**關卡 1 — 正式 Neon 資料庫。** 確認仍使用獨立 `Naosledge` Free 專案、正式分支 ID、方案限制、區域與費用。經核准後，先檢視 `neon/migrations/001_initial_blog.sql`，再於正確的 `production` 分支套用、啟用其 Data API，逐項驗證 RLS、GRANT、anonymous／authenticated 權限。不得對其他 Neon／Supabase 專案執行 SQL。建議事前制定快照／回復計畫，避免含資料表的破壞式回滾。
+**關卡 1 — 正式 Neon 資料庫：已完成（2026-10-15）。** Owner 另行核准了 Neon `Naosledge` Free 專案的 `production`（`br-aged-sound-b43h5r2c`）啟用 Data API（Neon Auth，`public` schema，`add_default_grants=false`）及執行同一份已驗證的 `neon/migrations/001_initial_blog.sql`。21 項 SQL 在單一交易中成功，已唯讀核對兩張表均 RLS enabled、6 項 policies、角色 GRANT 與 0 筆應用資料。未建立快照（確認目前無排程與既有 Snapshot）；變更是無舊應用表上的建立操作，未進行破壞性資料修改。正式 Auth／網站端到端權限測試尚待後續關卡。
 
 **關卡 2 — 正式 Auth 安全政策與站長。** 目前 Neon Managed Better Auth 存在，但原始設定允許公開註冊且未強制 Email 驗證。正式上線前需核准關閉公開註冊及信箱驗證策略；由 Owner 以安全管道建立自己的站長帳號，確認真正的 Neon Auth `user.id`（**文字 ID，不是預設 Supabase UUID**），只在正確的正式資料庫授權 `public.blog_admins`。不能自動猜測身分、替 Owner 建立真實憑證或從聊天輸出敏感資訊。
 
-**關卡 3 — 正式網站程式設定。** **現有程式的 Neon 模式硬性限定已核准的 Sandbox branch 與端點；不能只把 `.env` 換成 Production URL 就部署。** 正式分支核准後，才可在 PR 內設計獨立的生產設定驗證、檢查正確 Auth/Data API 端點、權限、Cookie Secret 和無洩漏規則，並測試後提交。保持 fail-closed，避免預設連到錯誤資料庫。
+**關卡 3 — 正式網站程式設定。** **現有程式的 Neon 模式仍硬性限定已核准的 Sandbox branch 與端點；不能只把 `.env` 換成 Production URL 就部署。** 在 PR 開發分支可以準備受審查的生產設定方案，但在正式 Auth 安全政策、Owner 站長身分及另行授權前，不啟用、使用或部署 Production 站點；需要確認正確 Auth/Data API 端點、Cookie Secret 與失敗時關閉行為。保持 fail-closed，避免預設連到錯誤資料庫。
 
 **關卡 4 — 網域與 Vercel。** Owner 指定正式 HTTPS 網域、正確的 Vercel Team/Scope，並以服務端環境變數介面安全設定專屬憑證。Preview 部署與 Production 發布**分開核准**；Preview 也不得帶入未獲許可的真實後台、資料或密鑰。沒有合法的 `NEXT_PUBLIC_SITE_URL`，網站 SEO 刻意輸出拒絕索引／不產生正式 Sitemap，不能用假的網域繞過。
 
 **關卡 5 — PR 合併與對外發布。** 完成 Preview 安全驗收後，再由 Owner 核准將 Draft PR 改為 Ready／合併 `main`，以及正式對外部署。CI 成功不等於網站完成上線。
 
-上述五個關卡不可沿用先前對**Sandbox**的授權，自動推定 Production 也獲准。
+**關卡 1 已獲新的、僅限 Migration 與 Data API 的明確授權且完成；關卡 2–5 不在該授權範圍。** 不得因此擅自處理真實帳號、站長授權、正式 Auth 安全設定、網域、Vercel 或 PR 合併。
 
 ## 待核准的 Neon 正式環境設定（僅為欄位清單）
 

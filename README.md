@@ -1,6 +1,6 @@
 # Naosledge v3 · Minimal Dark Liquid Glass
 
-一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。現階段可透過環境旗標選擇原本的 Supabase 實作，或已通過隔離驗收的 **Neon Free 測試模式**；正式環境仍維持 Supabase 預設路徑，Neon production 尚未啟用。AI 摘要留待第二階段。
+一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。現階段可透過環境旗標選擇原本的 Supabase 實作，或已通過隔離驗收的 **Neon Free 測試模式**；網站程式仍預設使用 Supabase 相容回退路徑；Neon Production 的資料表與 Data API 已獲授權建立，但網站 Production 模式尚未啟用。AI 摘要留待第二階段。
 
 > v3 在先前版本的基礎上加入 Dark Liquid Glass 與流暢動畫，保留文章資料結構、Supabase RLS、登入及資料存取邏輯。v1、v2 保留為歷史版本。
 
@@ -8,7 +8,7 @@
 
 GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的虛構文章與不需登入的模擬後台。離線互動預覽另存於 ChatGPT 專案成果中，不是正式網站，也不會把筆記寫入 Supabase。
 
-目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待 Neon 正式權限整合與 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。Neon **隔離分支**已完成真實 Better Auth／JWT／Data API／PostgreSQL RLS 與站長 CRUD 驗證，合成帳號／文章已清除；而 **Next.js 網站已可在 Neon Sandbox 模式下以真正的 Auth／Data API 完成登入、草稿、發布、編輯及刪除**；Neon `production` 仍沒有文章資料表，且正式網站尚未部署。詳見 [Neon 隔離整合驗收報告](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
+目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待 Neon 正式 Auth 安全政策、站長身分、網站 Production 模式及 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。Neon **隔離分支**已完成真實 Better Auth／JWT／Data API／PostgreSQL RLS 與站長 CRUD 驗證，合成帳號／文章已清除；而 **Next.js 網站已可在 Neon Sandbox 模式下以真正的 Auth／Data API 完成登入、草稿、發布、編輯及刪除**；Neon `production` 已另行獲准建立文章表、RLS 及 Data API（目前無文章或站長授權），正式網站仍未部署。詳見 [Neon 隔離整合驗收報告](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
 
 ## v3 視覺與互動設計
 
@@ -45,7 +45,7 @@ npm run typecheck
 npm run build
 ```
 
-單元測試使用 Node.js 24 內建測試工具，不連接任何 Supabase 或 Neon 線上資料庫、不產生帳號或外部費用。涵蓋不可信任的文章資料、草稿／發布限制、日期、UUID、異常搜尋網址，以及 Markdown 格式化。`tests/neon-rls.test.mjs` 另透過本機 PGlite 記憶體 PostgreSQL 模擬 Neon 官方的身分角色與 RLS，真實執行 `neon/migrations/001_initial_blog.sql` 的權限回歸測試；**SQL 已在核准的 Neon 隔離分支套用並實測，未套用到 `production`**。GitHub Actions PR CI 會自動執行單元測試、TypeScript 和建置檢查。隔離 Neon 分支的真實 Auth／Data API 測試採**人工限定分支的手動腳本**，不自動執行、不新增真實帳號，也不將任何臨時密碼或 JWT 記錄進 GitHub。
+單元測試使用 Node.js 24 內建測試工具，不連接任何 Supabase 或 Neon 線上資料庫、不產生帳號或外部費用。涵蓋不可信任的文章資料、草稿／發布限制、日期、UUID、異常搜尋網址，以及 Markdown 格式化。`tests/neon-rls.test.mjs` 另透過本機 PGlite 記憶體 PostgreSQL 模擬 Neon 官方的身分角色與 RLS，真實執行 `neon/migrations/001_initial_blog.sql` 的權限回歸測試；**SQL 在 Sandbox 已完成實測，並於 2026-10-15 獲新的明確授權套用到 Neon `production`，再次唯讀核對 RLS／GRANT；正式 E2E 尚未驗收**。GitHub Actions PR CI 會自動執行單元測試、TypeScript 和建置檢查。隔離 Neon 分支的真實 Auth／Data API 測試採**人工限定分支的手動腳本**，不自動執行、不新增真實帳號，也不將任何臨時密碼或 JWT 記錄進 GitHub。
 
 若在 MSI（已安裝 Chrome／Edge）要進一步測試**真實 Next.js 網站與手機編輯器**，可執行：
 
@@ -74,7 +74,7 @@ NEON_AUTH_COOKIE_SECRET=YOUR_PRIVATE_RANDOM_32PLUS_CHARACTER_SECRET
 
 MSI 手動測試：以合成 Better Auth 身分登入，執行非站長拒絕、站長工作室、儲存草稿、匿名 404、發布後匿名 200、編輯、刪除後 404、登出。Neon Data API 只會看到其官方簽發的 Bearer JWT，**不以解碼的未驗簽 claims 或客戶端 Email 作為站長授權**。使用 `npm run verify:neon:sandbox:manual` 並設 `NAOSLEDGE_NEON_WEBSITE_BROWSER=1` 可附加真實網站 Chrome E2E，但**需要受控 Neon Connector 暫時授予合成站長 ID**，驗後務必清理；不得交給 GitHub Actions 自動執行。
 
-2026-10-15 實際跑完後，已再次查核測試分支 `posts=0`、`blog_admins=0`、合成 Auth users=0。正式 `production` 仍無文章表，網站未部署。完整驗收與後續決策見 [Neon 實測紀錄](docs/NEON_INTEGRATION_READINESS.md)。
+2026-10-15 實際跑完後，已再次查核測試分支 `posts=0`、`blog_admins=0`、合成 Auth users=0。當次 Sandbox 測試時正式 `production` 尚無文章表；後續已經另行授權建表，網站仍未部署。完整驗收與後續決策見 [Neon 實測紀錄](docs/NEON_INTEGRATION_READINESS.md)。
 
 ### 長文章閱讀導覽
 
@@ -148,13 +148,13 @@ npm run test:browser:local
 
 ### 舊 Supabase 路徑（僅作相容回退）
 
-`supabase/schema.sql` 與 Supabase SDK 保留為歷史相容路徑，**不是目前選定的正式資料庫**。不要新建 Supabase 專案、把 SQL 套用到其他專案，或使用任何既有服務的 URL／金鑰。Neon 使用不同的 Better Auth `text` 使用者 ID 和獨立的 `neon/migrations/001_initial_blog.sql`；已經在 Sandbox 套用及驗收，但尚未獲准在 Production 套用。
+`supabase/schema.sql` 與 Supabase SDK 保留為歷史相容路徑，**不是目前選定的正式資料庫**。不要新建 Supabase 專案、把 SQL 套用到其他專案，或使用任何既有服務的 URL／金鑰。Neon 使用不同的 Better Auth `text` 使用者 ID 和獨立的 `neon/migrations/001_initial_blog.sql`；已經在 Sandbox 套用及驗收，且另獲授權於 2026-10-15 套用至 Production；正式站長與網站仍未啟用。
 
 ## Vercel 上線：等待 Owner 授權
 
 目前未建立正式部署；不能只因 `next build` 成功就公開網站。上線前須另外核准：
 
-1. Neon Production Migration／Data API、正式 Auth 註冊與信箱驗證政策，以及站長身分。
+1. **Neon Production Migration／Data API 已完成**；正式 Auth 註冊與信箱驗證政策，以及真正站長身分仍待 Owner 確認。
 2. 專用的 Production 後端設定模式（現有程式**硬性拒絕 Production**）、經審查的 RLS／登入／Cookie Secret。
 3. Vercel Team、正式 HTTPS 網域與環境變數；先獨立驗收 Preview，再核准 PR 合併與 Production 發布。
 
@@ -165,7 +165,7 @@ npm run test:browser:local
 - 320、375、768、1024、1440px 的 MSI 本機 Chrome／合成瀏覽器測試涵蓋導覽、Markdown、搜尋、草稿、無障礙與 SEO 安全預設；尚未以 iPhone Safari 做實機驗收。
 - 2026-10-15 在 MSI 執行單元測試 **65/65 PASS**（含 PGlite 子測試）、TypeScript 與正式建置成功；最新 GitHub CI 亦成功。CI 沒有實際連接 Neon。
 - **真實 Neon Sandbox** 已在受控環境完成 Better Auth／JWT／Data API／RLS、登入與網站文章 CRUD，合成測試文章、授權及帳號已清理；**不能當作 Neon Production 的安全驗收**。
-- Neon `production` 尚未套用應用 SQL 或啟用 Data API，正式站長帳號、網域與 Vercel 部署均未完成。
+- Neon `production` 已完成應用 SQL、6 項 RLS Policy 與 Data API 啟用；正式站長帳號、Production 網站模式、網域與 Vercel 部署均未完成。
 - 目前未加入 AI、公開留言、圖片上傳、完整文章歷史版本或讀者公開註冊。
 - 編輯器本機草稿儲存不是雲端同步；在已驗證的 Sandbox 模式仍須明確點選「儲存草稿／發布文章」，才會送出真正的資料庫操作。
 - 首頁搜尋最多比對 300 篇已發布文章；資料量增長後，需另評估後端全文搜尋效能。
@@ -180,4 +180,4 @@ npm run test:browser:local
 - GitHub 倉庫：[`Naos2w/Naosledge`](https://github.com/Naos2w/Naosledge)
 - npm package name：`naosledge`
 - 舊名稱 LearnLog 與 Naosledge v2 僅留作歷史備份；本專案不需要因此修改資料庫 schema 或文章欄位。
-- 原始碼在 GitHub 以 Draft PR #1 送審；Neon Sandbox 驗收已通過，**Neon Production 尚未核准、Vercel 未部署**。
+- 原始碼在 GitHub 以 Draft PR #1 送審；Neon Sandbox 驗收已通過，**Neon Production DB/API 已完成授權範圍內的建置、Vercel 未部署**。

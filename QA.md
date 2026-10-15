@@ -2,6 +2,17 @@
 
 驗證日期：2026-10-14
 
+## 2026-10-15：Neon Production 經另行核准完成初始建置（最新狀態）
+
+- 本次額外核准**只針對** Neon Free `Naosledge` Production branch `br-aged-sound-b43h5r2c` 的 Initial Migration 與 Data API；不含正式站長、Auth 安全政策、部署、PR 合併或其他專案。
+- 執行前唯讀核對 `neondb` 無 `public.posts`／`blog_admins`，Data API 不存在；Better Auth 已存在。Data API 啟用時使用 `add_default_grants=false`、僅 `public` schema、匿名角色 `anonymous`、JWT role claim `.role`，狀態 active。
+- 使用原本 GitHub PR #1 的 Migration blob `0b9c9057db3dea8d970e6a0fa5d6ef16aba26181`，校驗 21 項 DDL／RLS／GRANT，於 Production **單一交易執行成功**；沒有變更原始 SQL。
+- 後驗：`posts=0`、`blog_admins=0`、兩張表 RLS enabled、5+1 policies、posts 5 個索引、更新 trigger 存在；匿名只能讀 posts、無權操作 admin 表；authenticated 寫文章仍依 RLS 站長身分，且無權修改 `blog_admins`。
+- 唯讀比較 Sandbox／Production 應用結構一致，唯一 Schema 差異為 Production 額外禁用 Data API OpenAPI 模式；沒有新增合成帳號或正式文章，不宣稱 Production JWT／Next.js E2E 已完成。
+- 目前免費方案維持兩個分支；沒有 Snapshot／排程記錄，未建立或刪除 Snapshot。網站程式仍然硬性限定 Sandbox，正式 Auth 安全政策、站長身分、真實網站驗收及部署待 Owner 另行決定。
+
+以下為前序日期相同、不同階段的歷史驗收紀錄，當時「Production 未建立文章表」描述並非現在的狀態。
+
 ## 已完成（實際執行）
 
 - 使用 Playwright Chromium `page.set_content` 載入與 `app/globals.css` + `app/glass.css` 一致的完整單檔預覽；瀏覽器執行環境禁止瀏覽 `localhost`、`data:` 和 `file:` URL，因此改用記憶體 localStorage shim 驗證互動，**並非實際使用者電腦 Chrome 驗收**。
@@ -128,7 +139,7 @@
 
 ## 尚未完成 / 限制
 
-- **Sandbox 的實際網站整合已完整通過**；Neon `production` 沒有套用文章資料表、Data API 或正式 Auth 安全政策，還沒有真實站長帳號或正式公開部署。
+- **當次 Sandbox 的實際網站整合已完整通過**；其後又獲另行核准完成 Neon `production` 的文章資料表／RLS／Data API，但正式 Auth 安全政策、真實站長帳號及網站部署仍未完成。
 - 尚未部署 Vercel；網站無真實資料時不代表服務已上線。
 - 沒有真實 iPhone/Safari、Android Chrome、Lighthouse 或 VoiceOver/TalkBack 驗收。
 - 2026-10-14 的離線預覽文章／發布／儲存皆為瀏覽器內的**示範資料**，不代表正式站長權限已驗證。
