@@ -11,6 +11,7 @@ import { createServer as createTcpServer } from "node:net";
 import { spawn } from "node:child_process";
 import { createHmac, randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -402,6 +403,38 @@ try {
   });
   await editor.fill("**今天**測試 Markdown");
   console.log("PASS: image insertion tool selects URL after accessible alt text");
+
+  await page.locator("#post-slug").fill("mobile-backup");
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", {name:"下載 .md 備份"}).click(),
+  ]);
+  assert.equal(download.suggestedFilename(), "mobile-backup.md");
+  const backupFile = await readFile(await download.path(), "utf8");
+  assert.match(backupFile, /naosledge_backup: 1/);
+  assert.match(backupFile, /\*\*今天\*\*測試 Markdown/);
+  assert.doesNotMatch(backupFile, /offline-studio@example|synthetic-only-password/);
+
+  await editor.fill("尚未還原的臨時內容");
+  page.once("dialog", async (dialog) => {
+    assert.match(dialog.message(), /取代目前編輯器/);
+    await dialog.dismiss();
+  });
+  await page.locator("#markdown-backup-file").setInputFiles({
+    name:"mobile-backup.md", mimeType:"text/markdown", buffer:Buffer.from(backupFile),
+  });
+  assert.equal(await editor.inputValue(), "尚未還原的臨時內容", "Cancel must keep current draft");
+  page.once("dialog", async (dialog) => { await dialog.accept(); });
+  await page.locator("#markdown-backup-file").setInputFiles({
+    name:"mobile-backup.md", mimeType:"text/markdown", buffer:Buffer.from(backupFile),
+  });
+  await page.waitForFunction(() =>
+    document.querySelector("#post-content")?.value === "**今天**測試 Markdown");
+  assert.equal(await page.locator("#post-title").inputValue(), "手機寫作測試");
+  assert.equal(await page.locator("#post-slug").inputValue(), "mobile-backup");
+  assert.equal(posts.length, 2, "Local Markdown import never writes cloud data");
+  console.log("PASS: local Markdown download, cancel-safe import, restore and no cloud write");
+
   await page.getByRole("button", { name: "文章預覽" }).click();
   assert.match(await page.locator(".editor-md-preview").innerText(), /今天測試/);
   await page.getByRole("button", { name: "返回編輯" }).click();

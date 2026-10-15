@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Bold, Check, Code2, Eye, FileEdit, Globe2, Heading2, ImagePlus, Italic, Link2, List, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bold, Check, Code2, Download, Eye, FileEdit, Globe2, Heading2, ImagePlus, Italic, Link2, List, Save, Trash2, Upload } from "lucide-react";
 import Link from "next/link";
 import Markdown from "@/components/markdown";
 import { savePost, deletePost } from "@/app/actions";
 import { slugify, todayTaipei } from "@/lib/format";
 import { applyMarkdownTool, type MarkdownTool } from "@/lib/markdown-editor";
+import { markdownBackupFilename, parseMarkdownBackup, serializeMarkdownBackup } from "@/lib/markdown-backup";
 import type { Post, PostInput, PostStatus } from "@/lib/types";
 
 const markdownTools = [
@@ -36,6 +37,7 @@ export default function StudioEditor({initial}: {initial?:Post}) {
   const [localStatus,setLocalStatus] = useState("所有變更會在此裝置暫存");
   const manualSlug = useRef(Boolean(initial));
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const backupFileRef = useRef<HTMLInputElement>(null);
   const didCommit = useRef(false);
   const draftKey = `naosledge-local-draft-${initial?.id || "new"}`;
   // Keep compatible with browser-local drafts written by the old brand.
@@ -141,6 +143,70 @@ export default function StudioEditor({initial}: {initial?:Post}) {
     }
   }
 
+  function downloadMarkdown() {
+    try {
+      const backup = serializeMarkdownBackup({
+        title, slug, excerpt, category, learned_on: learnedOn,
+        tags: tagsText.split(/[,，\n]/g).map((tag)=>tag.trim()).filter(Boolean),
+        content_md: content,
+      });
+      const blob = new Blob([backup], {type:"text/markdown;charset=utf-8"});
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = markdownBackupFilename(title, slug);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(()=>URL.revokeObjectURL(objectUrl), 1500);
+      setError("");
+      setLocalStatus("已下載 Markdown 備份 · 僅保存在你選擇的裝置位置");
+    } catch {
+      setError("無法產生 Markdown 備份，請檢查瀏覽器下載設定。");
+    }
+  }
+
+  async function importMarkdown(file?:File) {
+    if (!file) return;
+    if (file.size > 1_000_000) {
+      setError("Markdown 檔案超過 1 MB，請先縮減內容。");
+      return;
+    }
+    setError("");
+    try {
+      const imported = parseMarkdownBackup(await file.text());
+      if (!window.confirm("匯入會取代目前編輯器的內容與本機草稿。檔案不會上傳或自動發布，確定繼續嗎？")) return;
+      const restoredTitle = imported.metadata?.title ?? title;
+      const restoredSlug = imported.metadata?.slug ?? slug;
+      const restoredExcerpt = imported.metadata?.excerpt ?? excerpt;
+      const restoredTags = imported.metadata?.tags.join(", ") ?? tagsText;
+      const restoredCategory = imported.metadata?.category ?? category;
+      const restoredDate = imported.metadata?.learned_on ?? learnedOn;
+      setTitle(restoredTitle);
+      setSlug(restoredSlug);
+      setExcerpt(restoredExcerpt);
+      setContent(imported.content_md);
+      setTagsText(restoredTags);
+      setCategory(restoredCategory);
+      setLearnedOn(restoredDate);
+      setStatus("draft"); // Never publish imported content automatically.
+      setPreview(false);
+      manualSlug.current = Boolean(restoredSlug);
+      try {
+        localStorage.setItem(draftKey, JSON.stringify({
+          title: restoredTitle, slug: restoredSlug, excerpt: restoredExcerpt,
+          content: imported.content_md, tagsText: restoredTags,
+          category: restoredCategory, learnedOn: restoredDate, savedAt: Date.now(),
+        }));
+        setLocalStatus("已匯入 Markdown，並暫存在此裝置 · 尚未同步雲端");
+      } catch {
+        setLocalStatus("Markdown 已匯入，但本機暫存失敗，請先下載備份");
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Markdown 檔案無法讀取。");
+    }
+  }
+
   async function persist(next:PostStatus) {
     if (initial?.status === "published" && next === "draft" &&
         !window.confirm("這篇文章目前已公開。下架後讀者將無法再看到它，確定要改為草稿嗎？")) return;
@@ -194,6 +260,18 @@ export default function StudioEditor({initial}: {initial?:Post}) {
         <label htmlFor="post-excerpt" className="visually-hidden">文章摘要</label>
         <textarea id="post-excerpt" rows={2} maxLength={400} value={excerpt} onChange={e=>setExcerpt(e.target.value)} onBlur={saveLocalNow} placeholder="用一兩句話，記下這篇筆記的重點（可選）" className="editor-excerpt-input"/>
         <div className="editor-content-bar"><span>CONTENT / MARKDOWN</span><button type="button" onClick={()=>setPreview(!preview)} className="preview-switch" aria-pressed={preview}>{preview?<FileEdit size={16}/>:<Eye size={16}/>} {preview?"返回編輯":"文章預覽"}</button></div>
+        <div className="markdown-backup-actions" role="group" aria-label="Markdown 本機備份工具">
+          <input ref={backupFileRef} id="markdown-backup-file" type="file"
+            accept=".md,.markdown,text/markdown,text/plain" className="visually-hidden"
+            onChange={(event)=>{const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void importMarkdown(file);}}/>
+          <button type="button" disabled={busy} onClick={()=>backupFileRef.current?.click()}>
+            <Upload size={15} aria-hidden="true"/> 匯入 .md
+          </button>
+          <button type="button" disabled={busy} onClick={downloadMarkdown}>
+            <Download size={15} aria-hidden="true"/> 下載 .md 備份
+          </button>
+          <span>本機檔案 · 不會自動發布</span>
+        </div>
 {!preview && <div className="markdown-toolbar" role="group" aria-label="Markdown 格式工具列">
           {markdownTools.map(({key,label,icon:Icon}) => <button key={key} type="button"
             className="markdown-tool" title={key==="bold" ? "粗體（Ctrl/⌘+B）" : key==="link" ? "連結（Ctrl/⌘+K）" : key==="image" ? "插入 HTTPS 圖片網址並加上替代文字" : label}

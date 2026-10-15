@@ -315,6 +315,17 @@ body{
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
  .site-header,.hero-margin,.search-form,.trail-calendar,.trail-recent,.studio-metrics>div,.editor-settings,.login-form{background:var(--sheet)}
 }
+/* Portable editor backups remain local to the visitor's machine. */
+.markdown-backup-actions{display:flex;align-items:center;flex-wrap:wrap;gap:9px;padding:12px 0;border-bottom:1px solid var(--rule)}
+.markdown-backup-actions button{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:44px;padding:8px 13px;border:1px solid var(--glass-line);
+  border-radius:11px;color:var(--ink-soft);background:var(--glass);
+  font-size:12px;font-weight:650;transition:border-color .18s ease,background .18s ease,color .18s ease;
+}
+.markdown-backup-actions button:hover{background:var(--accent-tint);border-color:var(--rule-strong);color:var(--accent)}
+.markdown-backup-actions span{color:var(--muted);font-size:11px;margin-left:auto}
+@media(max-width:580px){.markdown-backup-actions span{flex:1 1 100%;margin-left:0}}
 /* Writing shortcuts live on a quiet glass strip. The document stays opaque. */
 .markdown-toolbar{
   display:flex;gap:7px;max-width:100%;min-width:0;overflow-x:auto;
