@@ -28,6 +28,16 @@
 - 完整上線與費用／組織決策檢查見 `docs/DEPLOY_READINESS.md`。
 - MSI 已重新執行 `node --check`、`npm run typecheck` 與 `npm run build`，均成功，無需變更其他專案。
 
+## 2026-10-15：免費／無資料庫離線回歸測試
+
+- 使用者指定 **維持免費，不暫停或更動 Mushroooooms、Go Travel 或其他 Supabase 專案**；Supabase 免費專案數已滿且新建失敗，沒有重試建立或執行任何 SQL。
+- 新增 `lib/post-validation.ts`：Server Action 寫入前的執行時格式檢查（拒絕錯誤型別，檢查文章、標題、分類、標籤、UUID、日期、發布字數與過大正文）。
+- 修正首頁重複／異常查詢字串可能讓 `q.trim()` 拋錯的狀況，搜尋／標籤值以第一個可用值和長度上限處理。
+- 單元測試加入 `tests/*.test.mjs`，以 Node.js 24 內建測試工具運行，涵蓋文章建立／輸入、草稿／發布和不正確的 URL 查詢；均**不連線外部資料庫**。
+- MSI 實測：`npm run test:unit` **14／14 通過**，`npm run typecheck` **exit 0**，`npm run build` **exit 0**（Next.js 16.4.0）。
+- Node.js 內建 coverage 報告顯示**新抽離的兩個純函式模組** `post-validation.ts` 與 `search-params.ts` 為 100% 行、分支、函式覆蓋；**並非整站覆蓋率**。
+- GitHub Actions PR CI 新增 `npm run test:unit`，與 TypeScript 及正式建置一起驗證；線上 CI 結果需以最新 commit 對應的 workflow run 為準。
+
 ## 尚未完成 / 限制
 
 - 尚未建立／指定 **Naosledge 專用 Supabase**，因此尚未測試真實登入、CRUD 與 RLS 端到端整合。

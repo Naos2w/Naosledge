@@ -8,7 +8,7 @@
 
 GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的虛構文章與不需登入的模擬後台。離線互動預覽另存於 ChatGPT 專案成果中，不是正式網站，也不會把筆記寫入 Supabase。
 
-目前已於 MSI 執行 `npm run typecheck` 與 `npm run build` 成功；尚待建立 Naosledge 專用 Supabase 專案、驗證真實登入與文章寫入，以及部署 Vercel。上線前必須完成的權限與費用檢查，詳見 [`docs/DEPLOY_READINESS.md`](docs/DEPLOY_READINESS.md)。
+目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待專用 Supabase、真實權限驗收與 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有資料庫或擅自升級方案。詳細決策與上線檢查見 [`docs/DEPLOY_READINESS.md`](docs/DEPLOY_READINESS.md)。
 
 ## v3 視覺與互動設計
 
@@ -25,6 +25,17 @@ GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的
 | 退化處理 | 不支援 backdrop-filter 或要求 reduced-transparency 時，改為不透明表面 |
 
 完整設計規則在 [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)。
+
+## 不連接資料庫的開發測試
+
+```powershell
+npm ci --include=dev --no-audit --no-fund
+npm run test:unit
+npm run typecheck
+npm run build
+```
+
+單元測試使用 Node.js 24 內建測試工具，不連接任何 Supabase 專案、不產生帳號或外部費用。涵蓋不可信任的文章提交資料、草稿／發布限制、日期、UUID、標籤及異常搜尋 URL。GitHub Actions PR CI 會自動執行以上驗證。**CI 編譯通過不等於已驗證真正的資料庫權限或瀏覽器端登入流程**。
 
 ## 網站路由
 

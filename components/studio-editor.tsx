@@ -124,8 +124,8 @@ export default function StudioEditor({initial}: {initial?:Post}) {
         <textarea id="post-excerpt" rows={2} maxLength={400} value={excerpt} onChange={e=>setExcerpt(e.target.value)} placeholder="用一兩句話，記下這篇筆記的重點（可選）" className="editor-excerpt-input"/>
         <div className="editor-content-bar"><span>CONTENT / MARKDOWN</span><button type="button" onClick={()=>setPreview(!preview)} className="preview-switch" aria-pressed={preview}>{preview?<FileEdit size={16}/>:<Eye size={16}/>} {preview?"返回編輯":"文章預覽"}</button></div>
         {preview?<div className="editor-md-preview"><Markdown content={content || "*目前還沒有內容。*"}/></div>
-          :<><label htmlFor="post-content" className="visually-hidden">文章內容（Markdown，必填）</label><textarea id="post-content" className="content-textarea" value={content} onChange={e=>setContent(e.target.value)} placeholder={"從今天最有意思的一件事開始。\n\n## 我學到了什麼？\n\n寫下你的理解、範例和資料來源…"} spellCheck={false}/></>}
-        <div className="editor-paper-foot"><span>WRITE. REVISE. RETURN.</span><span>{content.length.toLocaleString("zh-TW")} 字元</span></div>
+          :<><label htmlFor="post-content" className="visually-hidden">文章內容（Markdown，必填）</label><textarea id="post-content" className="content-textarea" maxLength={200000} value={content} onChange={e=>setContent(e.target.value)} placeholder={"從今天最有意思的一件事開始。\n\n## 我學到了什麼？\n\n寫下你的理解、範例和資料來源…"} spellCheck={false}/></>}
+        <div className="editor-paper-foot"><span>WRITE. REVISE. RETURN.</span><span>{content.length.toLocaleString("zh-TW")} / 200,000 字元</span></div>
       </div>
       <aside className="editor-settings" aria-label="文章設定"><div className="editor-sidebar-head"><span className="section-kicker">PUBLISHING DETAILS</span><h2>文章設定</h2></div>
         <div className="field-group"><label htmlFor="post-date">學習日期</label><input id="post-date" type="date" value={learnedOn} onChange={e=>setLearnedOn(e.target.value)}/></div>

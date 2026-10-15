@@ -3,13 +3,15 @@ import { ArrowRight, ArrowUpRight, Search, X } from "lucide-react";
 import PostCard from "@/components/post-card";
 import { formatDate, todayTaipei } from "@/lib/format";
 import { publishedPosts } from "@/lib/posts";
+import { normalizedQueryParam } from "@/lib/search-params";
 
 export const dynamic = "force-dynamic";
-type Params = {q?:string;tag?:string};
+type Params = {q?: string | string[]; tag?: string | string[]};
 export default async function Home({searchParams}: {searchParams:Promise<Params>}) {
-  const {q="", tag=""} = await searchParams;
-  const query = q.trim().toLocaleLowerCase().slice(0,80);
-  const selectedTag = tag.trim().slice(0,36);
+  const {q, tag} = await searchParams;
+  const searchText = normalizedQueryParam(q, 80);
+  const query = searchText.toLocaleLowerCase();
+  const selectedTag = normalizedQueryParam(tag, 36);
   const all = await publishedPosts();
   const tags = [...new Set(all.flatMap((p)=>p.tags))].slice(0,20);
   const filtered = all.filter((p) =>
@@ -45,8 +47,8 @@ export default async function Home({searchParams}: {searchParams:Promise<Params>
     <section className="archive-section container" id="archive" aria-labelledby="archive-heading">
       <div className="section-line"/>
       <div className="section-header"><div><div className="section-kicker">01 / THE ARCHIVE</div><h2 id="archive-heading">文章索引<span className="title-period">.</span></h2></div><p>依最近更新排序 · 共 {all.length} 篇公開筆記</p></div>
-      <div className="archive-toolbar"><form action="/" className="search-form"><Search size={18} aria-hidden="true"/><label className="visually-hidden" htmlFor="search-posts">搜尋筆記</label><input id="search-posts" name="q" defaultValue={q.slice(0,80)} placeholder="搜尋筆記、概念或關鍵字…"/><button type="submit">搜尋 <ArrowRight size={16}/></button></form>
-        <div className="filter-chips" aria-label="依標籤篩選"><Link className={!selectedTag?"chip active":"chip"} href={query?`/?q=${encodeURIComponent(q)}`:"/"}>全部</Link>{tags.map((t)=><Link className={selectedTag===t?"chip active":"chip"} key={t} href={`/?tag=${encodeURIComponent(t)}${q?`&q=${encodeURIComponent(q)}`:""}`}>{t}</Link>)}</div></div>
+      <div className="archive-toolbar"><form action="/" className="search-form"><Search size={18} aria-hidden="true"/><label className="visually-hidden" htmlFor="search-posts">搜尋筆記</label><input id="search-posts" name="q" defaultValue={searchText} placeholder="搜尋筆記、概念或關鍵字…"/><button type="submit">搜尋 <ArrowRight size={16}/></button></form>
+        <div className="filter-chips" aria-label="依標籤篩選"><Link className={!selectedTag?"chip active":"chip"} href={searchText?`/?q=${encodeURIComponent(searchText)}`:"/"}>全部</Link>{tags.map((t)=><Link className={selectedTag===t?"chip active":"chip"} key={t} href={`/?tag=${encodeURIComponent(t)}${searchText?`&q=${encodeURIComponent(searchText)}`:""}`}>{t}</Link>)}</div></div>
       <div className="archive-list-head"><span>INDEX / {String(filtered.length).padStart(2,"0")}</span>{(query||selectedTag)?<Link href="/">清除篩選 <X size={13}/></Link>:<span>READ & REVISIT</span>}</div>
       {filtered.length?<div className="posts-list">{filtered.map((post,index)=><PostCard key={post.id} post={post} index={index}/>)}</div>
         :<div className="empty-state"><span className="empty-index">∅</span><h3>{all.length?"找不到符合條件的筆記":"還沒有公開筆記"}</h3><p>{all.length?"可以換個關鍵字，或清除目前的篩選條件。":"寫下第一則筆記後，就會出現在這裡。"}</p><Link href={all.length?"/":"/about"} className="text-link">{all.length?"查看所有筆記":"關於 Naosledge"} <ArrowRight size={16}/></Link></div>}
