@@ -8,7 +8,7 @@
 
 GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的虛構文章與不需登入的模擬後台。離線互動預覽另存於 ChatGPT 專案成果中，不是正式網站，也不會把筆記寫入 Supabase。
 
-目前已於 MSI 執行 `npm run typecheck` 與 `npm run build` 成功；尚待建立 Naosledge 專用 Supabase 專案、驗證真實登入與文章寫入，以及部署 Vercel。
+目前已於 MSI 執行 `npm run typecheck` 與 `npm run build` 成功；尚待建立 Naosledge 專用 Supabase 專案、驗證真實登入與文章寫入，以及部署 Vercel。上線前必須完成的權限與費用檢查，詳見 [`docs/DEPLOY_READINESS.md`](docs/DEPLOY_READINESS.md)。
 
 ## v3 視覺與互動設計
 
