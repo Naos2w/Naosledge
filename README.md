@@ -123,66 +123,54 @@ MSI Chrome 已使用合成筆記驗證實際檔案下載、匯入確認／取消
 | `/studio/new`、`/studio/[id]` | 新增／編輯草稿或公開文章 |
 | `/sitemap.xml` | 已發布文章 Sitemap |
 
-## 本機啟動正式網站
+## 本機開發與驗證（尚未正式上線）
 
-目前既有執行路徑需求：Node.js 22+、npm、**專用 Supabase 專案（尚未建立，僅供現有 SDK 程式碼測試）**。已建立的 Neon Free 專案**不能直接使用以下 Supabase 環境變數**；請待獨立 Neon 資料庫／Auth／Data API 權限驗收及程式切換後，才連接正式服務。不得將任何 SQL 執行到其他產品資料庫。
+目前網站程式位於 **Draft PR #1 的開發分支**；`main` 尚未合併。已選定 Neon Free 作為後續專屬資料庫，但**現有 Neon 網站模式只允許經授權的 Sandbox**，不能將正式 Neon 連線資訊直接填入後上線。開發環境使用 Node.js 24（CI 同版）、npm，絕不借用 Mushroooooms、Go Travel 等既有 Supabase 專案。
 
-```bash
-git clone https://github.com/Naos2w/Naosledge.git
-cd Naosledge
-npm ci --include=dev
-cp .env.example .env.local
-# 在 .env.local 填入 Naosledge 專用 Supabase URL、publishable key
-npm run dev
-```
-
-Windows PowerShell：
+以下流程不需要資料庫帳號或密鑰，也不會連線正式 Neon：
 
 ```powershell
 git clone https://github.com/Naos2w/Naosledge.git
 Set-Location .\Naosledge
-npm ci --include=dev
-Copy-Item .env.example .env.local
-notepad .env.local
-npm run dev
+git switch --track origin/feat/initial-v3-site-20261015
+npm ci --include=dev --no-audit --no-fund
+npm run test:unit
+npm run typecheck
+npm run build
+npm run test:browser:local
 ```
 
-之後開啟 http://localhost:3000。 `package-lock.json` 已納入 Git，CI 使用 `npm ci --include=dev` 重現安裝。注意：某些電腦全域設定 `NODE_ENV=production`，因此明確加上 `--include=dev`，不需要調整全域環境變數。網站沒有 Supabase 設定時，**首頁與正式文章讀寫無法正常運作**，但程式可以進行型別檢查與建置。
+`test:browser:local` 以 MSI 上已安裝的 Chrome／Edge、127.0.0.1 的假 Supabase 執行合成瀏覽器測試；不需真實登入。若僅啟動 `npm run dev`，預設 Supabase 模式在沒有**Naosledge 專屬**資料庫設定時，實際文章載入／登入不會正常運作，不能誤認為已部署。
 
-### 首次設定 Supabase
+### 已完成的 Neon Sandbox 模式
 
-1. 在 Supabase 建立 **Naosledge 專用**專案。
-2. 進入 **Authentication → Users**，建立站長 Email / Password，記下使用者 UUID。關閉公開註冊（Disable sign ups）。
-3. 在專用專案的 SQL Editor 執行 `supabase/schema.sql`，建立文章表、站長表與 Row Level Security 政策。
-4. 以站長的真實 UUID 執行：
+在明確設定後端旗標、核准的 Sandbox branch ID、相應 Auth／Data API HTTPS URL 及**私有** Cookie Secret 後，現有 Next.js 網站已可使用真正 Neon Auth／JWT 與 RLS。僅可在核准的 Sandbox 模式用受控、合成帳號驗證，**不可設為 Neon Production**；細節見 [隔離整合報告](docs/NEON_INTEGRATION_READINESS.md)。
 
-   ```sql
-   insert into public.blog_admins(user_id) values ('YOUR-ADMIN-UUID');
-   ```
+### 舊 Supabase 路徑（僅作相容回退）
 
-5. 在 `.env.local` 設定 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` 與 `NEXT_PUBLIC_SITE_URL`。請**不要**把 `service_role`、secret key 或其他私密憑證放在公開環境變數或 Git。
-6. 開啟 `/login` 登入站長，前往 `/studio` 新增文章，先測試草稿不可被未登入訪客查看，再測試發布文章。
+`supabase/schema.sql` 與 Supabase SDK 保留為歷史相容路徑，**不是目前選定的正式資料庫**。不要新建 Supabase 專案、把 SQL 套用到其他專案，或使用任何既有服務的 URL／金鑰。Neon 使用不同的 Better Auth `text` 使用者 ID 和獨立的 `neon/migrations/001_initial_blog.sql`；已經在 Sandbox 套用及驗收，但尚未獲准在 Production 套用。
 
-v3 的原 Supabase SQL 仍維持未套用狀態；`neon/migrations/001_initial_blog.sql` 是另一份**尚未套用的 Neon migration**，不可用於 Supabase，也不可未授權在 Neon `production` 分支執行。
+## Vercel 上線：等待 Owner 授權
 
-## 部署到 Vercel
+目前未建立正式部署；不能只因 `next build` 成功就公開網站。上線前須另外核准：
 
-1. 將 `Naosledge` 原始碼推送到 GitHub（**不含 `.env.local`**）。
-2. 在 Vercel 匯入倉庫，Framework 選 Next.js。
-3. 設定與本機對應的 `NEXT_PUBLIC_SUPABASE_URL`、`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`、正式 `NEXT_PUBLIC_SITE_URL`。
-4. 部署後驗證公開文章、`/studio` 權限轉址、草稿 404 與新增／編輯／刪除流程。
+1. Neon Production Migration／Data API、正式 Auth 註冊與信箱驗證政策，以及站長身分。
+2. 專用的 Production 後端設定模式（現有程式**硬性拒絕 Production**）、經審查的 RLS／登入／Cookie Secret。
+3. Vercel Team、正式 HTTPS 網域與環境變數；先獨立驗收 Preview，再核准 PR 合併與 Production 發布。
+
+詳細的五道安全關卡、SEO 安全預設、功能測試矩陣與回復計畫請見 [**上線前置與驗收清單**](docs/DEPLOY_READINESS.md)。**切勿照舊版 Supabase 部署教學操作**。
 
 ## 驗證範圍與限制
 
-- 已完成預覽端 375、768、1024、1440px 畫面與互動測試；首頁、關於、文章、工作室、編輯器都無水平溢出。
-- 已驗證搜尋、Markdown 預覽、新增／發布示範筆記、深淺色切換與偏好保存、Reduced Motion，以及瀏覽器中操作的錯誤訊息。
-- 2026-10-15 於 MSI 安裝依賴後，`npm run typecheck` 與 `npm run build` 均通過；這是編譯驗證，不代表真實 Supabase 連線已驗收。
-- 尚未建立正式 Supabase 專案，沒有雲端寫入或真實權限驗收，也沒有部署網站。
-- 此階段未加入 AI、公開留言、圖片上傳、完整歷史版本或公開註冊。
-- 本機編輯器暫存不是雲端儲存；**一定要點選儲存草稿／發布文章**才會同步至 Supabase。
-- 搜尋仍對最近最多 300 篇公開文章進行比對，若筆記大幅增加，可再升級後端全文搜尋。
+- 320、375、768、1024、1440px 的 MSI 本機 Chrome／合成瀏覽器測試涵蓋導覽、Markdown、搜尋、草稿、無障礙與 SEO 安全預設；尚未以 iPhone Safari 做實機驗收。
+- 2026-10-15 在 MSI 執行單元測試 **65/65 PASS**（含 PGlite 子測試）、TypeScript 與正式建置成功；最新 GitHub CI 亦成功。CI 沒有實際連接 Neon。
+- **真實 Neon Sandbox** 已在受控環境完成 Better Auth／JWT／Data API／RLS、登入與網站文章 CRUD，合成測試文章、授權及帳號已清理；**不能當作 Neon Production 的安全驗收**。
+- Neon `production` 尚未套用應用 SQL 或啟用 Data API，正式站長帳號、網域與 Vercel 部署均未完成。
+- 目前未加入 AI、公開留言、圖片上傳、完整文章歷史版本或讀者公開註冊。
+- 編輯器本機草稿儲存不是雲端同步；在已驗證的 Sandbox 模式仍須明確點選「儲存草稿／發布文章」，才會送出真正的資料庫操作。
+- 首頁搜尋最多比對 300 篇已發布文章；資料量增長後，需另評估後端全文搜尋效能。
 
-如需細部測試證據，請見 [`QA.md`](QA.md)。
+如需細部驗證證據，請見 [`QA.md`](QA.md) 和 [Neon 實測報告](docs/NEON_INTEGRATION_READINESS.md)。
 
 
 ## 專案命名與開發位置
@@ -192,4 +180,4 @@ v3 的原 Supabase SQL 仍維持未套用狀態；`neon/migrations/001_initial_b
 - GitHub 倉庫：[`Naos2w/Naosledge`](https://github.com/Naos2w/Naosledge)
 - npm package name：`naosledge`
 - 舊名稱 LearnLog 與 Naosledge v2 僅留作歷史備份；本專案不需要因此修改資料庫 schema 或文章欄位。
-- 原始碼在 GitHub 以 PR 送審；**尚未完成 Supabase 線上驗收與 Vercel 正式部署**。
+- 原始碼在 GitHub 以 Draft PR #1 送審；Neon Sandbox 驗收已通過，**Neon Production 尚未核准、Vercel 未部署**。

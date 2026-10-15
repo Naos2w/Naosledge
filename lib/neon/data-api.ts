@@ -3,7 +3,8 @@ import { NeonPostgrestClient } from "@neondatabase/postgrest-js";
 export type JwtProvider = () => Promise<string>;
 
 /**
- * A small, opt-in Neon Data API transport. The live site DOES NOT use this yet.
+ * Opt-in Neon Data API transport for the approved Sandbox website path.
+ * Production is deliberately unsupported until separately authorized.
  *
  * Never send a Postgres password, owner URL, or admin secret to this client.
  * The JWT must be issued by the approved Better Auth instance for this branch.

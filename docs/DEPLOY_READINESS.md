@@ -1,84 +1,81 @@
-# Naosledge · 上線前置與驗收清單
+# Naosledge v3 — 正式上線前置與驗收清單
 
-更新：2026-10-15。本站是**完全公開的學習部落格**，但**草稿與站長後台絕不可公開**。此文件只用於新建 Naosledge 專用服務，不得把 SQL 執行在 Mushroooooms、Go Travel 或其他專案的資料庫。
+更新：2026-10-15。**目前僅完成 Neon Free Sandbox 整合驗收；Production 未授權、網站未部署、PR #1 維持 Draft。** 本文件是待核准的執行清單，不是執行授權。
 
-## 目前已完成
+## 實際狀態（先核對，再決定下一步）
 
-- GitHub: [Naos2w/Naosledge](https://github.com/Naos2w/Naosledge)，開發 PR #1
-- MSI 本機：`C:\Naos\02.Git\personal\Naosledge`
-- Node.js 24、`npm ci --include=dev`、`npm run typecheck` 與 `npm run build` 已成功
-- 專屬 Supabase 專案、正式站長帳號、Vercel 部署 **尚未完成**
-- 2026-10-15 使用者已同意在 Supabase **Naos** 組織、Singapore（`ap-southeast-1`）建立專案；成本工具當時回報建立費用 **$0/月**。但 Supabase 建立請求因 **2 個免費活躍專案的額度上限**失敗，未建立任何 Naosledge 資料庫。
-- 現有活躍專案為 Mushroooooms、Go Travel；使用者已決定**繼續使用免費方案，不停用或更動現有專案**，本階段只允許無資料庫開發與測試。
-- 後續如要新建資料庫、搬遷、暫停專案或升級付費，須先取得新的明確授權；不得沿用之前建立失敗時的費用核准自行重試。
-- **新決策與實測（2026-10-15）**：使用者已自行建立獨立的 **Neon「Naosledge」Free 專案**，並另外授權**只在非 `production` 的測試分支**建立 Data API、套用候選 Migration 和執行合成 Auth／JWT／RLS／CRUD 驗收。測試分支 `naosledge-integration-sandbox-20261015` 已完成上述項目並全數通過；兩個合成帳號、文章與管理員授權已清理為零。**正式 `production` 仍無 Naosledge 文章表；網站已新增 Neon Sandbox 模式並通過實際 Next.js 瀏覽器驗收，但正式環境尚未部署，也沒有啟用 Neon production。** 證據與待核准事項見 [`NEON_INTEGRATION_READINESS.md`](NEON_INTEGRATION_READINESS.md)。
+| 範圍 | 已確認狀態 |
+|---|---|
+| 原始碼 | [GitHub PR #1](https://github.com/Naos2w/Naosledge/pull/1)，分支 `feat/initial-v3-site-20261015`；尚未合併 `main` |
+| MSI 工作目錄 | `C:\Naos\02.Git\personal\Naosledge` |
+| 網站 | Next.js 16、Dark Liquid Glass、文章／搜尋／標籤／日曆、Markdown 閱讀與 Studio 編輯已完成 |
+| 本機／CI | 本機單元測試、TypeScript、正式建置與 Chrome 回歸已通過；GitHub Actions [Run #38722751700](https://github.com/Naos2w/Naosledge/actions/runs/38722751700) 成功 |
+| Neon | 獨立 `Naosledge` Free 專案（`bitter-silence-36632892`，AWS `us-east-2`，PostgreSQL 18） |
+| Sandbox | `naosledge-integration-sandbox-20261015`（`br-quiet-sunset-b4xx4pnx`）；`posts`／`blog_admins`、RLS、Data API 及真正的 Auth／JWT／Next.js Chrome CRUD 已驗收 |
+| Production | 預設 `production`（`br-aged-sound-b43h5r2c`）；**尚無 Naosledge 應用表，也未啟用 Data API** |
+| 正式站長與網域 | 尚未建立／核准；Vercel Preview 和 Production 都尚未部署 |
+| 舊 Supabase | 僅作為程式回退路徑；既有 Mushroooooms、Go Travel 專案不得更動、共用或重用密鑰 |
 
-## Supabase 資料庫啟用：目前暫停
+Sandbox 使用合成帳號與文章測試後已清理。詳細記錄見 [Neon Sandbox 真實整合報告](NEON_INTEGRATION_READINESS.md) 和 [QA](../QA.md)。線上正式環境**沒有**因此通過驗收。
 
-目前**不可重試建立**：使用者決定先維持免費，且不動現有 Supabase 專案。未來如條件改變，先再次確認新專案組織、區域、當時的實際費用與限制，再取得使用者同意。絕不能借用其他產品的資料庫、帳號或環境變數。
+## 現階段可執行的工作（不需要 Owner 介入）
 
-## 下一個真正需要 Owner 決策的關卡
+1. 在既有 PR 開發分支修正程式、測試、文件與部署前檢查，維持未合併狀態。
+2. 在 MSI 執行**不碰真實資料庫**的離線單元／PGlite RLS 測試、型別檢查、建置及假 Supabase 的本機 Chrome 回歸。
+3. 只讀核對 PR、CI、Neon Sandbox／Production 中繼資料、Data API 有無啟用及資料表有無建立。
+4. 更新 PR 說明，保留可重現的非秘密驗證證據；不得在 PR、Commit 或 CI 放入 Token、Cookie、密碼、連線字串。
 
-已完成的無資料庫功能包含 Dark Liquid Glass UI、行動導覽、Markdown 文章閱讀／圖片／目錄、程式碼複製、站長編輯器與本機 Markdown 備份。離線測試使用合成帳號與資料，**不能據此宣稱線上正式資料庫已驗收或公開網站已上線**。
-
-使用者已選擇 **Neon Free 專案作為獨立後端**，且已核准的**隔離測試分支／Data API／候選 SQL／合成帳號**操作全部完成並驗收通過，臨時測試資料已清除。
-
-**Next.js 在 Sandbox 模式已完整改接 Neon Auth/Data API 並通過真實 Chrome 登入／CRUD 驗收。**下一個需要 Owner 新授權的項目是：**是否允許對 Neon `production` 套用已驗證的 Migration、啟用 Data API，以及設定正式站長專屬安全政策**。**現有 Supabase、Neon `production`、正式站長帳號、網域／部署、PR #1 合併**都不在原本隔離分支授權範圍內。PR 保持 Draft，保持免費和可還原。
-
-## 離線驗證（可以立即執行，無資料庫依賴）
+安全離線驗證：
 
 ```powershell
 npm ci --include=dev --no-audit --no-fund
 npm run test:unit
 npm run typecheck
 npm run build
+npm run test:browser:local
 ```
 
-此外用 PGlite 執行 Neon Migration／RLS 的本機測試（`npm run test:neon:rls`）；並已在受控 Neon Sandbox 使用**真正的 Auth JWT + PostgreSQL RLS + Next.js Chrome**完成登入、發草稿、發布、編輯、刪除與登出驗收。**此結果僅適用 Sandbox，不代表正式 Neon production 或真實站長已部署。**
+`npm run test:unit` 已包括 `tests/neon-rls.test.mjs` 的**本機 PGlite 模擬**。本機 Chrome 腳本使用綁定 127.0.0.1 的合成服務，**不是**真實 Neon 生產權限驗證。真正 Neon Sandbox 的 `npm run verify:neon:sandbox:manual` 需要事先核准並以合成帳號執行及清理，**不可自動加入 CI，也不需要為了日常回歸重跑**。
 
-## 站長帳號：使用者操作
+## 需要 Owner 明確授權的關卡
 
-專案建立後，使用者自行在該專案的 **Authentication → Users** 建立站長帳號，並在該專案設定關閉公開註冊（Disable sign ups）。**不要把密碼、OTP、Recovery codes 或 Service Role Secret 貼進聊天、GitHub、PR 或 CI 日誌。**
+**關卡 1 — 正式 Neon 資料庫。** 確認仍使用獨立 `Naosledge` Free 專案、正式分支 ID、方案限制、區域與費用。經核准後，先檢視 `neon/migrations/001_initial_blog.sql`，再於正確的 `production` 分支套用、啟用其 Data API，逐項驗證 RLS、GRANT、anonymous／authenticated 權限。不得對其他 Neon／Supabase 專案執行 SQL。建議事前制定快照／回復計畫，避免含資料表的破壞式回滾。
 
-取得站長 UUID 後，在**新建且確認正確的 Naosledge 專案**套用 `supabase/schema.sql`，再以受控 SQL 加入 `public.blog_admins`，例如：
+**關卡 2 — 正式 Auth 安全政策與站長。** 目前 Neon Managed Better Auth 存在，但原始設定允許公開註冊且未強制 Email 驗證。正式上線前需核准關閉公開註冊及信箱驗證策略；由 Owner 以安全管道建立自己的站長帳號，確認真正的 Neon Auth `user.id`（**文字 ID，不是預設 Supabase UUID**），只在正確的正式資料庫授權 `public.blog_admins`。不能自動猜測身分、替 Owner 建立真實憑證或從聊天輸出敏感資訊。
 
-```sql
-insert into public.blog_admins (user_id) values ('THE-OWNER-UUID');
-```
+**關卡 3 — 正式網站程式設定。** **現有程式的 Neon 模式硬性限定已核准的 Sandbox branch 與端點；不能只把 `.env` 換成 Production URL 就部署。** 正式分支核准後，才可在 PR 內設計獨立的生產設定驗證、檢查正確 Auth/Data API 端點、權限、Cookie Secret 和無洩漏規則，並測試後提交。保持 fail-closed，避免預設連到錯誤資料庫。
 
-請務必從新專案的 Auth → Users 核對 UUID，不使用猜測值。
+**關卡 4 — 網域與 Vercel。** Owner 指定正式 HTTPS 網域、正確的 Vercel Team/Scope，並以服務端環境變數介面安全設定專屬憑證。Preview 部署與 Production 發布**分開核准**；Preview 也不得帶入未獲許可的真實後台、資料或密鑰。沒有合法的 `NEXT_PUBLIC_SITE_URL`，網站 SEO 刻意輸出拒絕索引／不產生正式 Sitemap，不能用假的網域繞過。
 
-## 設定環境變數
+**關卡 5 — PR 合併與對外發布。** 完成 Preview 安全驗收後，再由 Owner 核准將 Draft PR 改為 Ready／合併 `main`，以及正式對外部署。CI 成功不等於網站完成上線。
 
-從專用 Supabase 專案取得 API URL 與 **publishable key**；只允許這些前端可公開的設定：
+上述五個關卡不可沿用先前對**Sandbox**的授權，自動推定 Production 也獲准。
 
-```env
-NEXT_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_YOUR_KEY
-NEXT_PUBLIC_SITE_URL=https://YOUR_DEPLOYED_DOMAIN
-```
+## 待核准的 Neon 正式環境設定（僅為欄位清單）
 
-本機把設定放在 Git 忽略的 `.env.local`；Vercel 用專案環境變數管理。不要使用 `service_role`、`sb_secret_`、站長密碼或他人專案金鑰。
+目前範例 `.env.example` 是**本機 Sandbox 專用配置**，不要直接用於 Production。將來正式程式審查通過後，才依其配置契約設定：
 
-**SEO 上線條件（2026-10-15）**：`NEXT_PUBLIC_SITE_URL` 必須設定為經使用者確認的**正式 HTTPS 網域根目錄**。沒有符合條件的網址時，Naosledge 會回覆 `robots.txt Disallow: /`、不發布可索引的 Sitemap／canonical／JSON-LD。這是避免在開發期誤收錄的刻意設計；若未來真的部署，必須先完成網域、專屬資料庫與真實權限的完整驗收。切勿僅為了讓 sitemap 非空而填入不存在或不屬於你的網址。
+- `NAOSLEDGE_BACKEND`／`NEXT_PUBLIC_NAOSLEDGE_BACKEND`：後端模式必須一致。
+- `NAOSLEDGE_NEON_BRANCH_ID`：正式分支 ID；必須由生產模式的獨立檢查明確允許。
+- `NEON_AUTH_BASE_URL`、`NEON_DATA_API_URL`：與**相同且正確的**正式 Neon 分支配對；不得混用 Sandbox URL。
+- `NEON_AUTH_COOKIE_SECRET`：伺服器專用、高熵隨機秘密，透過 Vercel Secret/Environment Variables 設定，**不可**加上 `NEXT_PUBLIC_` 前綴。
+- `NEXT_PUBLIC_SITE_URL`：經核准的正式 HTTPS 網域根目錄，不得是 localhost、測試網域或占位字串。
 
-## 線上權限驗收（必做，不可只看 CI 成功）
+實際欄位和行為仍以**日後獲核准且已測試的正式程式版本**為準；此清單不代表 Production 模式目前已實作。不要將密碼、OTP、JWT、Cookie、PostgreSQL URI、API Key 或其他秘密貼到 ChatGPT、GitHub、PR、CI 紀錄。
 
-1. 用未登入瀏覽器讀公開首頁、文章頁；必須僅能看到 `published`。
-2. 用站長登入，在後台建立一篇測試草稿，並保持 `draft` 狀態。
-3. 以**未登入的私人瀏覽視窗**開啟該草稿的 `/notes/<slug>`，應為 404，公開文章 API 不可讀到該筆資料。
-4. 站長將另一篇測試文章發布，未登入訪客可以讀到；再編輯、下架／刪除，驗證權限與同步。
-5. 使用非站長身份登入，必須無法進入 `/studio` 或修改任何文章。
-6. 專用資料庫的 Supabase Security / Performance Advisors 不應有未處理的重大問題。
-7. 在本機有 `.env.local` 且可連線時執行 `npm run verify:anonymous`。若設置 `NAOSLEDGE_DRAFT_TEST_SLUG`，可以額外確認指定草稿對匿名訪客不可見。此測試只讀取資料，**不會修改資料庫**；匿名測試通過也不等於已驗證站長寫入權限。
-8. 檢查手機瀏覽、鍵盤焦點、文章 SEO／Sitemap、登入錯誤提示、深色預設與減少動畫偏好。
+## 上線後才可進行的真實權限／操作驗收
 
-## Vercel 預覽／正式部署
+- 未登入：可讀取**已發布**文章；任何草稿 URL 回 404；無法讀取 `blog_admins`。
+- 非站長登入：無法進入 `/studio`、無法新增／編輯／刪除文章，亦無法自行取得管理員授權。
+- 正式站長：登入後建立草稿，匿名訪客仍無法看見；發布後可讀；編輯、下架、刪除會正確同步；登出後無法使用原 Session 操作。
+- 審查資料庫：RLS 已啟用、政策和 GRANT 與測試一致、沒有誤用 Service Role／Database Owner 特權，必要的 Auth 註冊政策已啟用。
+- 檢查 SEO、Sitemap、公開分享資訊、HTTPS/Cookie、快取、手機窄版與鍵盤無障礙，必要時由 Owner 在實體 iPhone Safari 驗收。
+- 檢查 Neon Free 使用量、連線延遲（目前 AWS Ohio，台灣訪客延遲尚未實測）、Vercel 用量與回復方案。
 
-- 先連接 GitHub 倉庫到正確的 Vercel Team/Scope；設定 **Naosledge 專用**環境變數，確認 Preview 階段成功後才啟用公開正式站。
-- 未設定 Supabase 專用 URL 與 key 的 Vercel 部署，即使 `next build` 成功，執行時仍可能讀不到文章／無法登入，不能報告為「網站已上線」。
-- 分支 PR 預覽核准、資料庫授權驗收與部署環境確認後，才進行 `main` 合併及 Production 發布。
+`npm run verify:anonymous` 是**原 Supabase 路徑**的只讀腳本，不可拿它當 Neon Production 的安全驗收證據；Neon 正式版須使用適用於正式模式、經核准的獨立驗證流程。
 
-## 發布邊界
+## 回復與成本邊界
 
-本專案第一階段只包含公開部落格、筆記管理和 Markdown 編輯。**AI 整理留待第二階段**。預覽或 CI 通過不代表資料庫已驗收。任何有額外付費可能的操作、建立或重設真實站長登入資訊、正式公開部署，都需要可追溯確認。**2026-10-15 的最新決策是保持免費、禁止任何現有 Supabase 專案變更；只做無資料庫的開發測試。**
+保持 Free：不得自行升級方案、遷移區域、停用或改變既有 Supabase 專案，也不得刪除 Neon 分支。尚未發布就**沒有網站可回滾**；正式發布後，應優先準備可回退的應用版本和資料庫保護／快照計畫，避免將刪資料表當作預設回滾手段。
+
+第一階段限公開部落格、筆記管理與 Markdown 編輯；AI 自動整理留待第二階段。
