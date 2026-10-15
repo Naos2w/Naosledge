@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowUpRight, Bold, Check, Code2, Eye, FileEdit, Globe2, Heading2, Italic, Link2, List, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Bold, Check, Code2, Eye, FileEdit, Globe2, Heading2, ImagePlus, Italic, Link2, List, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import Markdown from "@/components/markdown";
 import { savePost, deletePost } from "@/app/actions";
@@ -16,6 +16,7 @@ const markdownTools = [
   { key: "italic", label: "斜體", icon: Italic },
   { key: "list", label: "清單", icon: List },
   { key: "link", label: "連結", icon: Link2 },
+  { key: "image", label: "圖片", icon: ImagePlus },
   { key: "code", label: "程式碼", icon: Code2 },
 ] as const;
 
@@ -195,7 +196,7 @@ export default function StudioEditor({initial}: {initial?:Post}) {
         <div className="editor-content-bar"><span>CONTENT / MARKDOWN</span><button type="button" onClick={()=>setPreview(!preview)} className="preview-switch" aria-pressed={preview}>{preview?<FileEdit size={16}/>:<Eye size={16}/>} {preview?"返回編輯":"文章預覽"}</button></div>
 {!preview && <div className="markdown-toolbar" role="group" aria-label="Markdown 格式工具列">
           {markdownTools.map(({key,label,icon:Icon}) => <button key={key} type="button"
-            className="markdown-tool" title={key==="bold" ? "粗體（Ctrl/⌘+B）" : key==="link" ? "連結（Ctrl/⌘+K）" : label}
+            className="markdown-tool" title={key==="bold" ? "粗體（Ctrl/⌘+B）" : key==="link" ? "連結（Ctrl/⌘+K）" : key==="image" ? "插入 HTTPS 圖片網址並加上替代文字" : label}
             aria-label={label} aria-controls="post-content"
             onMouseDown={event=>event.preventDefault()} onClick={()=>applyTool(key)}>
             <Icon size={16} aria-hidden="true"/><span>{label}</span>
@@ -214,7 +215,7 @@ export default function StudioEditor({initial}: {initial?:Post}) {
         <div className="field-group"><label htmlFor="post-category">分類</label><input id="post-category" maxLength={36} value={category} onChange={e=>setCategory(e.target.value)} onBlur={saveLocalNow} placeholder="例如：技術、閱讀、生活"/></div>
         <div className="field-group"><label htmlFor="post-tags">標籤 <span className="sub-label">以逗號分隔</span></label><input id="post-tags" value={tagsText} onChange={e=>setTagsText(e.target.value)} onBlur={saveLocalNow} placeholder="Git, 設計, 閱讀筆記"/></div>
         <div className="field-group"><label htmlFor="post-slug">文章網址 <span className="sub-label">英文 slug</span></label><div className="slug-field"><span>/notes/</span><input id="post-slug" value={slug} onChange={e=>{manualSlug.current=true;setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g,"").slice(0,120));}} onBlur={saveLocalNow} placeholder="my-learning-note"/></div></div>
-        <div className="editor-help"><strong>儲存與公開</strong><p>內容會先暫存在目前裝置。點選「儲存草稿」才會同步到雲端；點選「發布文章」後，所有訪客都能閱讀。</p><div className="editor-mini-rule"/><strong>Markdown 快捷參考</strong><code>## 小標題</code><code>**重點**</code><code>- 清單</code><code>```程式碼```</code></div>
+        <div className="editor-help"><strong>儲存與公開</strong><p>內容會先暫存在目前裝置。點選「儲存草稿」才會同步到雲端；點選「發布文章」後，所有訪客都能閱讀。</p><div className="editor-mini-rule"/><strong>圖片與 Markdown</strong><p>圖片使用 HTTPS 圖片網址或本站根目錄路徑，不支援直接上傳。請寫清楚圖片替代文字；外部圖片網站仍可能看到讀者的 IP 位址。</p><code>![架構流程圖](https://your-domain.example/image.jpg "圖片說明")</code><div className="editor-mini-rule"/><strong>Markdown 快捷參考</strong><code>## 小標題</code><code>**重點**</code><code>- 清單</code><code>```程式碼```</code></div>
       </aside>
     </div>
   </section>;

@@ -34,7 +34,7 @@ const posts = [
     slug: "git-rebase-notes",
     title: "Git Rebase 的學習筆記",
     excerpt: "整理 Git Rebase 工作流程。",
-    content_md: "# 今日摘要\n\nRebase 會重新安排 commit 歷史。\n\n## 延伸閱讀\n\n[關於這裡](/about) · [MDN](https://developer.mozilla.org/)\n\n| 項目 | 說明 |\n| --- | --- |\n| 超長內容 | abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789 |",
+    content_md: "# 今日摘要\n\nRebase 會重新安排 commit 歷史。\n\n## 延伸閱讀\n\n[關於這裡](/about) · [MDN](https://developer.mozilla.org/)\n\n## 圖片與說明\n\n![架構流程示意圖](https://images.example.invalid/learning-diagram.svg \"測試流程圖說明\")\n\n![不安全的圖片連結](http://insecure.example.invalid/track.png)\n\n| 項目 | 說明 |\n| --- | --- |\n| 超長內容 | abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789 |",
     tags: ["Git", "開發"], category: "技術", status: "published",
     learned_on: "2026-10-15", published_at: "2026-10-15T00:00:00Z",
     created_at: "2026-10-15T00:00:00Z", updated_at: "2026-10-15T00:00:00Z",
@@ -208,6 +208,20 @@ try {
   await waitForServer(origin, child);
   browser = await chromium.launch({ executablePath: chromePath, headless: true, args: ["--no-sandbox"] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // Images are fulfilled entirely in-memory; never contact example.invalid hosts.
+  let blockedRemoteRequests = 0;
+  let syntheticImageRequests = 0;
+  await context.route("https://images.example.invalid/**", (route) => {
+    syntheticImageRequests++;
+    return route.fulfill({
+      status: 200, contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="720" height="405"><rect width="720" height="405" fill="#a2b4c5"/></svg>',
+    });
+  });
+  await context.route("http://insecure.example.invalid/**", (route) => {
+    blockedRemoteRequests++;
+    return route.abort();
+  });
   const page = await context.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -274,6 +288,40 @@ try {
   assert.equal(await page.locator('script[type="application/ld+json"]').count(), 0, "No localhost structured URLs");
   console.log("PASS: Markdown heading levels, links and keyboard-scrollable wide table");
 
+  const safeImage = page.locator(".article-content img[alt='架構流程示意圖']");
+  assert.equal(await safeImage.count(), 1, "HTTPS image should render with author-provided alt");
+  assert.equal(await safeImage.getAttribute("loading"), "lazy");
+  assert.equal(await safeImage.getAttribute("decoding"), "async");
+  assert.equal(await safeImage.getAttribute("referrerpolicy"), "no-referrer");
+  assert.ok(await page.getByText("測試流程圖說明", {exact: true}).isVisible());
+  assert.ok(await page.getByText(/圖片無法顯示：請使用 HTTPS/).isVisible());
+  assert.equal(await page.locator(".article-content img[src^='http:']").count(), 0,
+    "Insecure HTTP images must never be embedded");
+  await safeImage.scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => {
+    const img = document.querySelector(".article-content img[alt='架構流程示意圖']");
+    return img?.complete && img.naturalWidth === 720;
+  });
+  assert.ok(syntheticImageRequests >= 1, "Synthetic image was served locally");
+  assert.equal(blockedRemoteRequests, 0, "Unsafe image URL did not trigger a request");
+  await page.setViewportSize({width: 375, height: 812});
+  await safeImage.scrollIntoViewIfNeeded();
+  const imageBounds = await page.evaluate(() => {
+    const img = document.querySelector(".article-content img[alt='架構流程示意圖']");
+    const content = document.querySelector(".article-content");
+    return {
+      viewport: innerWidth,
+      page: document.documentElement.scrollWidth,
+      image: img.getBoundingClientRect().width,
+      container: content.getBoundingClientRect().width,
+    };
+  });
+  assert.ok(imageBounds.page <= imageBounds.viewport &&
+    imageBounds.image <= imageBounds.container, `Mobile image overflow: ${JSON.stringify(imageBounds)}`);
+  await page.screenshot({path: path.join(logDir, "article-image-375.png"), fullPage: true});
+  console.log("PASS: HTTPS image lazy load, privacy, caption and 375px responsive display; HTTP image blocked");
+  await page.setViewportSize({width:1440, height:900});
+
   await page.goto(origin + "/", { waitUntil: "networkidle" });
   await page.getByRole("button", { name: "切換淺色模式" }).click();
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), "light");
@@ -313,6 +361,16 @@ try {
   await editor.evaluate((el) => { el.focus(); el.setSelectionRange(0, 2); });
   await page.getByRole("button", { name: "粗體" }).click();
   assert.equal(await editor.inputValue(), "**今天**測試 Markdown");
+  await editor.fill("架構流程");
+  await editor.evaluate((el) => { el.focus(); el.setSelectionRange(0, 4); });
+  await page.getByRole("button", { name: "圖片" }).click();
+  assert.equal(await editor.inputValue(), "![架構流程](https://example.com/image.jpg)");
+  await page.waitForFunction(() => {
+    const textarea = document.querySelector("#post-content");
+    return textarea?.value.slice(textarea.selectionStart, textarea.selectionEnd) === "https://example.com/image.jpg";
+  });
+  await editor.fill("**今天**測試 Markdown");
+  console.log("PASS: image insertion tool selects URL after accessible alt text");
   await page.getByRole("button", { name: "文章預覽" }).click();
   assert.match(await page.locator(".editor-md-preview").innerText(), /今天測試/);
   await page.getByRole("button", { name: "返回編輯" }).click();
@@ -324,7 +382,7 @@ try {
     `Editor horizontal overflow: ${JSON.stringify(editorDims)}`);
   const mobileTools = await page.locator(".markdown-tool").evaluateAll((buttons) =>
     buttons.map((button) => ({label: button.getAttribute("aria-label"), height: button.getBoundingClientRect().height})));
-  assert.equal(mobileTools.length, 6, "All six Markdown tools should be present");
+  assert.equal(mobileTools.length, 7, "All seven Markdown tools should be present");
   assert.ok(mobileTools.every((tool) => tool.height >= 44),
     `Markdown tool touch targets smaller than 44px: ${JSON.stringify(mobileTools)}`);
   const fontSize = await editor.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));

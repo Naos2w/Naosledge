@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { safeMarkdownImageSrc } from "@/lib/markdown-image";
 
 export default function Markdown({content}: {content:string}) {
   return <div className="markdown-body">
@@ -22,6 +23,16 @@ export default function Markdown({content}: {content:string}) {
         },
         table: ({children}) => <div className="markdown-table-scroll" role="region"
           aria-label="文章資料表（可左右捲動）" tabIndex={0}><table>{children}</table></div>,
+        img: ({src, alt, title}) => {
+          const safeSrc = safeMarkdownImageSrc(src);
+          if (!safeSrc) return <span className="markdown-image-unavailable" role="img"
+            aria-label={alt || "圖片無法顯示"}>圖片無法顯示：請使用 HTTPS 或站內圖片網址。</span>;
+          return <span className="markdown-image-block">
+            <img src={safeSrc} alt={alt ?? ""} loading="lazy" decoding="async"
+              referrerPolicy="no-referrer"/>
+            {title && <small className="markdown-image-caption">{title}</small>}
+          </span>;
+        },
       }}>
       {content}
     </ReactMarkdown>

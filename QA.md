@@ -61,6 +61,15 @@
 - `npm run test:unit` **29／29 通過**；`npm run typecheck`、`npm run build` **exit 0**；MSI 的 `npm run test:browser:local` **exit 0**，包含 SEO fail-closed、逐日活動標籤、標題階層、內外連結、可捲動表格、既有手機／編輯／發布合成流程與 JS error = 0。
 - **未驗收範圍**：沒有實際正式網址、真實 Supabase 文章、Google Search Console 或搜尋引擎收錄；不可將本機 SEO 測試視為正式上線驗收。
 
+## 2026-10-15：Markdown 圖片插入與安全顯示（離線）
+
+- 新增 `lib/markdown-image.ts` 的圖片網址來源檢查，只接受 HTTPS 或站內以 `/` 開頭的圖片路徑；拒絕 HTTP／data／JavaScript／localhost／IP／憑證／不明來源，避免混合內容和誤發本地網路請求。
+- 閱讀頁的 Markdown 圖片使用 `loading="lazy"`、`decoding="async"`、`referrerPolicy="no-referrer"`，保留作者的 alt 替代文字，支援從 Markdown title 顯示可讀圖說；行動裝置等比縮放且不裁切。
+- 站長編輯器新增第七個「圖片」快捷按鈕，自選取文字帶入 alt，插入 URL 佔位符並選取該 URL；內文與前後段落保留正常換行；沒有新增任何圖床、上傳介面或正式資料庫依賴。
+- 擴充單元測試至 **35／35 通過**，包含圖片插入字串、選取範圍和 URL 安全邊界；TypeScript 型別檢查通過。
+- MSI 真實 Chrome + **僅限 127.0.0.1 的合成假 Supabase** 驗證 **exit 0**：手機 375px 圖片不溢出、HTTPS 圖片在 Playwright 攔截下成功載入（合成 SVG）、保留 alt／圖說、lazy/async/no-referrer 屬性、HTTP 不安全圖片未發出請求；原有登入、筆記編輯、假資料草稿／發布流程也維持通過。瀏覽器截圖僅在 MSI 暫存資料夾。
+- 尚未用真實圖片伺服器、實際 Supabase Storage 或使用者上傳照片驗收；外部圖片伺服器仍可能取得讀者 IP，請依隱私需求選擇站內圖片。
+
 ## 尚未完成 / 限制
 
 - 尚未建立／指定 **Naosledge 專用 Supabase**，因此尚未測試真實登入、CRUD 與 RLS 端到端整合。

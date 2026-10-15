@@ -73,3 +73,21 @@ test("formatting does not alter the input variable or surrounding text", () => {
   assert.equal(text, "開始 中間 結束");
   assert.equal(change.text, "開始 **中間** 結束");
 });
+
+test("image shortcut uses selected text as accessible alt and focuses the URL placeholder", () => {
+  const value = applyMarkdownTool("架構流程", 0, 4, "image");
+  assert.equal(value.text, "![架構流程](https://example.com/image.jpg)");
+  assert.equal(value.text.slice(value.selectionStart, value.selectionEnd), "https://example.com/image.jpg");
+});
+
+test("image shortcut offers meaningful alt placeholder and does not break surrounding paragraphs", () => {
+  const value = applyMarkdownTool("前後", 1, 1, "image");
+  assert.equal(value.text, "前\n\n![圖片說明](https://example.com/image.jpg)\n\n後");
+  assert.equal(value.text.slice(value.selectionStart, value.selectionEnd), "https://example.com/image.jpg");
+});
+
+test("image shortcut removes Markdown brackets and line breaks from alt text", () => {
+  const value = applyMarkdownTool("[圖片]\n說明", 0, 7, "image");
+  assert.equal(value.text, "![圖片 說明](https://example.com/image.jpg)");
+  assert.equal(value.text.slice(value.selectionStart, value.selectionEnd), "https://example.com/image.jpg");
+});

@@ -1,5 +1,5 @@
 /** Small, deterministic Markdown edits that work without network or editor dependencies. */
-export type MarkdownTool = "heading" | "bold" | "italic" | "list" | "link" | "code";
+export type MarkdownTool = "heading" | "bold" | "italic" | "list" | "link" | "image" | "code";
 
 export type MarkdownEdit = {
   text: string;
@@ -30,6 +30,7 @@ export function applyMarkdownTool(
   let after = "";
   let subject = selection;
   let offset = 0;
+  let selectedUrlLength = 0;
 
   switch (tool) {
     case "heading":
@@ -64,11 +65,24 @@ export function applyMarkdownTool(
       before = "["; after = "](https://example.com)";
       subject ||= "連結文字";
       offset = selection ? subject.length + 2 : 0;
+      if (selection) selectedUrlLength = "https://example.com".length;
       break;
+    case "image": {
+      const imageUrl = "https://example.com/image.jpg";
+      const leadingBreak = from > 0 && value[from - 1] !== "\n" ? "\n\n" : "";
+      const trailingBreak = to < value.length && value[to] !== "\n" ? "\n\n" : "";
+      before = `${leadingBreak}![`;
+      after = `](${imageUrl})${trailingBreak}`;
+      subject = selection.replace(/[\r\n]+/g, " ")
+        .replaceAll("[", "").replaceAll("]", "").replaceAll("\\", "").trim() || "圖片說明";
+      offset = subject.length + 2;
+      selectedUrlLength = imageUrl.length;
+      break;
+    }
   }
 
   const text = value.slice(0, from) + before + subject + after + value.slice(to);
   const selectionStart = from + before.length + offset;
-  const selectionEnd = selectionStart + (offset ? "https://example.com".length : subject.length);
+  const selectionEnd = selectionStart + (selectedUrlLength || subject.length);
   return { text, selectionStart, selectionEnd };
 }

@@ -208,6 +208,25 @@ body{
 .markdown-table-scroll{overflow-x:auto;max-width:100%;border:1px solid var(--rule);border-radius:12px;scrollbar-width:thin;margin:20px 0}
 .markdown-table-scroll table{display:table;width:max-content;min-width:100%;max-width:none;overflow:visible;margin:0}
 .markdown-table-scroll:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+/* Article images remain uncropped and optically quiet, even on narrow screens. */
+.markdown-body .markdown-image-block{display:block;max-width:100%;margin:26px 0}
+.markdown-body .markdown-image-block img{
+  display:block;width:auto;max-width:100%;height:auto;margin:0 auto;
+  border:1px solid var(--rule);border-radius:16px;background:var(--field);
+}
+.markdown-image-caption{
+  display:block;margin:10px auto 0;max-width:90%;text-align:center;
+  font-size:12px;line-height:1.7;color:var(--muted);
+}
+.markdown-image-unavailable{
+  display:inline-block;max-width:100%;padding:10px 14px;
+  border:1px dashed var(--rule-strong);border-radius:10px;
+  background:var(--field);color:var(--ink-soft);font-size:13px;line-height:1.7;
+}
+@media(max-width:580px){
+  .markdown-body .markdown-image-block{margin:18px 0}
+  .markdown-body .markdown-image-block img{border-radius:12px}
+}
 /* Writing desk: vitreous sidebar, solid manuscript, explicit actions. */
 .studio-hero h1,.editor-title-row h1{letter-spacing:-.06em}
 .studio-metrics{gap:12px}
