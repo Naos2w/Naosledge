@@ -231,7 +231,7 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
 
-  for (const width of [1440, 1024, 768, 375]) {
+  for (const width of [1440, 1024, 768, 375, 320]) {
     await page.setViewportSize({ width, height: width < 500 ? 812 : 900 });
     const response = await page.goto(origin + "/", { waitUntil: "networkidle" });
     assert.equal(response.status(), 200, `Home must work at width ${width}`);
@@ -251,6 +251,30 @@ try {
       await page.screenshot({ path: path.join(logDir, `homepage-${width}.png`), fullPage: true });
     }
   }
+
+  // Phone navigation must replace the hidden desktop nav, including keyboard controls.
+  await page.setViewportSize({width:320, height:812});
+  await page.goto(origin + "/", {waitUntil:"networkidle"});
+  const menu = page.locator(".mobile-menu");
+  const menuTrigger = menu.locator("summary");
+  assert.ok(await menuTrigger.isVisible());
+  await menuTrigger.focus();
+  await menuTrigger.press("Enter");
+  assert.equal(await menu.getAttribute("open"), "");
+  const menuLinks = menu.getByRole("navigation", {name:"手機主選單"}).getByRole("link");
+  assert.equal(await menuLinks.count(), 3);
+  assert.ok(await menuLinks.first().isVisible());
+  const menuDims = await page.evaluate(() => ({viewport:innerWidth, total:document.documentElement.scrollWidth}));
+  assert.ok(menuDims.total <= menuDims.viewport, `Open menu overflows phone: ${JSON.stringify(menuDims)}`);
+  await menuTrigger.press("Escape");
+  assert.equal(await menu.getAttribute("open"), null, "Escape closes menu");
+  await menuTrigger.click();
+  await menu.getByRole("link", {name:"關於 Naosledge"}).click();
+  await page.waitForURL((url)=>url.pathname==="/about", {timeout:15000});
+  assert.equal(await menu.getAttribute("open"), null, "Navigation closes menu");
+  console.log("PASS: accessible mobile menu at 320px; Enter/Escape/outbound navigation work");
+  await page.setViewportSize({width:1440, height:900});
+  await page.goto(origin + "/", {waitUntil:"networkidle"});
 
   // A local-only website must not advertise localhost as a canonical domain.
   const robotsResponse = await fetch(origin + "/robots.txt");

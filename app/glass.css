@@ -99,6 +99,29 @@ body{
 .header-admin{border-radius:13px;min-height:42px;padding:9px 14px}
 .header-admin:hover,.icon-button:hover{background:var(--accent-tint);border-color:rgba(194,226,255,.35);box-shadow:0 5px 17px rgba(0,0,0,.1);transform:translateY(-1px)}
 .icon-button:active,.header-admin:active{transform:scale(.97)}
+/* The desktop nav is replaced by a keyboard-operable glass menu on phones. */
+.mobile-menu{display:none;position:relative}
+.mobile-menu summary{list-style:none;cursor:pointer;border-radius:11px}
+.mobile-menu summary::-webkit-details-marker{display:none}
+.mobile-menu[open] summary{color:var(--accent);background:var(--accent-tint)}
+.mobile-menu-panel{
+  position:absolute;top:calc(100% + 12px);right:0;z-index:60;min-width:210px;
+  padding:8px;border:1px solid var(--glass-line);border-top-color:var(--glass-top);
+  border-radius:17px;background:var(--glass-strong);backdrop-filter:blur(22px) saturate(125%);
+  -webkit-backdrop-filter:blur(22px) saturate(125%);box-shadow:var(--shadow);
+}
+.mobile-menu-panel a{display:flex;align-items:center;min-height:44px;padding:10px 14px;border-radius:10px;color:var(--ink-soft);font-size:13px;font-weight:650;white-space:nowrap}
+.mobile-menu-panel a:hover,.mobile-menu-panel a:focus-visible{background:var(--accent-tint);color:var(--accent)}
+.mobile-menu[open] .mobile-menu-panel{animation:glass-appear .22s var(--ease-glass) both}
+@media(max-width:580px){
+  .mobile-menu{display:block}
+  .header-actions{gap:5px}
+}
+@media(max-width:360px){
+  .header-admin{min-width:44px;width:44px;justify-content:center;padding:8px}
+  .header-admin span{display:none}
+  .brand-name{font-size:16px}
+}
 /* Hero: quiet typography + one optically alive glass object. */
 .editorial-hero{padding-top:105px;padding-bottom:105px;gap:76px;min-height:625px}
 .overline,.section-kicker{color:var(--accent);letter-spacing:2px}
@@ -310,7 +333,7 @@ body{
   *,*::before,*::after{transition-duration:.01ms!important;animation-duration:.01ms!important}
 }
 @media(prefers-reduced-transparency:reduce){
-  .site-header,.hero-margin,.search-form,.trail-calendar,.trail-recent,.studio-metrics>div,.editor-settings,.login-form{background:var(--sheet);backdrop-filter:none;-webkit-backdrop-filter:none}
+  .site-header,.hero-margin,.search-form,.trail-calendar,.trail-recent,.studio-metrics>div,.editor-settings,.login-form,.mobile-menu-panel{background:var(--sheet);backdrop-filter:none;-webkit-backdrop-filter:none}
 }
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
  .site-header,.hero-margin,.search-form,.trail-calendar,.trail-recent,.studio-metrics>div,.editor-settings,.login-form{background:var(--sheet)}

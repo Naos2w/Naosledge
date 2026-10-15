@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight, PenLine } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
+import MobileNav from "@/components/mobile-nav";
 
 export default function Nav() {
   return <header className="site-header">
@@ -17,7 +18,8 @@ export default function Nav() {
       </nav>
       <div className="header-actions">
         <ThemeToggle/>
-        <Link href="/studio" className="header-admin"><PenLine size={15}/><span>寫筆記</span><ArrowUpRight size={14}/></Link>
+        <Link href="/studio" className="header-admin" aria-label="寫筆記"><PenLine size={15}/><span>寫筆記</span><ArrowUpRight size={14}/></Link>
+        <MobileNav/>
       </div>
     </div>
   </header>;
