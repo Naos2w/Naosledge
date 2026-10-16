@@ -1,17 +1,57 @@
 /**
- * Password recovery is deliberately Sandbox-only until the owner separately
- * approves the production website, a trusted HTTPS domain and Auth policies.
- * Keep this module pure so URL/token rules can be regression-tested offline.
+ * Password recovery is intentionally restricted to the approved Neon Sandbox.
+ * Only the owner's exact Vercel Preview project + development branch may use
+ * a hosted callback. The callback URL comes from Vercel system metadata, not
+ * the incoming request, Host header, or a user-controlled redirect parameter.
  */
-export function sandboxResetRedirect(siteUrl: string): string {
+export type PreviewRecoveryContext = {
+  vercelEnv?: string;
+  vercelBranchHost?: string;
+  gitRef?: string;
+  projectId?: string;
+  authorizedProjectId?: string;
+};
+
+export const APPROVED_PREVIEW_BRANCH = "feat/initial-v3-site-20261015";
+const PREVIEW_PROJECT_PREFIX = "naosledge-sandbox-preview-";
+
+/** None for local development; otherwise require complete Vercel metadata. */
+export function vercelPreviewContext(): PreviewRecoveryContext | undefined {
+  if (!process.env.VERCEL && !process.env.VERCEL_ENV) return undefined;
+  return {
+    vercelEnv: process.env.VERCEL_ENV || "unknown",
+    vercelBranchHost: process.env.VERCEL_BRANCH_URL,
+    gitRef: process.env.VERCEL_GIT_COMMIT_REF,
+    projectId: process.env.VERCEL_PROJECT_ID,
+    authorizedProjectId: process.env.NAOSLEDGE_PREVIEW_PROJECT_ID,
+  };
+}
+
+export function sandboxResetRedirect(
+  siteUrl: string,
+  context?: PreviewRecoveryContext,
+): string {
+  if (context?.vercelEnv !== undefined) {
+    const branchHost = context.vercelBranchHost || "";
+    if (
+      context.vercelEnv !== "preview" ||
+      context.gitRef !== APPROVED_PREVIEW_BRANCH ||
+      !context.projectId?.startsWith("prj_") ||
+      context.projectId !== context.authorizedProjectId ||
+      !branchHost.startsWith(PREVIEW_PROJECT_PREFIX) ||
+      !/^[a-z0-9-]+\.vercel\.app$/.test(branchHost)
+    ) {
+      throw new Error("只允許已授權的 Naosledge Vercel Sandbox Preview。");
+    }
+    return new URL("/reset-password", `https://${branchHost}`).href;
+  }
+
   let site: URL;
   try {
     site = new URL(siteUrl);
   } catch {
     throw new Error("尚未設定可用的 Sandbox 測試網站網址。");
   }
-  // Trust the explicitly configured local origin, never a request-controlled
-  // callback URL. Production and external domains are intentionally rejected.
   if (
     site.protocol !== "http:" ||
     site.hostname !== "localhost" ||

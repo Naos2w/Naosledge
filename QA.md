@@ -2,6 +2,15 @@
 
 驗證日期：2026-10-14 起，最新更新 2026-10-16
 
+## 2026-10-16：Vercel Hobby Preview — 授權已取得，建立權限受阻
+
+- Owner 已授權僅在 **Vercel Hobby `Naos Tsai's projects`** 建立 `naosledge-sandbox-preview`，只部署既有 Draft PR 的 feature 分支，連接已核准的 Neon Sandbox，禁止動 Production Auth／站長授權／正式網站。Vercel Connector 唯讀確認 Hobby 方案、GitHub `Naos2w/Naosledge` 已可存取、同名專案不存在。
+- 真正呼叫 Vercel `create_project` 一次，得到 **403 forbidden**（沒有建立專案權限），**沒有建立任何 Vercel 專案或部署**。核對 MSI 尚無 Vercel CLI 或本機登入狀態；不改用其他 Team 或付費方案，停止對外部署。
+- 既有 PR 的程式新增明確的 Vercel Preview callback 驗證：只接受 `VERCEL_ENV=preview`、原 feature branch、Vercel 提供的 Project ID 與待設定的 `NAOSLEDGE_PREVIEW_PROJECT_ID` 相等，以及 `naosledge-sandbox-preview-*.vercel.app` 格式的 `VERCEL_BRANCH_URL`。Backend 持續硬性核對**唯一獲准 Sandbox branch、Auth 與 Data API**，禁止 Vercel Production 使用。
+- SEO 預設 fail-closed：`VERCEL_ENV=preview` 時即使有人誤設 HTTPS `NEXT_PUBLIC_SITE_URL`，仍不產生 public canonical。所有回呼網址由受驗證的 Vercel branch metadata 產生，不讀請求 Host 或任意 `redirectTo`。
+- MSI 新增惡意 callback、錯誤 project ID、main/production branch、假 hostname 等單元測試；`npm run test:unit`、`npm run typecheck`、`npm run build`、兩套本機 Chrome 回歸均通過。**這些都不是部署成功或真正 Email 重設驗證**。
+- 完整待建置清單及 owner 權限阻礙見 [VERCEL_SANDBOX_PREVIEW.md](docs/VERCEL_SANDBOX_PREVIEW.md)。需先由 Owner 修正 Vercel 建立專案權限，再設定只限 Preview 的 Env 與秘密、Neon **Sandbox** Trusted Domain，才可能進行 Email 密碼恢復端到端驗證。
+
 ## 2026-10-16：站長帳號啟用 / 密碼恢復前置（Sandbox-only）
 
 - 先前已依 Owner 提供的 Email，透過 Neon Connector **只在 Naosledge Production** 建立 1 位 Auth user；實體唯讀核對 Email 未驗證、credential account 的 password 仍為 NULL，`public.blog_admins=0`。**沒有設定或取得密碼，不得直接視為可登入站長**。

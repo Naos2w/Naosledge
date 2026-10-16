@@ -5,6 +5,7 @@ import { neonAuth } from "@/lib/neon/auth-server";
 import { checkAdmin } from "@/lib/auth";
 import {
   sandboxResetRedirect, validRecoveryEmail, validRecoveryPassword, validRecoveryToken,
+  vercelPreviewContext,
 } from "@/lib/neon/password-recovery";
 import { neonSandboxConfig } from "@/lib/neon/config";
 
@@ -40,7 +41,7 @@ export async function requestNeonPasswordReset(email: unknown): Promise<{ok:bool
   try {
     // This also refuses anything except the already authorized test branch.
     neonSandboxConfig();
-    const redirectTo = sandboxResetRedirect(process.env.NEXT_PUBLIC_SITE_URL || "");
+    const redirectTo = sandboxResetRedirect(process.env.NEXT_PUBLIC_SITE_URL || "", vercelPreviewContext());
     const {error} = await neonAuth().requestPasswordReset({email, redirectTo});
     if (error) return {ok:false,error:"暫時無法寄送重設郵件，請稍後再試。"};
     // Do not reveal whether a user exists.

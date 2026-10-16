@@ -16,6 +16,39 @@ test("password recovery callback is pinned to explicit local sandbox origin", ()
   ]) assert.throws(() => sandboxResetRedirect(url), /Sandbox|網址/);
 });
 
+test("hosted password callbacks are pinned to the approved Vercel Preview and branch", () => {
+  const allowed = {
+    vercelEnv: "preview",
+    vercelBranchHost: "naosledge-sandbox-preview-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app",
+    gitRef: "feat/initial-v3-site-20261015",
+    projectId: "prj_actualExample",
+    authorizedProjectId: "prj_actualExample",
+  };
+  assert.equal(
+    sandboxResetRedirect("", allowed),
+    "https://naosledge-sandbox-preview-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app/reset-password",
+  );
+  const invalid = [
+    {vercelEnv: "production"},
+    {vercelEnv: "development"},
+    {gitRef: "main"},
+    {gitRef: "other-feature"},
+    {projectId: "prj_someoneElse"},
+    {authorizedProjectId: "prj_someoneElse"},
+    {authorizedProjectId: ""},
+    {vercelBranchHost: "evil.example"},
+    {vercelBranchHost: "naosledge-sandbox-preview-.vercel.app.evil.com"},
+    {vercelBranchHost: "https://naosledge-sandbox-preview-branch.vercel.app"},
+    {vercelBranchHost: "naosledge-sandbox-preview-branch.vercel.app:8443"},
+    {vercelBranchHost: "naosledge-sandbox-preview-branch.vercel.app/reset-password"},
+    {vercelBranchHost: "naosledge-sandbox-preview-branch.vercel.app?token=abc"},
+    {vercelBranchHost: "another-project-branch.vercel.app"},
+  ];
+  for(const override of invalid) {
+    assert.throws(() => sandboxResetRedirect("", {...allowed,...override}), /Preview/);
+  }
+});
+
 test("recovery email checks avoid invalid input and control characters", () => {
   assert.equal(validRecoveryEmail("owner@example.com"), true);
   assert.equal(validRecoveryEmail("owner+work@example.com"), true);

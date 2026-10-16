@@ -4,6 +4,7 @@
  */
 import { backend } from "@/lib/backend";
 import { validateNeonDataApiUrl } from "@/lib/neon/data-api";
+import { sandboxResetRedirect, vercelPreviewContext } from "@/lib/neon/password-recovery";
 
 export const NEON_SANDBOX_BRANCH = "br-quiet-sunset-b4xx4pnx";
 const SANDBOX_ENDPOINT = "ep-square-cloud-b45d18zl";
@@ -26,6 +27,10 @@ export function neonSandboxConfig(): SandboxConfig {
       process.env.NAOSLEDGE_NEON_BRANCH_ID !== NEON_SANDBOX_BRANCH) {
     throw new Error("Neon 模式必須明確指定已授權的 sandbox branch。");
   }
+  // A Vercel deployment must be the owner-approved PREVIEW of this exact
+  // project and branch. Never run the Neon backend on Vercel Production.
+  const vercel = vercelPreviewContext();
+  if (vercel) sandboxResetRedirect("", vercel);
   const authUrl = parseStrictHttps(process.env.NEON_AUTH_BASE_URL || "", "neonauth", "/neondb/auth");
   const dataApiUrl = parseStrictHttps(
     validateNeonDataApiUrl(process.env.NEON_DATA_API_URL || ""), "apirest", "/neondb/rest/v1");

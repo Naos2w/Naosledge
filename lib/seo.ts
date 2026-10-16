@@ -5,6 +5,9 @@ import type { Post } from "./types";
  * incoming Host header. Never publish localhost/test-domain canonicals.
  */
 export function getPublicSiteOrigin(raw = process.env.NEXT_PUBLIC_SITE_URL): string | null {
+  // Never permit public search indexing for a Vercel Preview, even if an
+  // environment variable is accidentally configured as a valid HTTPS URL.
+  if (process.env.VERCEL_ENV === "preview") return null;
   if (!raw || !raw.trim()) return null;
   try {
     const url = new URL(raw.trim());

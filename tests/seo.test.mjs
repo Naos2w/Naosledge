@@ -10,6 +10,18 @@ test("only an explicit HTTPS public deployment origin becomes canonical", () => 
   assert.equal(getPublicSiteOrigin("https://www.naosledge.tw"), "https://www.naosledge.tw");
 });
 
+test("Vercel preview never produces a public canonical even with HTTPS site URL", () => {
+  const previous = process.env.VERCEL_ENV;
+  try {
+    process.env.VERCEL_ENV = "preview";
+    assert.equal(getPublicSiteOrigin("https://www.naosledge.tw"), null);
+    assert.equal(getPublicSiteOrigin("https://naosledge-sandbox-preview.vercel.app"), null);
+  } finally {
+    if (previous === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = previous;
+  }
+});
+
 test("reject placeholders, localhost, unsafe origins and malformed URLs", () => {
   for (const value of [
     "", " ", "http://localhost:3000", "http://127.0.0.1:3123",
