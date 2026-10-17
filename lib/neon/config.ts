@@ -1,11 +1,13 @@
 /**
- * Deliberately restricted to the one owner-approved Neon TEST branch.
- * Any future production migration needs a separate change and approval.
+ * Separate fail-closed backend identities: Sandbox, previously authorized
+ * one-time private Preview, and an explicit (not yet enabled) public release.
+ * No branch ID or URL alone authorizes Production access.
  */
 import { backend } from "@/lib/backend";
 import { validateNeonDataApiUrl } from "@/lib/neon/data-api";
 import { sandboxResetRedirect, vercelPreviewContext } from "@/lib/neon/password-recovery";
 import {VAULT_PREVIEW_NEON_BRANCH,validatePrivateVaultPreview} from "@/lib/neon/vault-preview";
+import {productionReleaseIntent,validateProductionRelease} from "@/lib/neon/production-release";
 
 export const NEON_SANDBOX_BRANCH = "br-quiet-sunset-b4xx4pnx";
 const SANDBOX_ENDPOINT = "ep-square-cloud-b45d18zl";
@@ -27,9 +29,13 @@ export function neonSandboxConfig(): SandboxConfig {
   if (backend() !== "neon") {
     throw new Error("Neon 模式必須明確啟用並通過雙端設定檢查。");
   }
-  // Only one independently approved, exact Vercel Preview can use the
-  // existing Production Auth/Data API. Never grant this to Production or
-  // the older Sandbox PR. The original Sandbox path remains unchanged.
+  // Production mode must pass the separate approved-main-commit gate.
+  // This is code-only readiness; no Production Vercel variables are enabled.
+  if (productionReleaseIntent(process.env)) {
+    return validateProductionRelease(process.env);
+  }
+  // An independently approved and now-disabled Private Vault Preview retains
+  // its own exact-branch gate; the original Sandbox path is unchanged.
   if (process.env.NAOSLEDGE_NEON_BRANCH_ID===VAULT_PREVIEW_NEON_BRANCH) {
     return validatePrivateVaultPreview(process.env);
   }
