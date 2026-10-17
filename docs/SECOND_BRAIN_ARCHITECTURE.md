@@ -1,6 +1,6 @@
 # Naosledge Second Brain — P1 + P2 實作／驗收規格
 
-更新：2026-10-17。這份文件屬於獨立開發分支 `feat/private-knowledge-vault-20261017`，建基於原 Draft PR #1 的程式碼。**目前只在隔離 Git worktree 開發與本機 PGlite 合成資料庫測試。沒有在 Neon Sandbox 或 Production 套用本階段的 SQL，沒有建立帳號、寄信、合併或部署 Vercel。**
+更新：2026-10-17。這份文件屬於獨立開發分支 `feat/private-knowledge-vault-20261017`，建基於原 Draft PR #1。**Owner 已明確核准並在 Naosledge Neon Sandbox 套用 `002`；真實 Better Auth／JWT／Data API／RLS／Chrome E2E 全部通過，合成帳號與資料已清理。Neon Production 未套用 `002`、未合併 PR、未部署新版本至 Vercel，也沒有使用正式站長帳號。**
 
 ## 決定的產品定位
 
@@ -15,10 +15,10 @@
 | 站長 A | 僅自己持有 | 僅自己的連結／映射 | 可自行建立草稿 | 依既有 posts 管理規則 |
 | 站長 B | **無法查看 A 的私人內容** | 無法查看 A 的連結 | 無法由 A 的知識建立草稿 | 依既有 posts 管理規則 |
 
-### Migration（未獲准線上執行）
+### Migration（已核准套用 Sandbox，Production 尚未授權）
 
 - 檔案：`neon/migrations/002_private_knowledge_vault.sql`，必須先有既有 `001_initial_blog.sql`、Better Auth 與 Data API 角色。
-- `knowledge_notes`：隸屬 owner 的私人筆記，`id` 與每位 owner 內唯一的 slug、Title、Summary、Markdown、Category/Tags、日期。所有寫入、讀取由 Neon JWT `auth.user_id()` + `blog_admins` 權限 + RLS 強制限制。
+- `knowledge_notes`：隸屬 owner 的私人筆記，`id` 與每位 owner 內唯一的 slug、Title、Summary、Markdown、Category/Tags、日期。所有寫入、讀取由 Neon JWT 經受控 `public.vault_current_user_id()` 解析，並配合 `blog_admins` 與 RLS 強制限制。
 - `knowledge_links`：`(owner_id,source_note_id,target_key)` 主鍵，以文本鍵儲存 `[[slug]]`、`[[標題]]` 的**有方向連結**；無目標時保留未解析鍵，未來補建筆記會自動符合。刪除來源筆記會由 FK cascade 刪除該來源的連結。
 - `knowledge_publication_sources`：僅站長本人可見的私人原稿與公開文章副本對應表，不能由匿名透過 Data API 讀取。
 - `save_knowledge_note` RPC：一個 PostgreSQL 交易內更新筆記並重建 outgoing links，避免筆記與連結一半成功。函式為 `SECURITY INVOKER`，不能繞過資料表 RLS。
@@ -26,7 +26,7 @@
 - `search_knowledge_notes` RPC：以 `GIN(search_document)` 搜尋英文/空白分詞，並用字串 substring 補足中文及摘要／標籤；**中文子字串尚未有倒排索引**，大量資料時須另評估 `pg_trgm` 或 tokenizer，不應宣稱是完整索引的中文全文搜尋。
 - 所有新表預設不授權匿名，不向公開文章頁傳遞私有 ID／來源映射；函式權限也撤除對 PUBLIC/anonymous 的預設 EXECUTE。
 
-**這不是可直接複製到 Production 執行的授權。** 線上執行前需分別審查、核准目標 Sandbox 分支、確認資料庫狀態、備份/回復方案與免費額度；Sandbox 驗收通過後才另行核准 Production。嚴禁操作其他既有 Supabase/Neon 專案。
+**這不是可直接複製到 Production 執行的授權。** Sandbox 已按本次獨立授權完成 002 Migration 與實體驗收；Production 必須另行評估備份／回復、身分政策、正式站長、免費額度與部署安全，並獲得另一個明確授權。嚴禁操作其他既有 Supabase/Neon 專案。
 
 ## UI／功能
 
@@ -49,7 +49,7 @@ npm run build
 npm run test:browser:local
 ```
 
-`tests/knowledge-rls.test.mjs` 於**本機 PGlite 合成資料庫**串接 001+002；驗證非站長/匿名拒絕、兩站長私人資料隔離、RPC 原子寫入、英文索引、中文 substring、Backlinks 私有性、公開草稿仍為 draft、owner 不能替他人建立公開草稿。與真正 Neon Managed Better Auth/JWT + Chrome 的 E2E **不同**，線上測試需額外批准、僅使用合成測試帳號並驗後清理。
+`tests/knowledge-rls.test.mjs` 於**本機 PGlite 合成資料庫**串接 001+002，驗證匿名／非站長拒絕、兩站長私人資料隔離、RPC 原子寫入、英文索引、中文 substring、Backlinks 私有性及公開草稿仍為 draft。**本次另已在經授權的 Neon Sandbox 完成真正 JWT/Data API/Chrome E2E**，實體驗收結果及清理證據見下方。測試腳本不得排入 CI，不能轉用 Production。
 
 `tests/wiki-links.test.mjs` 驗證語法、Markdown AST 跳過 code/html、slug/標題的歧義與安全路徑；`tests/vault-validation.test.mjs` 驗證長度、資料格式、連結上限、匯出為公開草稿前的非連結文字轉換。
 

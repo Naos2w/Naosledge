@@ -17,10 +17,10 @@ Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這
 - **私人預設**：新表使用 Neon Auth JWT + RLS，只有實際站長能讀取**自己**的私人筆記，匿名和一般登入者無表格／RPC 權限，與公開 `posts` 完全分離。
 - **經審核的公開副本**：可明確產生一篇與私人原稿分離的 **status=draft** 文章，需再進入既有 Studio 檢查、手動發布；私人關係與來源 mapping 不會公開。
 - **效能與限制**：已有 PostgreSQL `tsvector/GIN` 英文全文搜尋；中文以 Unicode 字串比對作為初期功能（尚非索引化中文搜尋）。互動圖譜、AI 語意搜尋、Obsidian 雙向自動同步留到後續階段。
-- **部署邊界**：`002_private_knowledge_vault.sql` 只在本機合成 PGlite 測試通過，**未套用到線上 Neon Sandbox 或 Production**。分支 `vercel.json` 特別禁止這個新 branch 自動 Preview 部署，避免未核准的 Sandbox Schema/付費用量及影響原 PR #1 的 Vercel。
-- **測試**：本機 PGlite 權限、SQL RPC、中文搜尋、Wikilinks、公開草稿副本、單元測試、Next.js Build 和舊網站 Chrome 回歸。
+- **部署邊界**：Owner 已明確核准且在 **Naosledge Neon Sandbox** 套用 `002_private_knowledge_vault.sql`；SQL 與真實 Neon Auth／JWT／RLS／Chrome E2E 都已通過，測試資料清理為 0。**Production 尚未套用 002**。分支 `vercel.json` 仍禁止新分支自動 Preview 部署，避免影響 PR #1 的 Vercel 或耗用未核准額度。
+- **測試**：本機 PGlite 權限、SQL RPC、中文搜尋、Wikilinks、公開草稿副本、單元測試、Next.js Build 和舊網站 Chrome 回歸均通過，另外已完成**真實 MSI Chrome + Neon Sandbox** 私人筆記新增、雙向連結、Backlinks、中文搜尋、跨帳號隔離與公開草稿保護驗收。
 
-詳見 [Second Brain 架構與安全驗收](docs/SECOND_BRAIN_ARCHITECTURE.md)。功能需要另外核准 Neon Sandbox Migration 後才能進行實際登入/CRUD E2E；線上正式站長和 Production 不在這次授權內。
+詳見 [Second Brain 架構規格](docs/SECOND_BRAIN_ARCHITECTURE.md) 與 [Neon Sandbox 實體驗收及清理證據](docs/SECOND_BRAIN_SANDBOX_VERIFICATION.md)。**Sandbox 已驗收完成**；接下來如要套用 Neon Production Migration 或把這個 Vault 部署到正式網域，需 Owner 另行授權，正式站長帳號也尚未啟用。
 
 ## v3 視覺與互動設計
 

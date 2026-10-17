@@ -1,13 +1,21 @@
 -- Naosledge Second Brain P1/P2: ADDITIVE private-only schema.
--- Proposal only. DO NOT APPLY to Neon Production or existing Supabase.
+-- Verified on authorized Neon Sandbox 2026-10-17. DO NOT APPLY to Production or Supabase without separate approval.
 -- Requires 001_initial_blog.sql, managed Better Auth, auth.user_id(), and
--- Neon Data API anonymous/authenticated roles; no migration permission implied.
+-- Neon Data API anonymous/authenticated roles; Sandbox authorization does not approve Production.
 -- Existing public.posts (and its publishing behavior) is not changed.
 BEGIN;
 
+-- Managed auth is owned by cloud_admin. In actual Neon the authenticated role
+-- cannot be granted auth-schema USAGE through the project database role.
+-- This limited SECURITY DEFINER helper exposes ONLY the identity from the
+-- Neon-verified JWT, and accepts no caller-controlled user IDs or SQL inputs.
+CREATE FUNCTION public.vault_current_user_id()
+RETURNS text LANGUAGE sql STABLE SECURITY DEFINER SET search_path = ''
+AS $$ SELECT auth.user_id(); $$;
+
 CREATE TABLE public.knowledge_notes (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  owner_id text NOT NULL DEFAULT (auth.user_id())
+  owner_id text NOT NULL DEFAULT (public.vault_current_user_id())
     CHECK (char_length(owner_id) BETWEEN 1 AND 256),
   slug text NOT NULL
     CHECK (char_length(slug) BETWEEN 3 AND 120 AND slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
@@ -39,7 +47,7 @@ FOR EACH ROW EXECUTE FUNCTION public.blog_touch_updated_at();
 -- It is intentionally not an FK: unresolved links become live when a matching
 -- private note is created later, and target note identities are never public.
 CREATE TABLE public.knowledge_links (
-  owner_id text NOT NULL DEFAULT (auth.user_id())
+  owner_id text NOT NULL DEFAULT (public.vault_current_user_id())
     CHECK (char_length(owner_id) BETWEEN 1 AND 256),
   source_note_id uuid NOT NULL,
   target_key text NOT NULL
@@ -55,7 +63,7 @@ CREATE INDEX knowledge_links_backlinks_idx ON public.knowledge_links(owner_id, t
 -- Future explicit publishing map: PRIVATE ONLY, never sent to public clients.
 -- A curated public post is a separate snapshot in existing public.posts.
 CREATE TABLE public.knowledge_publication_sources (
-  owner_id text NOT NULL DEFAULT (auth.user_id())
+  owner_id text NOT NULL DEFAULT (public.vault_current_user_id())
     CHECK (char_length(owner_id) BETWEEN 1 AND 256),
   note_id uuid NOT NULL,
   post_id uuid NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
@@ -70,7 +78,7 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY INVOKER SET search_path = ''
 AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.blog_admins
-    WHERE user_id = (SELECT auth.user_id())
+    WHERE user_id = (SELECT public.vault_current_user_id())
   );
 $$;
 
@@ -85,52 +93,56 @@ REVOKE ALL ON public.knowledge_notes FROM PUBLIC, anonymous, authenticated;
 REVOKE ALL ON public.knowledge_links FROM PUBLIC, anonymous, authenticated;
 REVOKE ALL ON public.knowledge_publication_sources FROM PUBLIC, anonymous, authenticated;
 REVOKE ALL ON FUNCTION public.is_knowledge_owner() FROM PUBLIC, anonymous, authenticated;
+-- Keep the JWT helper executable only for authenticated Neon Data API users.
+-- Do not grant general USAGE on the Neon-managed auth schema.
+REVOKE ALL ON FUNCTION public.vault_current_user_id() FROM PUBLIC, anonymous, authenticated;
+GRANT EXECUTE ON FUNCTION public.vault_current_user_id() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.is_knowledge_owner() TO authenticated;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.knowledge_notes TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.knowledge_links TO authenticated;
+GRANT SELECT, INSERT, DELETE ON public.knowledge_links TO authenticated;
 GRANT SELECT, INSERT, DELETE ON public.knowledge_publication_sources TO authenticated;
 
 CREATE POLICY knowledge_notes_select_own ON public.knowledge_notes
 FOR SELECT TO authenticated
-USING (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+USING (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 CREATE POLICY knowledge_notes_insert_own ON public.knowledge_notes
 FOR INSERT TO authenticated
-WITH CHECK (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+WITH CHECK (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 CREATE POLICY knowledge_notes_update_own ON public.knowledge_notes
 FOR UPDATE TO authenticated
-USING (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()))
-WITH CHECK (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+USING (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()))
+WITH CHECK (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 CREATE POLICY knowledge_notes_delete_own ON public.knowledge_notes
 FOR DELETE TO authenticated
-USING (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+USING (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 CREATE POLICY knowledge_links_select_own ON public.knowledge_links
 FOR SELECT TO authenticated
-USING (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+USING (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 CREATE POLICY knowledge_links_insert_own ON public.knowledge_links
 FOR INSERT TO authenticated
-WITH CHECK (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+WITH CHECK (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 CREATE POLICY knowledge_links_delete_own ON public.knowledge_links
 FOR DELETE TO authenticated
-USING (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+USING (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 CREATE POLICY knowledge_publications_select_own ON public.knowledge_publication_sources
 FOR SELECT TO authenticated
-USING (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+USING (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 CREATE POLICY knowledge_publications_insert_own ON public.knowledge_publication_sources
 FOR INSERT TO authenticated
-WITH CHECK (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+WITH CHECK (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 CREATE POLICY knowledge_publications_delete_own ON public.knowledge_publication_sources
 FOR DELETE TO authenticated
-USING (owner_id = (SELECT auth.user_id()) AND (SELECT public.is_knowledge_owner()));
+USING (owner_id = (SELECT public.vault_current_user_id()) AND (SELECT public.is_knowledge_owner()));
 
 -- Save the note and its backlinks atomically. SECURITY INVOKER means the
 -- member's actual Neon JWT and RLS are checked for every write.
@@ -150,7 +162,7 @@ AS $$
 DECLARE
   note_id uuid;
 BEGIN
-  IF NOT (SELECT public.is_knowledge_owner()) OR auth.user_id() IS NULL THEN
+  IF NOT (SELECT public.is_knowledge_owner()) OR public.vault_current_user_id() IS NULL THEN
     RAISE EXCEPTION 'knowledge note permission denied' USING ERRCODE = '42501';
   END IF;
   IF coalesce(array_length(p_links, 1), 0) > 80 THEN
@@ -160,14 +172,14 @@ BEGIN
     INSERT INTO public.knowledge_notes
       (owner_id, title, slug, summary, content_md, category, tags, learned_on)
     VALUES
-      (auth.user_id(), p_title, p_slug, p_summary, p_content_md, p_category, p_tags, p_learned_on)
+      (public.vault_current_user_id(), p_title, p_slug, p_summary, p_content_md, p_category, p_tags, p_learned_on)
     RETURNING id INTO note_id;
   ELSE
     UPDATE public.knowledge_notes
     SET title = p_title, slug = p_slug, summary = p_summary,
         content_md = p_content_md, category = p_category, tags = p_tags,
         learned_on = p_learned_on
-    WHERE id = p_id AND owner_id = (SELECT auth.user_id())
+    WHERE id = p_id AND owner_id = (SELECT public.vault_current_user_id())
     RETURNING id INTO note_id;
     IF note_id IS NULL THEN
       RAISE EXCEPTION 'knowledge note not found or not owned' USING ERRCODE = '42501';
@@ -175,9 +187,9 @@ BEGIN
   END IF;
 
   DELETE FROM public.knowledge_links
-  WHERE owner_id = (SELECT auth.user_id()) AND source_note_id = note_id;
+  WHERE owner_id = (SELECT public.vault_current_user_id()) AND source_note_id = note_id;
   INSERT INTO public.knowledge_links(owner_id, source_note_id, target_key)
-  SELECT auth.user_id(), note_id, lower(btrim(key))
+  SELECT public.vault_current_user_id(), note_id, lower(btrim(key))
   FROM unnest(coalesce(p_links, ARRAY[]::text[])) AS x(key)
   WHERE key IS NOT NULL AND char_length(btrim(key)) BETWEEN 1 AND 160
   ON CONFLICT DO NOTHING;
@@ -195,7 +207,7 @@ LANGUAGE sql STABLE SECURITY INVOKER SET search_path = ''
 AS $$
   SELECT n.*
   FROM public.knowledge_notes AS n
-  WHERE n.owner_id = (SELECT auth.user_id())
+  WHERE n.owner_id = (SELECT public.vault_current_user_id())
     AND (
       NULLIF(btrim(left(coalesce(p_query, ''), 120)), '') IS NULL
       OR n.search_document @@ websearch_to_tsquery('simple'::regconfig, left(p_query, 120))
@@ -225,11 +237,11 @@ DECLARE
   source_note public.knowledge_notes%ROWTYPE;
   created_post uuid;
 BEGIN
-  IF NOT (SELECT public.is_knowledge_owner()) OR auth.user_id() IS NULL THEN
+  IF NOT (SELECT public.is_knowledge_owner()) OR public.vault_current_user_id() IS NULL THEN
     RAISE EXCEPTION 'knowledge publishing permission denied' USING ERRCODE = '42501';
   END IF;
   SELECT n.* INTO source_note FROM public.knowledge_notes AS n
-  WHERE n.id = p_note_id AND n.owner_id = (SELECT auth.user_id());
+  WHERE n.id = p_note_id AND n.owner_id = (SELECT public.vault_current_user_id());
   IF NOT FOUND THEN
     RAISE EXCEPTION 'private source note not found or not owned' USING ERRCODE = '42501';
   END IF;
@@ -241,12 +253,12 @@ BEGIN
     author_id, slug, title, excerpt, content_md, category, tags,
     status, learned_on, published_at
   ) VALUES (
-    auth.user_id(), p_public_slug, source_note.title, source_note.summary,
+    public.vault_current_user_id(), p_public_slug, source_note.title, source_note.summary,
     p_review_content_md, source_note.category, source_note.tags,
     'draft', source_note.learned_on, NULL
   ) RETURNING id INTO created_post;
   INSERT INTO public.knowledge_publication_sources(owner_id,note_id,post_id)
-  VALUES (auth.user_id(), source_note.id, created_post);
+  VALUES (public.vault_current_user_id(), source_note.id, created_post);
   RETURN created_post;
 END;
 $$;

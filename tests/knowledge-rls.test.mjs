@@ -80,6 +80,23 @@ test("P1/P2 private vault migration isolates knowledge, links, publications and 
       assert.ok(indexes.rows.map(r=>r.indexname).includes("knowledge_notes_fts_idx"));
     });
 
+    await t.test("limited verified JWT helper is definer-only and unavailable to anonymous",async()=>{
+      const {rows:helper}=await db.query(`
+        SELECT prosecdef AS security_definer,
+          has_function_privilege('authenticated','public.vault_current_user_id()','EXECUTE') AS member_execute,
+          has_function_privilege('anonymous','public.vault_current_user_id()','EXECUTE') AS anonymous_execute
+        FROM pg_proc WHERE oid='public.vault_current_user_id()'::regprocedure
+      `);
+      assert.deepEqual(helper,[{
+        security_definer:true,member_execute:true,anonymous_execute:false,
+      }]);
+      const member=await as("authenticated",alice,query=>query("SELECT public.vault_current_user_id() AS user_id"));
+      assert.equal(member.rows[0].user_id,alice);
+      await as("anonymous","",query=>assert.rejects(
+        query("SELECT public.vault_current_user_id()"),/permission denied/,
+      ));
+    });
+
     await t.test("anonymous access cannot read private rows, indexes or call RPCs",async()=>{
       await as("anonymous","",async query=>{
         for(const table of ["knowledge_notes","knowledge_links","knowledge_publication_sources"]) {
