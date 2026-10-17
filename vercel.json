@@ -6,7 +6,8 @@
       "feat/owner-activation-20261017": false,
       "feat/knowledge-graph-p3-20261017": false,
       "feat/vault-preview-20261017": false,
-      "feat/production-release-gate-20261017": false
+      "feat/production-release-gate-20261017": false,
+      "fix/production-sitemap-build-20261018": false
     }
   }
 }

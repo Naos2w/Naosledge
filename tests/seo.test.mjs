@@ -1,8 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {
   getPublicSiteOrigin, articleCanonical, articleStructuredData, safeJsonLd,
 } from "../lib/seo.ts";
+
+test("public sitemap stays request-time dynamic to avoid Neon Auth fetch during build",()=>{
+  const source=readFileSync(new URL("../app/sitemap.ts",import.meta.url),"utf8");
+  assert.match(source,/export const dynamic\s*=\s*["\x27]force-dynamic["\x27]/);
+  assert.match(source,/await publishedPosts\(\)/);
+});
 
 test("only an explicit HTTPS public deployment origin becomes canonical", () => {
   assert.equal(getPublicSiteOrigin("https://naosledge.vercel.app"), "https://naosledge.vercel.app");
