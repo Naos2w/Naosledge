@@ -77,6 +77,15 @@ try{
  assert.ok(await page.getByRole("button",{name:/申請首次設定密碼連結/}).isVisible());
  assert.ok(await page.locator("#owner-verification-otp").isVisible());
  console.log("PASS: owner activation form renders without sending an email");
+ for(const otherRoute of ["/","/about","/studio","/vault","/forgot-password","/robots.txt"]) {
+   // Node fetch can inspect an intentionally bodyless HTTP 404 without
+   // Chromium treating navigation to the empty error response as a failure.
+   const blocked=await fetch(localhost+otherRoute,{redirect:"manual"});
+   assert.equal(blocked.status,404,"Standalone owner Preview must block "+otherRoute);
+   assert.match(blocked.headers.get("cache-control")||"",/no-store/);
+   assert.match(blocked.headers.get("x-robots-tag")||"",/noindex/);
+ }
+ console.log("PASS: owner-only Preview refuses blog, Studio, Vault, recovery and robots routes");
  res=await page.goto(localhost+"/owner-activation/reset?token=short",{waitUntil:"networkidle"});
  assert.equal(res.status(),200);
  assert.match(res.headers()["cache-control"]||"",/no-store/);

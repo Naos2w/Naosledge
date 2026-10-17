@@ -4,6 +4,18 @@ import { backend } from "@/lib/backend";
 import { neonAuth } from "@/lib/neon/auth-server";
 
 export async function proxy(request: NextRequest) {
+  // A manual deployment of this owner-onboarding branch must not expose the
+  // regular public blog, Studio, Vault or any other app routes. It is a
+  // temporary managed-Auth-only site, not a site release or Production deploy.
+  if (process.env.VERCEL_ENV === "preview" &&
+      process.env.VERCEL_GIT_COMMIT_REF === "feat/owner-activation-20261017" &&
+      !request.nextUrl.pathname.startsWith("/owner-activation")) {
+    return new NextResponse(null,{status:404,headers:{
+      "Cache-Control":"private, no-store, max-age=0",
+      "Referrer-Policy":"no-referrer",
+      "X-Robots-Tag":"noindex, nofollow, noarchive",
+    }});
+  }
   if (request.nextUrl.pathname.startsWith("/owner-activation")) {
     // Activation is an isolated managed-Auth workflow. Do NOT use either the
     // Supabase session refresher or the Sandbox Neon backend on these routes.
