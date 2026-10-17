@@ -1,0 +1,46 @@
+{
+  "name": "naosledge",
+  "version": "3.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/*.test.mjs",
+    "test:neon:rls": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/neon-rls.test.mjs",
+    "verify:neon:sandbox:manual": "node scripts/verify-neon-sandbox.mjs",
+    "test:browser:local": "node scripts/smoke-browser.mjs",
+    "test:browser:neon-recovery:local": "node scripts/smoke-neon-recovery-ui.mjs",
+    "test:browser:owner-activation:local": "node scripts/smoke-owner-activation-ui.mjs",
+    "test:browser:knowledge-graph:local": "node scripts/smoke-knowledge-graph.mjs",
+    "test:release:closed:local": "node scripts/smoke-production-closed.mjs",
+    "verify:owner-email:sandbox:manual": "node scripts/verify-owner-email-sandbox.mjs",
+    "verify:anonymous": "node --env-file=.env.local scripts/verify-anonymous-access.mjs"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "dependencies": {
+    "@neondatabase/auth": "0.6.0-beta",
+    "@neondatabase/postgrest-js": "0.2.0-beta",
+    "@supabase/ssr": "0.12.7",
+    "@supabase/supabase-js": "2.117.3",
+    "lucide-react": "1.56.0",
+    "next": "16.4.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-markdown": "10.1.0",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "unified": "11.0.5"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.10",
+    "@types/node": "22.15.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "playwright-core": "1.64.1",
+    "typescript": "5.9.3"
+  }
+}
