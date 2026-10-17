@@ -6,7 +6,8 @@ import {requireAdmin} from "@/lib/auth";
 import {isKnowledgeId} from "@/lib/vault-validation";
 import {wikiTargetMap} from "@/lib/wiki-links";
 import type {KnowledgeTitle} from "@/lib/wiki-links";
-import {buildKnowledgeGraph,type KnowledgeGraph,type KnowledgeGraphNote,type KnowledgeGraphReference} from "@/lib/knowledge-graph";
+import {buildKnowledgeGraph,type KnowledgeGraph,type KnowledgeGraphNote} from "@/lib/knowledge-graph";
+import {graphNoteIdBatches,selectGraphReferences,type DatedGraphReference} from "@/lib/vault-graph-queries";
 
 export type VaultContext = Awaited<ReturnType<typeof requireAdmin>>;
 export type VaultNote = {
@@ -130,18 +131,27 @@ export async function loadVaultGraph({supabase,user}:VaultContext):Promise<Vault
       notesTruncated:false,linksTruncated:false,
     };
   }
-  const ids=notes.map(n=>n.id);
-  const linkResult=await supabase.from("knowledge_links")
-    .select("source_note_id,target_key")
-    .eq("owner_id",user.id)
-    .in("source_note_id",ids)
-    .order("created_at",{ascending:false})
-    .limit(LINK_LIMIT+1);
-  if(linkResult.error)throw vaultReadError();
-  const refList=(linkResult.data||[]) as KnowledgeGraphReference[];
-  const linksTruncated=refList.length>LINK_LIMIT;
+  // PostgREST `in.(uuid,...)` is a GET URL filter. At 180 UUIDs the
+  // request can exceed common proxy URL limits; use four bounded batches.
+  // Each batch retains its newest LIMIT+1 so merging still yields the
+  // globally most recent links, not only links from the first batch.
+  const batches=graphNoteIdBatches(notes.map(n=>n.id));
+  const results=await Promise.all(batches.map(ids=>
+    supabase.from("knowledge_links")
+      .select("source_note_id,target_key,created_at")
+      .eq("owner_id",user.id)
+      .in("source_note_id",ids)
+      .order("created_at",{ascending:false})
+      .order("source_note_id",{ascending:true})
+      .order("target_key",{ascending:true})
+      .limit(LINK_LIMIT+1)
+  ));
+  if(results.some(r=>r.error))throw vaultReadError();
+  const {references,truncated:linksTruncated}=selectGraphReferences(
+    results.map(r=>(r.data||[]) as DatedGraphReference[]),LINK_LIMIT
+  );
   return {
-    graph:buildKnowledgeGraph(notes,refList.slice(0,LINK_LIMIT)),
+    graph:buildKnowledgeGraph(notes,references),
     notesTruncated,linksTruncated,
   };
 }

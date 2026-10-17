@@ -18,7 +18,7 @@
 ## 私密資料與效能規則
 
 1. Server Component 的 `requireVault()` 先要求 Neon backend、正式 Email 已驗證的站長登入與 RLS。圖譜也保持 `dynamic=force-dynamic` 與 `noindex`。
-2. `loadVaultGraph()` 將兩次資料庫讀取都綁定 **JWT/RLS + `owner_id`**。只查詢 `id`、`slug`、`title`、`category`、`tags` 和私人參照的 `source_note_id`／`target_key`。**絕不將 `content_md`、`summary`、`owner_id`、Auth Token／Password 或 `knowledge_publication_sources` 傳到圖譜元件**。
+2. `loadVaultGraph()` 將筆記與所有連結批次查詢都綁定 **JWT/RLS + `owner_id`**。只查詢 `id`、`slug`、`title`、`category`、`tags` 與私人參照的 `source_note_id`／`target_key`；連結讀取時用於全域新舊排序的 `created_at` 僅留在伺服器。**絕不將 `content_md`、`summary`、`owner_id`、Auth Token／Password、參照時間或 `knowledge_publication_sources` 傳到圖譜元件**。
 3. 後端最多取**最近 180 篇**私人筆記、**2,400 條**這些筆記的私人參照（使用 `+1` 判定截斷）；單次 SVG 圖譜最多顯示 100 個節點，篩選後可用文字清單瀏覽已載入者。限制截斷要在畫面上說明，不得把「看不到」誤認為「沒有關聯」。
 4. 可視化由 `lib/knowledge-graph.ts` 的純函式在記憶體中推導，穩定 Hash + 有限圈層，無長時間輪詢、外部資料呼叫、付費 Graph Database 或 AI API；以免費 Hobby 預算為優先。
 5. 私人 Vault 的所有路由都加上 `Cache-Control: private, no-store`、`Referrer-Policy: no-referrer`、`X-Robots-Tag: noindex, nofollow, noarchive`。公開文章完全不渲染私人 Graph。Supabase 相容模式的 `/vault/graph` 一律 404。
@@ -28,6 +28,7 @@
 ## 測試
 
 - `tests/knowledge-graph.test.mjs`：使用純合成節點、標題歧義、無效 ID、隱藏內容、超量資料，驗證解析關係、限制、決定性佈局與兩層聚焦。
+- `tests/vault-graph-queries.test.mjs`：180 篇筆記的 ID 最多每批 48 個、完整 Neon PostgREST 模擬請求網址低於 3KB、所有批次維持 `owner_id` 限制，並驗證最新 2,400 條連結的全域排序、截斷與不將時間欄位傳給前端；**不呼叫任何 Neon 網路端點**。
 - `scripts/smoke-knowledge-graph.mjs`：建立暫時的 Next.js 測試頁並載入**真正的 Graph React 元件及 CSS**，使用 MSI Chrome/Edge 驗證四組 viewport、SVG 滾動與自動置中、節點點擊／鍵盤、標題與標籤搜尋、分類篩選及直接筆記導航；所有資料為合成，**沒有任何 Neon Auth／Data API／Production 網路請求**，測試後移除暫時路由。
 - `npm run test:unit`、`npm run typecheck`、`npm run build`、`npm run test:browser:local`、`npm run test:browser:neon-recovery:local`、`npm run test:browser:owner-activation:local` 持續保護前一階段行為。
 - Screenshot 只保留在 MSI 本機 Temp 供人工審閱，不上傳 GitHub／CI；Graph 沒有真實私人筆記照片資料。
