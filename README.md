@@ -10,6 +10,18 @@ GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的
 
 目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待 Neon 正式 Auth 安全政策、站長身分、網站 Production 模式及 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。Neon **隔離分支**已完成真實 Better Auth／JWT／Data API／PostgreSQL RLS 與站長 CRUD 驗證，合成帳號／文章已清除；而 **Next.js 網站已可在 Neon Sandbox 模式下以真正的 Auth／Data API 完成登入、草稿、發布、編輯及刪除**；Neon `production` 已另行獲准建立文章表、RLS 及 Data API（目前無文章或站長授權），正式網站仍未部署。詳見 [Neon 隔離整合驗收報告](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
 
+## P1 + P2：私人第二大腦（獨立開發中）
+
+Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這一階段在獨立分支 `feat/private-knowledge-vault-20261017` 開發，**不是原 PR #1 已上線功能**。新建 `/vault`、`/vault/new`、`/vault/[id]`，以獨立 `knowledge_notes` 保存私人 Markdown，並支援搜尋索引、`[[slug]]`、`[[標題|顯示名稱]]`、雙向反向連結與尚未解析的關係。
+
+- **私人預設**：新表使用 Neon Auth JWT + RLS，只有實際站長能讀取**自己**的私人筆記，匿名和一般登入者無表格／RPC 權限，與公開 `posts` 完全分離。
+- **經審核的公開副本**：可明確產生一篇與私人原稿分離的 **status=draft** 文章，需再進入既有 Studio 檢查、手動發布；私人關係與來源 mapping 不會公開。
+- **效能與限制**：已有 PostgreSQL `tsvector/GIN` 英文全文搜尋；中文以 Unicode 字串比對作為初期功能（尚非索引化中文搜尋）。互動圖譜、AI 語意搜尋、Obsidian 雙向自動同步留到後續階段。
+- **部署邊界**：`002_private_knowledge_vault.sql` 只在本機合成 PGlite 測試通過，**未套用到線上 Neon Sandbox 或 Production**。分支 `vercel.json` 特別禁止這個新 branch 自動 Preview 部署，避免未核准的 Sandbox Schema/付費用量及影響原 PR #1 的 Vercel。
+- **測試**：本機 PGlite 權限、SQL RPC、中文搜尋、Wikilinks、公開草稿副本、單元測試、Next.js Build 和舊網站 Chrome 回歸。
+
+詳見 [Second Brain 架構與安全驗收](docs/SECOND_BRAIN_ARCHITECTURE.md)。功能需要另外核准 Neon Sandbox Migration 後才能進行實際登入/CRUD E2E；線上正式站長和 Production 不在這次授權內。
+
 ## v3 視覺與互動設計
 
 | 區域 | v3 行為 |

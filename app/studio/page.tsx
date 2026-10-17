@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ArrowUpRight, LogOut, Plus, PenLine } from "lucide-react";
+import { ArrowUpRight, LogOut, Plus, PenLine, BookLock } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
+import { backend } from "@/lib/backend";
 import { formatDate } from "@/lib/format";
 import { signOut } from "@/app/actions";
 import type { Post } from "@/lib/types";
@@ -15,7 +16,9 @@ export default async function Studio() {
   const published=posts.filter(p=>p.status==="published");
   return <section className="studio-page container">
     <div className="studio-topline"><span className="section-kicker">PRIVATE WRITING DESK / 管理工作室</span><form action={signOut}><button className="studio-signout" type="submit"><LogOut size={14}/> 登出</button></form></div>
-    <div className="studio-hero"><div><h1>繼續寫，<br/>繼續理解<span className="title-period">.</span></h1><p>每篇文章都可以回來修改。先記下來，再慢慢寫好。</p></div><Link href="/studio/new" className="button-primary"><Plus size={18}/> 新增筆記</Link></div>
+    <div className="studio-hero"><div><h1>繼續寫，<br/>繼續理解<span className="title-period">.</span></h1><p>每篇文章都可以回來修改。先記下來，再慢慢寫好。</p></div><div style={{display:"flex",flexWrap:"wrap",gap:10}}>{backend()==="neon"&&
+      <Link href="/vault" className="button-ghost"><BookLock size={16}/> 私人知識庫</Link>}
+      <Link href="/studio/new" className="button-primary"><Plus size={18}/> 新增筆記</Link></div></div>
     <div className="studio-metrics" aria-label="筆記概況"><div><span>全部文章</span><strong>{posts.length.toString().padStart(2,"0")}</strong></div><div><span>已公開</span><strong>{published.length.toString().padStart(2,"0")}</strong></div><div><span>未完成草稿</span><strong>{(posts.length-published.length).toString().padStart(2,"0")}</strong></div></div>
     <div className="studio-list-heading"><div><span className="section-kicker">MANAGE ENTRIES</span><h2>我的筆記</h2></div><span className="studio-identity">{user.email}</span></div>
     <div className="studio-list"><div className="studio-list-labels"><span>ARTICLE</span><span>VISIBILITY</span></div>
