@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { backend } from "@/lib/backend";
 import { neonAuth } from "@/lib/neon/auth-server";
 import { memberNeonClient } from "@/lib/neon/clients";
+import { approvedNeonAdminIdentity } from "@/lib/neon/admin-identity";
 import type { BlogQueryClient } from "@/lib/data/server";
 
 type AdminUser = {id: string; email?: string | null};
@@ -12,6 +13,10 @@ export async function checkAdmin(): Promise<AdminContext | null> {
   if (backend() === "neon") {
     const {data: session, error} = await neonAuth().getSession();
     if (error || !session?.user) return null;
+    // Require a provider-verified Email in addition to signed JWT/RLS admin
+    // membership. Neon Auth production currently does not require verification
+    // at sign-in, so the app must enforce it on every privileged request.
+    if (!approvedNeonAdminIdentity(session.user)) return null;
     try {
       const user = session.user;
       // A signed-in user is not implicitly an admin. DB RLS verifies the

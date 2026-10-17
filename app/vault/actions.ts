@@ -3,6 +3,7 @@
 import {revalidatePath} from "next/cache";
 import {requireVault, privateVaultNote} from "@/lib/vault-server";
 import {isKnowledgeId,validateVaultNote,publicDraftMarkdown} from "@/lib/vault-validation";
+import {privateVaultPreviewIntent} from "@/lib/neon/vault-preview";
 
 type ActionResult={ok:true;id:string}|{ok:false;error:string};
 
@@ -52,6 +53,7 @@ export async function deleteVaultNote(id:unknown):Promise<{ok:boolean;error?:str
 export async function createVaultPublicDraft(
   id:unknown, publicSlug:unknown,
 ):Promise<ActionResult> {
+  if(privateVaultPreviewIntent(process.env))return {ok:false,error:"私人驗收站禁止建立公開文章草稿。"};
   const context=await requireVault();
   if(!isKnowledgeId(id) || typeof publicSlug!=="string" ||
       publicSlug.length>120 || publicSlug.length<3 ||

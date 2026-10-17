@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { backend } from "@/lib/backend";
 import { neonSandboxConfig } from "@/lib/neon/config";
+import {productionReleaseIntent} from "@/lib/neon/production-release";
 import { validRecoveryToken } from "@/lib/neon/password-recovery";
 import PasswordRecoveryForm from "@/components/password-recovery-form";
 
@@ -12,6 +13,7 @@ export default async function ResetPasswordPage({
 }: {
   searchParams: Promise<{token?:string | string[];error?:string | string[]}>;
 }) {
+  if (productionReleaseIntent(process.env)) notFound();
   if (backend() !== "neon") notFound();
   neonSandboxConfig();
   const params = await searchParams;

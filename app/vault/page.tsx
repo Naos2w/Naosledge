@@ -1,8 +1,9 @@
 import Link from "next/link";
-import {BookOpen,Search,Plus,ArrowRight,LockKeyhole} from "lucide-react";
+import {BookOpen,Search,Plus,ArrowRight,LockKeyhole,Network} from "lucide-react";
 import {requireVault,searchVaultNotes} from "@/lib/vault-server";
 import {normalizedQueryParam} from "@/lib/search-params";
 import {formatDate} from "@/lib/format";
+import {privateVaultPreviewIntent} from "@/lib/neon/vault-preview";
 
 export const dynamic="force-dynamic";
 export const metadata={title:"私人知識庫",robots:{index:false,follow:false}};
@@ -24,8 +25,9 @@ export default async function VaultHome({searchParams}:{
       <p>把零散的知識連起來。預設私人保存，只有經過獨立審核的副本才能公開。</p></div>
       <Link className="button-primary" href="/vault/new"><Plus size={17}/> 新增私人筆記</Link>
     </div>
-    <div className="vault-nav"><Link href="/studio">公開文章工作室 <ArrowRight size={14}/></Link>
-      <span>[[雙向連結]] · Backlinks · Markdown</span></div>
+    <div className="vault-nav">{!privateVaultPreviewIntent(process.env)&&
+      <Link href="/studio">公開文章工作室 <ArrowRight size={14}/></Link>}
+      <Link href="/vault/graph" className="vault-graph-entry"><Network size={16}/> 知識網絡圖 <ArrowRight size={14}/></Link></div>
     <form action="/vault" className="vault-search" role="search">
       <Search size={18}/><label htmlFor="vault-query" className="visually-hidden">搜尋私人知識</label>
       <input id="vault-query" name="q" maxLength={120} defaultValue={query}
