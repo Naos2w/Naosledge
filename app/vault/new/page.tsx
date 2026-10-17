@@ -2,6 +2,7 @@ import Link from "next/link";
 import VaultEditor from "@/components/vault-editor";
 import {requireVault,listVaultTitles} from "@/lib/vault-server";
 import {wikiTargetMap} from "@/lib/wiki-links";
+import {privateVaultPreviewIntent} from "@/lib/neon/vault-preview";
 
 export const dynamic="force-dynamic";
 export const metadata={title:"新增私人知識",robots:{index:false,follow:false}};
@@ -14,5 +15,6 @@ export default async function NewPrivateNote() {
       <p>需要先在明確核准的環境套用 Private Vault Migration。</p>
       <Link href="/vault" className="text-link">返回私人索引</Link></section>;
   }
-  return <VaultEditor targets={titles} wikiTargets={wikiTargetMap(titles)}/>;
+  return <VaultEditor targets={titles} wikiTargets={wikiTargetMap(titles)}
+    allowPublication={!privateVaultPreviewIntent(process.env)}/>;
 }

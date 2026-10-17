@@ -2,8 +2,36 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
 import { backend } from "@/lib/backend";
 import { neonAuth } from "@/lib/neon/auth-server";
+import {allowedVaultPreviewPath,privateVaultPreviewIntent,validatePrivateVaultPreview} from "@/lib/neon/vault-preview";
 
 export async function proxy(request: NextRequest) {
+  // This branch is an SSO-protected, temporary Private Vault acceptance site,
+  // NOT a public Production blog. Even a wrong deployment target, project,
+  // branch, Neon endpoint, or missing secret denies every app route.
+  if (privateVaultPreviewIntent(process.env)) {
+    try {
+      validatePrivateVaultPreview(process.env);
+    } catch {
+      return new NextResponse(null,{status:404,headers:{
+        "Cache-Control":"private, no-store, max-age=0",
+        "Referrer-Policy":"no-referrer",
+        "X-Robots-Tag":"noindex, nofollow, noarchive",
+      }});
+    }
+    if (!allowedVaultPreviewPath(request.nextUrl.pathname)) {
+      return new NextResponse(null,{status:404,headers:{
+        "Cache-Control":"private, no-store, max-age=0",
+        "Referrer-Policy":"no-referrer",
+        "X-Robots-Tag":"noindex, nofollow, noarchive",
+      }});
+    }
+    const isolated=NextResponse.next();
+    isolated.headers.set("Cache-Control","private, no-store, max-age=0");
+    isolated.headers.set("Referrer-Policy","no-referrer");
+    isolated.headers.set("X-Robots-Tag","noindex, nofollow, noarchive");
+    isolated.headers.set("X-Frame-Options","DENY");
+    return isolated;
+  }
   // A manual deployment of this owner-onboarding branch must not expose the
   // regular public blog, Studio, Vault or any other app routes. It is a
   // temporary managed-Auth-only site, not a site release or Production deploy.
