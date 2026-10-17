@@ -2,11 +2,17 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { safeMarkdownImageSrc } from "@/lib/markdown-image";
 import { remarkHeadingAnchors } from "@/lib/article-outline";
+import { remarkWikiLinks } from "@/lib/wiki-links";
+import type { PluggableList } from "unified";
 import CodeSnippet from "@/components/code-snippet";
 
-export default function Markdown({content}: {content:string}) {
+export default function Markdown({content,wikiTargets}: {content:string;wikiTargets?:Record<string,string>}) {
+  // Wiki links are never enabled for public /notes/[slug] pages.
+  const plugins:PluggableList = wikiTargets
+    ? [remarkGfm,[remarkWikiLinks,wikiTargets],remarkHeadingAnchors]
+    : [remarkGfm,remarkHeadingAnchors];
   return <div className="markdown-body">
-    <ReactMarkdown remarkPlugins={[remarkGfm, remarkHeadingAnchors]}
+    <ReactMarkdown remarkPlugins={plugins}
       components={{
         // The article title is the page's only H1.
         h1: ({children, id}) => <h2 id={id}>{children}</h2>,

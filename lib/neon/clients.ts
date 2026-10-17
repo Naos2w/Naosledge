@@ -34,7 +34,7 @@ function neonCookieHeader(source: string): string {
 
 /** Extracts only the issued upstream JWT; never constructs a caller-supplied role. */
 const sessionJwt = cache(async (expectedId: string): Promise<string> => {
-  const {authUrl} = neonSandboxConfig();
+  const {authUrl,origin:trustedPreviewOrigin} = neonSandboxConfig();
   const {data:session, error} = await neonAuth().getSession();
   if (error || !session?.user || session.user.id !== expectedId) {
     throw new Error("未通過 Neon Auth 伺服器端身分檢查。");
@@ -49,7 +49,8 @@ const sessionJwt = cache(async (expectedId: string): Promise<string> => {
   const response = await fetch(`${authUrl}/get-session`, {
     headers: {
       Cookie: browserCookies,
-      Origin: requestHeaders.get("origin") || "http://localhost:3000",
+      // Never send the request's untrusted Origin/Host to Production Auth.
+      Origin: trustedPreviewOrigin || requestHeaders.get("origin") || "http://localhost:3000",
     },
     cache:"no-store", signal:AbortSignal.timeout(12000),
   });

@@ -405,6 +405,34 @@ try {
   await page.goto(origin + "/login", {waitUntil:"networkidle"});
   console.log("PASS: Neon recovery pages remain blocked in Supabase mode");
 
+  for(const route of ["/vault","/vault/new","/vault/graph",
+    "/vault/00000000-0000-4000-8000-000000000001"]) {
+    const response=await page.goto(origin+route,{waitUntil:"networkidle"});
+    assert.equal(response.status(),404,"Private Vault must not run in Supabase compatibility mode");
+    assert.match(response.headers()["cache-control"]||"",/no-store/);
+    assert.equal(response.headers()["referrer-policy"],"no-referrer");
+    assert.match(response.headers()["x-robots-tag"]||"",/noindex/);
+  }
+  await page.goto(origin+"/login",{waitUntil:"networkidle"});
+  console.log("PASS: Private Vault routes fail closed outside the approved Neon backend");
+
+  // The owner activation workflow is NEVER available without exact protected
+  // Vercel Preview metadata, even if someone guesses a callback URL.
+  for(const route of [
+    "/owner-activation",
+    "/owner-activation/verified",
+    "/owner-activation/reset?token=syntheticDummyABC123456789",
+  ]) {
+    const attempt=await page.goto(origin+route,{waitUntil:"networkidle"});
+    assert.equal(attempt.status(),404,"Owner activation must fail closed by default");
+    assert.match(attempt.headers()["cache-control"]||"",/no-store/);
+    assert.equal(attempt.headers()["referrer-policy"],"no-referrer");
+    assert.match(attempt.headers()["x-robots-tag"]||"",/noindex/);
+    assert.equal(await page.getByText("設定首次登入密碼。").count(),0);
+  }
+  await page.goto(origin+"/login",{waitUntil:"networkidle"});
+  console.log("PASS: owner activation routes stay disabled and uncached by default");
+
   // Test-only fake login: never a real Supabase project or usable credential.
   await page.getByRole("textbox", { name: "電子郵件" }).fill("offline-studio@example.invalid");
   await page.getByLabel("密碼").fill("synthetic-only-password");

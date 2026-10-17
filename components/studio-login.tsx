@@ -4,7 +4,9 @@ import { ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { signInNeon, confirmNeonAdmin } from "@/app/neon-auth-actions";
 
-export default function StudioLogin() {
+export default function StudioLogin({afterLogin="/studio",hideRecovery=false}:{
+  afterLogin?:"/studio"|"/vault";hideRecovery?:boolean;
+}) {
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
   const [error,setError]=useState("");
@@ -25,7 +27,7 @@ export default function StudioLogin() {
           setError(authorized.error || "此帳號沒有站長權限。");
           return;
         }
-        window.location.assign("/studio");
+        window.location.assign(afterLogin);
         return;
       }
       const supabase = createClient();
@@ -56,9 +58,9 @@ export default function StudioLogin() {
     <label htmlFor="email">電子郵件</label><input id="email" type="email" required autoComplete="username" placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)}/>
     <label htmlFor="password">密碼</label><input id="password" type="password" required autoComplete="current-password" placeholder="輸入密碼" value={password} onChange={e=>setPassword(e.target.value)}/>
     {error&&<p className="form-error" role="alert">{error}</p>}
-    <button className="button-primary login-submit" disabled={busy} type="submit">{busy?"登入中…":"進入工作室"}<ArrowRight size={17}/></button>
+    <button className="button-primary login-submit" disabled={busy} type="submit">{busy?"登入中…":afterLogin==="/vault"?"進入私人知識庫":"進入工作室"}<ArrowRight size={17}/></button>
     <div className="login-note">這裡只開放站長登入，沒有公開註冊。{
-      process.env.NEXT_PUBLIC_NAOSLEDGE_BACKEND === "neon" &&
+      process.env.NEXT_PUBLIC_NAOSLEDGE_BACKEND === "neon" && !hideRecovery &&
       <><br/><a className="text-link" href="/forgot-password">忘記密碼／首次設定密碼</a></>
     }</div>
   </form>;

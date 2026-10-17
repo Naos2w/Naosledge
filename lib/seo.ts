@@ -1,4 +1,5 @@
 import type { Post } from "./types";
+import {productionReleaseIntent,validateProductionRelease} from "./neon/production-release.ts";
 
 /**
  * A canonical public origin is an explicit deployment setting, not the
@@ -8,6 +9,14 @@ export function getPublicSiteOrigin(raw = process.env.NEXT_PUBLIC_SITE_URL): str
   // Never permit public search indexing for a Vercel Preview, even if an
   // environment variable is accidentally configured as a valid HTTPS URL.
   if (process.env.VERCEL_ENV === "preview") return null;
+  if (productionReleaseIntent(process.env)) {
+    try {
+      const approved=validateProductionRelease(process.env);
+      return raw===approved.origin ? approved.origin : null;
+    } catch {
+      return null;
+    }
+  }
   if (!raw || !raw.trim()) return null;
   try {
     const url = new URL(raw.trim());
