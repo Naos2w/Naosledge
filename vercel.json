@@ -3,7 +3,8 @@
   "git": {
     "deploymentEnabled": {
       "feat/private-knowledge-vault-20261017": false,
-      "feat/owner-activation-20261017": false
+      "feat/owner-activation-20261017": false,
+      "feat/knowledge-graph-p3-20261017": false
     }
   }
 }

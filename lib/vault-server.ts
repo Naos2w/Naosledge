@@ -6,6 +6,7 @@ import {requireAdmin} from "@/lib/auth";
 import {isKnowledgeId} from "@/lib/vault-validation";
 import {wikiTargetMap} from "@/lib/wiki-links";
 import type {KnowledgeTitle} from "@/lib/wiki-links";
+import {buildKnowledgeGraph,type KnowledgeGraph,type KnowledgeGraphNote,type KnowledgeGraphReference} from "@/lib/knowledge-graph";
 
 export type VaultContext = Awaited<ReturnType<typeof requireAdmin>>;
 export type VaultNote = {
@@ -96,4 +97,51 @@ export async function vaultRelations(
     }
   }
   return {outgoing,backlinks,unresolved};
+}
+
+/**
+ * Private P3 graph snapshot. Both queries use the same authenticated member
+ * JWT, explicit owner_id and Neon RLS. Only metadata/keys are ever serialized
+ * to the browser — never Markdown, unpublished article mappings or secrets.
+ *
+ * Bounded for a Hobby-scale deployment; limits are visibly disclosed in UI.
+ */
+export type VaultGraphSnapshot={
+  graph:KnowledgeGraph;
+  notesTruncated:boolean;
+  linksTruncated:boolean;
+};
+
+export async function loadVaultGraph({supabase,user}:VaultContext):Promise<VaultGraphSnapshot>{
+  const NODE_LIMIT=180;
+  const LINK_LIMIT=2400;
+  const noteResult=await supabase.from("knowledge_notes")
+    .select("id,slug,title,category,tags")
+    .eq("owner_id",user.id)
+    .order("updated_at",{ascending:false})
+    .limit(NODE_LIMIT+1);
+  if(noteResult.error)throw vaultReadError();
+  const fetched=(noteResult.data||[]) as KnowledgeGraphNote[];
+  const notesTruncated=fetched.length>NODE_LIMIT;
+  const notes=fetched.slice(0,NODE_LIMIT);
+  if(!notes.length){
+    return {
+      graph:buildKnowledgeGraph([],[]),
+      notesTruncated:false,linksTruncated:false,
+    };
+  }
+  const ids=notes.map(n=>n.id);
+  const linkResult=await supabase.from("knowledge_links")
+    .select("source_note_id,target_key")
+    .eq("owner_id",user.id)
+    .in("source_note_id",ids)
+    .order("created_at",{ascending:false})
+    .limit(LINK_LIMIT+1);
+  if(linkResult.error)throw vaultReadError();
+  const refList=(linkResult.data||[]) as KnowledgeGraphReference[];
+  const linksTruncated=refList.length>LINK_LIMIT;
+  return {
+    graph:buildKnowledgeGraph(notes,refList.slice(0,LINK_LIMIT)),
+    notesTruncated,linksTruncated,
+  };
 }

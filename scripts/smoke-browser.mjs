@@ -405,9 +405,13 @@ try {
   await page.goto(origin + "/login", {waitUntil:"networkidle"});
   console.log("PASS: Neon recovery pages remain blocked in Supabase mode");
 
-  for(const route of ["/vault","/vault/new","/vault/00000000-0000-4000-8000-000000000001"]) {
+  for(const route of ["/vault","/vault/new","/vault/graph",
+    "/vault/00000000-0000-4000-8000-000000000001"]) {
     const response=await page.goto(origin+route,{waitUntil:"networkidle"});
     assert.equal(response.status(),404,"Private Vault must not run in Supabase compatibility mode");
+    assert.match(response.headers()["cache-control"]||"",/no-store/);
+    assert.equal(response.headers()["referrer-policy"],"no-referrer");
+    assert.match(response.headers()["x-robots-tag"]||"",/noindex/);
   }
   await page.goto(origin+"/login",{waitUntil:"networkidle"});
   console.log("PASS: Private Vault routes fail closed outside the approved Neon backend");

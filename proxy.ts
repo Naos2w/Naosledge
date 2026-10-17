@@ -37,6 +37,14 @@ export async function proxy(request: NextRequest) {
   } else {
     response = await updateSession(request);
   }
+  if (request.nextUrl.pathname === "/vault" ||
+      request.nextUrl.pathname.startsWith("/vault/")) {
+    // Private notebook titles, links and graph metadata must never enter
+    // browser/CDN caches, search indexes or cross-origin referrer headers.
+    response.headers.set("Cache-Control", "private, no-store, max-age=0");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
+  }
   if (request.nextUrl.pathname === "/reset-password") {
     // The short-lived recovery token arrives in a callback query string.
     // Never cache that page or send its URL in a referrer to other sites.

@@ -5,7 +5,7 @@ import Link from "next/link";
 import {useRouter} from "next/navigation";
 import {
   ArrowLeft,ArrowRight,BookLock,Check,Download,Eye,FilePenLine,
-  Link2,Save,ShieldCheck,Trash2,Upload,Globe2,
+  Link2,Save,ShieldCheck,Trash2,Upload,Globe2,Network,
 } from "lucide-react";
 import Markdown from "@/components/markdown";
 import {saveVaultNote,deleteVaultNote,createVaultPublicDraft} from "@/app/vault/actions";
@@ -227,6 +227,8 @@ export default function VaultEditor({initial,targets,wikiTargets,relations}:{
 
         <div className="vault-side-rule"/>
         <h2><Link2 size={16}/> 知識關係</h2>
+        <Link href={initial?`/vault/graph?focus=${initial.id}`:"/vault/graph"}
+          className="vault-relation"><Network size={16}/> 在知識網絡查看 <ArrowRight size={15}/></Link>
         {!initial?<p>儲存後會顯示反向連結，以及尚未找到對應筆記的連結。</p>:<>
           <h3>連向其他知識</h3>
           {relations?.outgoing.length?relations.outgoing.map((r,i)=>
