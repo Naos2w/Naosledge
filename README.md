@@ -4,11 +4,18 @@
 
 > v3 在先前版本的基礎上加入 Dark Liquid Glass 與流暢動畫，保留文章資料結構、Supabase RLS、登入及資料存取邏輯。v1、v2 保留為歷史版本。
 
+## 2026-10-17 最新整合與發布狀態
+
+- **P0–P3** 公開部落格、Private Vault、正式站長啟用及 Knowledge Atlas 已在 Draft PR #1～#4 實作；受 SSO 保護的私人驗收環境由 Owner 親自驗收通過，驗收後已清理資料，且 PR #5 的 Preview 旗標關閉、精確 Neon Trusted Origin 已撤銷。
+- **正式上線尚未核准**：PR #1～#5 仍全部 Draft 且未合併 `main`，Vercel `naosledge` 的 Production 網站仍未發布。請勿把 Neon Production Schema 已就緒解讀為網站已公開。
+- **正式部署安全閘門開發分支**：`feat/production-release-gate-20261017` 已實作 SHA、Vercel project、branch、正式 HTTPS domain、Neon Auth/Data API、Cookie Secret 的精確比對；Owner 未核准時全部應用路由將 fail-closed。純本機 HTTP 測試覆蓋 10 個路由，沒有實際連線 Neon。詳見 [正式發布閘門](docs/PRODUCTION_RELEASE_GATE.md)。
+- **未完成的後續階段**：正式網域選擇、Release PR 審核/合併/部署需要 Owner 明確授權；P4 AI 語意搜尋、知識問答與 Obsidian 同步仍未開發。所有新功能分支維持省額度 Draft 模式，不呼叫 Claude/Copilot 或啟動無必要 CI。
+
 ## 專案狀態
 
 GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的虛構文章與不需登入的模擬後台。離線互動預覽另存於 ChatGPT 專案成果中，不是正式網站，也不會把筆記寫入 Supabase。
 
-目前已於 MSI 執行 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；尚待 Neon 正式 Auth 安全政策、站長身分、網站 Production 模式及 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。Neon **隔離分支**已完成真實 Better Auth／JWT／Data API／PostgreSQL RLS 與站長 CRUD 驗證，合成帳號／文章已清除；而 **Next.js 網站已可在 Neon Sandbox 模式下以真正的 Auth／Data API 完成登入、草稿、發布、編輯及刪除**；Neon `production` 已另行獲准建立文章表、RLS 及 Data API（目前無文章或站長授權），正式網站仍未部署。詳見 [Neon 隔離整合驗收報告](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
+目前 MSI 已通過 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；Neon 正式帳號與站長授權已驗證，尚待網站正式發布的網域、完整 PR 合併審查、Production 安全設定及 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。Neon **隔離分支**已完成真實 Better Auth／JWT／Data API／PostgreSQL RLS 與站長 CRUD 驗證，合成帳號／文章已清除；而 **Next.js 網站已可在 Neon Sandbox 模式下以真正的 Auth／Data API 完成登入、草稿、發布、編輯及刪除**；Neon `production` 已另行獲准建立文章表、RLS 及 Data API（目前無公開文章、已有 1 筆獲核准的站長授權），正式網站仍未部署。詳見 [Neon 隔離整合驗收報告](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
 
 ## P1 + P2：私人第二大腦（獨立開發中）
 
@@ -16,17 +23,29 @@ Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這
 
 - **私人預設**：新表使用 Neon Auth JWT + RLS，只有實際站長能讀取**自己**的私人筆記，匿名和一般登入者無表格／RPC 權限，與公開 `posts` 完全分離。
 - **經審核的公開副本**：可明確產生一篇與私人原稿分離的 **status=draft** 文章，需再進入既有 Studio 檢查、手動發布；私人關係與來源 mapping 不會公開。
-- **效能與限制**：已有 PostgreSQL `tsvector/GIN` 英文全文搜尋；中文以 Unicode 字串比對作為初期功能（尚非索引化中文搜尋）。互動圖譜、AI 語意搜尋、Obsidian 雙向自動同步留到後續階段。
+- **效能與限制**：已有 PostgreSQL `tsvector/GIN` 英文全文搜尋；中文以 Unicode 字串比對作為初期功能（尚非索引化中文搜尋）。P3 互動式知識圖譜已在獨立 Draft 開發分支實作，AI 語意搜尋與 Obsidian 雙向自動同步仍待後續階段。
 - **部署邊界**：Owner 已明確核准且在 **Naosledge Neon Sandbox** 套用 `002_private_knowledge_vault.sql`；SQL 與真實 Neon Auth／JWT／RLS／Chrome E2E 都已通過，測試資料清理為 0。**Production 已在 2026-10-17 取得核准並成功套用 002，三張 Private Vault 表及 RLS 已唯讀核對**。分支 `vercel.json` 仍禁止新分支自動 Preview 部署，避免影響 PR #1 的 Vercel 或耗用未核准額度。
 - **測試**：本機 PGlite 權限、SQL RPC、中文搜尋、Wikilinks、公開草稿副本、單元測試、Next.js Build 和舊網站 Chrome 回歸均通過，另外已完成**真實 MSI Chrome + Neon Sandbox** 私人筆記新增、雙向連結、Backlinks、中文搜尋、跨帳號隔離與公開草稿保護驗收。
 
-詳見 [Second Brain 架構規格](docs/SECOND_BRAIN_ARCHITECTURE.md) 與 [Neon Sandbox 實體驗收及清理證據](docs/SECOND_BRAIN_SANDBOX_VERIFICATION.md)。**Sandbox 已完成真實 E2E 驗收，Production 002 Schema 已套用並後驗確認**；正式帳號亦已由本人完成 Email 驗證與首次密碼設定、Production Allow Localhost 已關閉。**站長權限尚未授予**；網站正式部署、PR 合併與正式上線仍需另行授權。
+詳見 [Second Brain 架構規格](docs/SECOND_BRAIN_ARCHITECTURE.md) 與 [Neon Sandbox 實體驗收及清理證據](docs/SECOND_BRAIN_SANDBOX_VERIFICATION.md)。**Sandbox 已完成真實 E2E 驗收，Production 002 Schema 已套用並後驗確認**；正式帳號亦已由本人完成 Email 驗證與首次密碼設定、Production Allow Localhost 已關閉。**正式站長已另行獲核准並新增 1 筆 `blog_admins`**；實際 Production 網頁登入驗收、PR 合併與正式發布仍需另行授權。
+
+## P3 — Knowledge Atlas 私人知識網絡（獨立開發）
+
+在獨立分支 `feat/knowledge-graph-p3-20261017` 新增 **`/vault/graph`**，只對通過正式 Neon Auth／Email 驗證／RLS 站長權限的本人開放，沿用 Naosledge 現有深色閱讀風格。
+
+- **知識節點與關係**：`[[slug]]`、`[[標題|別名]]` 解析雙向可檢索的引用關係；選取節點可觀察最多兩層鄰居，從私人編輯器直接進入該節點圖譜。
+- **互動與閱讀**：依分類排佈的穩定 SVG 星座視覺、節點點擊與鍵盤操作、搜尋與分類篩選、縮放／手機局部平移；另外提供完整可存取的筆記清單作為替代導覽。
+- **安全與免費額度**：只讀取 Owner 本人的標題、分類、標籤和關聯鍵，不傳遞 Markdown 私人正文或來源映射；最多查最近 180 篇與 2,400 條連結，圖上最多 100 個節點，保留清楚的截斷提示。不建立新的資料庫、AI API 或持續動畫，`/vault` 私人頁皆使用 `no-store`、`no-referrer`、`noindex`。
+- **測試**：P3 純演算法測試、375／768／1024／1440px Chrome 畫面、焦點與滑動、SVG/清單鍵盤導航、雙向關係，以及 Supabase 舊模式 Vault 一律 404。Chrome 使用 MSI 本機合成資料、沒有接觸 Neon 正式筆記。
+- **部署界線**：新分支在 `vercel.json` 禁止自動部署以節省 Vercel／GitHub 額度，P3 尚未合併，也沒有對 Production 網站發布或修改正式 Auth／Schema。P4 語意搜尋及 AI 知識問答仍須後續設計。
+
+詳細規格與測試見 [P3 Knowledge Atlas](docs/KNOWLEDGE_GRAPH_P3.md)。
 
 ## Production 私人知識庫 Migration 與站長啟用
 
-**2026-10-17：Production `002` Migration 已完成。** 只在 Neon `Naosledge` 的 `production` 分支使用單一交易套用 42 項 SQL，後驗確認三張私人知識表、10 項 RLS 政策、JWT 身分函式、搜尋和 Backlinks 索引；`posts`、`blog_admins` 與正式 Auth 帳號都保留。新表資料為 0，原有文章和站長授權仍為 0。**不得重複執行 Migration。**
+**2026-10-17：Production `002` Migration 已完成。** 只在 Neon `Naosledge` 的 `production` 分支使用單一交易套用 42 項 SQL，後驗確認三張私人知識表、10 項 RLS 政策、JWT 身分函式、搜尋和 Backlinks 索引；`posts`、`blog_admins` 與正式 Auth 帳號都保留。新表資料為 0，原有文章及站長授權在遷移當下仍為 0；後續另經明確核准，現有 1 筆站長授權。**不得重複執行 Migration。**
 
-**2026-10-17 正式帳號啟用驗證已完成。** Neon Production 已唯讀核對原有帳號 `emailVerified=true`、Credential 密碼已建立 1 筆、`Allow Localhost=false`、Email 公開註冊關閉；**`blog_admins` 仍為 0，沒有提前授予站長權限**。獨立受保護 Vercel HTTPS Preview 已被本人用來完成驗證，之後已將啟用旗標設為 `0`，並重新部署 Preview（READY）讓停用設定生效；Neon Production Auth 也已撤銷暫時的 Trusted Domain。原 PR #1 Preview 仍只連 Sandbox，新站點沒有接通 Production Data API。Neon Console 沒有強制驗證 Email 的獨立開關，因此程式本身新增站長 Email 驗證檢查。授予站長權限仍須另行核准。見 [Owner Activation 安全準備與關閉紀錄](docs/OWNER_ACTIVATION_READINESS.md)。
+**2026-10-17 正式帳號啟用驗證已完成。** Neon Production 已唯讀核對原有帳號 `emailVerified=true`、Credential 密碼已建立 1 筆、`Allow Localhost=false`、Email 公開註冊關閉；**後續另經使用者核准，已新增精確且唯一的 `blog_admins` 站長授權**。獨立受保護 Vercel HTTPS Preview 已被本人用來完成驗證，之後已將啟用旗標設為 `0`，並重新部署 Preview（READY）讓停用設定生效；Neon Production Auth 也已撤銷暫時的 Trusted Domain。原 PR #1 Preview 仍只連 Sandbox，新站點沒有接通 Production Data API。Neon Console 沒有強制驗證 Email 的獨立開關，因此程式本身新增站長 Email 驗證檢查。正式站長授權已完成，且 Owner 已在 SSO 保護的 Private Vault Preview 完成真人登入及私人 CRUD 驗收；正式 Production 網站整合部署與公開閱讀仍須另外核准。見 [Owner Activation 安全準備與關閉紀錄](docs/OWNER_ACTIVATION_READINESS.md)。
 
 **Production 資料表可用 ≠ 正式網站已發布。** 本階段沒有合併 PR、改動 Vercel Production，也沒有直接對正式資料庫做真人私人筆記 CRUD。
 
