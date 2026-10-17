@@ -30,7 +30,7 @@ async function port(){
 }
 const num=await port();
 const localhost=`http://localhost:${num}`;
-const host="naosledge-git-feat-owner-activation-20261017-naos-tsais-projects.vercel.app";
+const host="naosledge-git-feat-owner-activation-8d4805-naos-tsais-projects.vercel.app";
 const env={
  ...process.env,
  NODE_ENV:"development",

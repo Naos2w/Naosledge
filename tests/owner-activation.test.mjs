@@ -5,7 +5,7 @@ import {
  validateOwnerActivation,ownerActivationCallbacks,validOwnerResetToken,validOwnerEmailOtp,
 } from "../lib/neon/owner-activation.ts";
 
-const host="naosledge-git-feat-owner-activation-20261017-naos-tsais-projects.vercel.app";
+const host="naosledge-git-feat-owner-activation-8d4805-naos-tsais-projects.vercel.app";
 const valid={
  enabled:"1",vercel:"1",environment:"preview",
  projectId:OWNER_VERCEL_PROJECT_ID,gitRef:OWNER_ACTIVATION_BRANCH,

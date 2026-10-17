@@ -10,7 +10,8 @@ export const OWNER_ACTIVATION_BRANCH="feat/owner-activation-20261017";
 export const OWNER_VERCEL_PROJECT_ID="prj_JEXZkiab0njUM7VWFhDO0NhL0GtH";
 export const OWNER_PRODUCTION_AUTH_URL=
   "https://ep-purple-recipe-b43kznn2.neonauth.c-6.us-east-2.aws.neon.tech/neondb/auth";
-const HOST_PATTERN=/^naosledge-git-feat-owner-activation-20261017-naos-tsais-projects\.vercel\.app$/;
+// Verified against the actual Vercel Preview alias for this exact Git branch.
+const HOST_PATTERN=/^naosledge-git-feat-owner-activation-8d4805-naos-tsais-projects\.vercel\.app$/;
 
 export type OwnerActivationRuntime={
   enabled?:string;
