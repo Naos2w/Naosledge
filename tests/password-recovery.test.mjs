@@ -19,14 +19,14 @@ test("password recovery callback is pinned to explicit local sandbox origin", ()
 test("hosted password callbacks are pinned to the approved Vercel Preview and branch", () => {
   const allowed = {
     vercelEnv: "preview",
-    vercelBranchHost: "naosledge-sandbox-preview-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app",
+    vercelBranchHost: "naosledge-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app",
     gitRef: "feat/initial-v3-site-20261015",
-    projectId: "prj_actualExample",
-    authorizedProjectId: "prj_actualExample",
+    projectId: "prj_JEXZkiab0njUM7VWFhDO0NhL0GtH",
+    authorizedProjectId: "prj_JEXZkiab0njUM7VWFhDO0NhL0GtH",
   };
   assert.equal(
     sandboxResetRedirect("", allowed),
-    "https://naosledge-sandbox-preview-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app/reset-password",
+    "https://naosledge-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app/reset-password",
   );
   const invalid = [
     {vercelEnv: "production"},

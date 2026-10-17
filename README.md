@@ -154,15 +154,15 @@ npm run test:browser:neon-recovery:local
 
 `supabase/schema.sql` 與 Supabase SDK 保留為歷史相容路徑，**不是目前選定的正式資料庫**。不要新建 Supabase 專案、把 SQL 套用到其他專案，或使用任何既有服務的 URL／金鑰。Neon 使用不同的 Better Auth `text` 使用者 ID 和獨立的 `neon/migrations/001_initial_blog.sql`；已經在 Sandbox 套用及驗收，且另獲授權於 2026-10-15 套用至 Production；正式站長與網站仍未啟用。
 
-## Vercel Preview：已授權，但建立專案受權限阻礙
+## Vercel Preview：Git 開發分支已建置，待線上功能驗收
 
-**2026-10-16 Owner 已授權**使用 Vercel `Naos Tsai's projects` 的 Hobby 免費方案建立獨立 `naosledge-sandbox-preview`，僅從既有 PR 分支部署並連接 Neon Sandbox。已核對正確 GitHub 倉庫，但 Vercel 建立專案回覆 `403 forbidden`；MSI 無可用已登入的 Vercel CLI，**因此至今沒有新建任何 Vercel 專案或 Preview URL，也沒有寄送重設信**。詳細建立及防護規則見 [Vercel Sandbox Preview 檢查清單](docs/VERCEL_SANDBOX_PREVIEW.md)。
+**2026-10-17 新進度：** Owner 已自行在 Hobby 團隊建立 Vercel `naosledge`（Next.js 24.x）；GitHub PR #1 的 feature 分支已自動產生 **READY Preview**，正式 `main` 的初始部署則是 ERROR，兩者不互相代替。已確認 Preview 的 [固定 HTTPS 分支網址](https://naosledge-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app)、Vercel Authentication 保護，並設定 7 項只限該分支的 Neon Sandbox 環境變數（含加密 Cookie Secret），Production 環境變數為 0。**仍需以後續新 Preview 建置驗證網站 Runtime／密碼恢復流程；尚未實際寄信、授予正式站長或部署 Production**。詳細見 [Vercel Sandbox Preview 清單](docs/VERCEL_SANDBOX_PREVIEW.md)。
 
 **正式 Production 網站**仍未獲授權；不能只因 `next build` 成功就公開網站。正式上線前仍須另外核准：
 
 1. **Neon Production Migration／Data API 已完成**；正式 Auth 註冊與信箱驗證政策，以及真正站長身分仍待 Owner 確認。
 2. 專用的 Production 後端設定模式（現有程式**硬性拒絕 Production**）、經審查的 RLS／登入／Cookie Secret。
-3. 正式 HTTPS 網域與部署環境變數；獨立 Preview 已獲授權但尚待修復建立權限並完成驗收，PR 合併與 Production 發布仍需後續核准。
+3. 正式 HTTPS 網域與部署設定；Preview 專案和分支已建立、Sandbox 變數已設定，但需完成實際線上驗收。PR 合併與正式 Production 發布仍需後續核准。
 
 詳細的五道安全關卡、SEO 安全預設、功能測試矩陣與回復計畫請見 [**上線前置與驗收清單**](docs/DEPLOY_READINESS.md)。**切勿照舊版 Supabase 部署教學操作**。
 
@@ -186,4 +186,4 @@ npm run test:browser:neon-recovery:local
 - GitHub 倉庫：[`Naos2w/Naosledge`](https://github.com/Naos2w/Naosledge)
 - npm package name：`naosledge`
 - 舊名稱 LearnLog 與 Naosledge v2 僅留作歷史備份；本專案不需要因此修改資料庫 schema 或文章欄位。
-- 原始碼在 GitHub 以 Draft PR #1 送審；Neon Sandbox 驗收已通過，**Neon Production DB/API 已完成授權範圍內的建置、Vercel 未部署**。
+- 原始碼在 GitHub 以 Draft PR #1 送審；Neon Sandbox 驗收已通過，**Vercel Preview 已建置但仍待線上 Runtime 驗證；Neon Production DB/API 已完成授權範圍內的建置，正式 Production 網站尚未上線**。

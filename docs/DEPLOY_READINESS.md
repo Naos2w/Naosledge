@@ -1,6 +1,6 @@
 # Naosledge v3 — 正式上線前置與驗收清單
 
-更新：2026-10-16。**Neon Production 已完成 Data API 與 Migration，並有一個尚未驗證 Email、尚未設定密碼的 Owner Auth 帳號；管理員授權仍為 0。** Auth 安全政策與網站 Production 模式仍待核准；Vercel Sandbox Preview 於 10/16 已獲授權，但建立專案 API 回覆 403，尚未部署。PR #1 保持 Draft。本文件是狀態與後續驗收清單，不是其他操作的授權。
+更新：2026-10-17。**Neon Production 已完成 Data API 與 Migration，Owner Auth 帳號尚未驗證 Email／設定密碼，`blog_admins=0`。** Vercel Hobby 的 `naosledge` 已由 Owner 建立，PR #1 feature 分支已有 READY Preview；已核對且設定只限該分支的 Neon Sandbox 變數，仍待線上 Runtime／密碼郵件驗收。`main` 初次 Vercel Production 部署為 ERROR，沒有公開正式站。Production Auth 安全政策、Production 網站模式、正式發布與 PR 合併皆待另行批准。本文件不是其他操作的授權。
 
 ## 實際狀態（先核對，再決定下一步）
 
@@ -13,7 +13,7 @@
 | Neon | 獨立 `Naosledge` Free 專案（`bitter-silence-36632892`，AWS `us-east-2`，PostgreSQL 18） |
 | Sandbox | `naosledge-integration-sandbox-20261015`（`br-quiet-sunset-b4xx4pnx`）；`posts`／`blog_admins`、RLS、Data API 及真正的 Auth／JWT／Next.js Chrome CRUD 已驗收 |
 | Production | 預設 `production`（`br-aged-sound-b43h5r2c`）；Data API **active**、`public.posts` / `blog_admins` 已建立、RLS 6 項；兩張表均 **0 筆** |
-| 正式帳號與網域 | Neon Auth 已建立 1 個待啟用的 Owner 帳號（未驗證 Email、密碼尚未設定）；`blog_admins=0`；Vercel Preview／Production 尚未部署 |
+| 正式帳號與網域 | Neon Auth 已建立 1 個待啟用的 Owner 帳號（Email 未驗證、密碼尚未設定）；`blog_admins=0`。Vercel Preview 已 READY，但尚未完成 Runtime 驗收；正式 Production 網站未上線 |
 | 舊 Supabase | 僅作為程式回退路徑；既有 Mushroooooms、Go Travel 專案不得更動、共用或重用密鑰 |
 
 Sandbox 使用合成帳號與文章測試後已清理。**2026-10-15 另經 Owner 明確授權**，對指定 Neon Production 套用與 Sandbox 相同的初始 SQL 並啟用 Data API；已由資料庫唯讀查證 RLS／GRANT／索引與空表。**Production 仍未執行真實站長／瀏覽器端到端驗收，也未開站。** 詳細記錄見 [Neon 整合報告](NEON_INTEGRATION_READINESS.md) 和 [QA](../QA.md)。
@@ -54,7 +54,7 @@ npm run test:browser:neon-recovery:local
 
 **關卡 3 — 正式網站程式設定。** **現有程式的 Neon 模式仍硬性限定已核准的 Sandbox branch 與端點；不能只把 `.env` 換成 Production URL 就部署。** 在 PR 開發分支可以準備受審查的生產設定方案，但在正式 Auth 安全政策、Owner 站長身分及另行授權前，不啟用、使用或部署 Production 站點；需要確認正確 Auth/Data API 端點、Cookie Secret 與失敗時關閉行為。保持 fail-closed，避免預設連到錯誤資料庫。
 
-**關卡 4 — Vercel Preview 已獲授權但暫因權限受阻；Production 網站另需授權。** Owner 已核准在 Hobby `Naos Tsai's projects` 建立隔離 Preview，但 Connector 建立專案得到 HTTP 403，且 MSI 無已登入 Vercel CLI；因此未部署。Preview 需嚴格綁定該專案與 GitHub Draft PR 開發分支、只設 Preview Target 的 Sandbox 變數，保留驗證保護及 noindex；不得帶入真實站長或 Production 連線。Owner 需先處理團隊建立權限。正式 HTTPS 網域與 Production 發布仍需另外決策。詳見 [Vercel Sandbox Preview 專項清單](VERCEL_SANDBOX_PREVIEW.md)。沒有合法的 `NEXT_PUBLIC_SITE_URL`，網站 SEO 刻意輸出拒絕索引／不產生正式 Sitemap，不能用假的網域繞過。
+**關卡 4 — Vercel Sandbox Preview：已建立並完成分支變數設定，待線上驗收。** Owner 已在 Hobby `Naos Tsai's projects` 建立獨立 `naosledge`，Next.js 24.x；`feat/initial-v3-site-20261015` 的 Preview 已 READY，與 `main` 正式環境分開。已核對 Vercel Authentication 啟用、固定 HTTPS 分支網域與**只限該 Preview 分支的七個加密環境變數**；Production 變數仍為 0。程式另限制精確 Vercel 專案 ID／分支 Host／Neon Sandbox Auth／Data API，Preview 不產生公開 SEO canonical。**下一步要核對新 Commit Preview 的實際 Runtime、Sandbox Auth Trusted Domain、受保護網頁及合成帳號密碼流程**；完成前不宣稱站長登入／郵件成功。`main` 初次 Vercel Production 部署 ERROR，正式 HTTPS 網域與發布仍需另外核准。詳見 [Vercel Sandbox Preview 專項清單](VERCEL_SANDBOX_PREVIEW.md)。
 
 **關卡 5 — PR 合併與對外發布。** 完成 Preview 安全驗收後，再由 Owner 核准將 Draft PR 改為 Ready／合併 `main`，以及正式對外部署。CI 成功不等於網站完成上線。
 

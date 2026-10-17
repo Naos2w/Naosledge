@@ -1,52 +1,56 @@
-# Naosledge — Vercel Hobby Preview（僅連 Neon Sandbox）
+# Naosledge — Vercel Hobby Preview（只連 Neon Sandbox）
 
-更新：2026-10-16。**目前尚未建立 Vercel 專案或部署 Preview。** Vercel 連線可讀取團隊與 GitHub，但建立專案時回傳 `403 forbidden`；MSI 未安裝／登入 Vercel CLI。這是待 Owner 修正的 Vercel 權限限制，不代表已部署，也不需先升級付費方案。
+更新：2026-10-17。**Owner 已在原有 Hobby 團隊內建立 `naosledge`；PR #1 的開發分支已有 READY 的 Preview，與 `main` 正式環境分開。** 不能把 Preview READY 當作真正 Neon Auth／密碼郵件端到端測試成功；仍需檢查 Preview Server Runtime 和受保護頁面的實際行為。
 
-## 已確認且維持不變的限制
+## 最新已驗證的專案／環境
 
-| 項目 | 確認 |
+| 項目 | 現況 |
 |---|---|
-| Vercel 團隊 | `Naos Tsai's projects`（`team_SKDb8G0zLiz5vU36JEJUFzG9`） |
-| Vercel 方案 | **Hobby 免費**，任何付費升級都不在授權範圍 |
-| GitHub | [Naos2w/Naosledge](https://github.com/Naos2w/Naosledge)，PR #1 保持 Draft |
-| 預覽來源 | **只有** `feat/initial-v3-site-20261015`；不從 `main` 執行 Production 部署 |
-| 預覽專案名稱 | `naosledge-sandbox-preview` |
-| Neon 專案 | `Naosledge`、`bitter-silence-36632892` |
-| Neon Sandbox | **僅** `br-quiet-sunset-b4xx4pnx`；保留原先已驗證的 Auth / Data API |
-| Neon Production | `br-aged-sound-b43h5r2c`，**不得**讓預覽連到此分支 |
-| 站長帳號 | Production Auth 已建帳號但 Email 未驗證、密碼未設定；不得替其授權或重設 |
-| 部署範圍 | 僅 Vercel Preview，不合併 PR，不建立公開正式網站 |
+| Vercel Team | `Naos Tsai's projects`，`team_SKDb8G0zLiz5vU36JEJUFzG9`，**Hobby Free** |
+| Project | `naosledge`，`prj_JEXZkiab0njUM7VWFhDO0NhL0GtH`，Next.js、Node.js 24.x |
+| GitHub repository | `Naos2w/Naosledge` |
+| Vercel Production branch | `main`，首次部署從 GitHub 初始 commit 建置為 **ERROR**；不能視為正式站已完成 |
+| Preview source branch | `feat/initial-v3-site-20261015`，PR #1 **Draft**、未合併 |
+| Preview branch URL | `https://naosledge-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app` |
+| Preview deployment | 已有 **READY**（最初觀察的是 `c21a639`），後續提交需確認新部署 SHA／Runtime |
+| Deployment protection | Vercel Authentication 已啟用：`all_except_custom_domains` |
+| Neon Sandbox | 獲准的 `br-quiet-sunset-b4xx4pnx` |
+| Neon Production | `br-aged-sound-b43h5r2c`；**不可**用在 Preview |
+| 正式站長帳號 | Production Auth 1 位尚未啟用，沒有密碼／驗證／`blog_admins` 授權 |
+| Preview webhook / email | 尚未真實寄信；不得用正式 Yahoo 帳號做 Sandbox 測試 |
 
-## 目前的阻礙
+Vercel 連線先前因建立專案 API 403 失敗，後續 Owner 自行在 Vercel Dashboard 匯入 GitHub 後，已**從帳號的完整專案清單與 Vercel Deployment／Alias** 核對專案存在。舊版文件記錄的 `naosledge-sandbox-preview` 是未建立成功的規劃名稱，不是現有專案。
 
-Vercel `create_project` 已**只在正確團隊**嘗試一次，回覆 `403: You don't have permission to create the project`。未建立專案、無預覽網址。依工具回覆，已核對 MSI 無可用 `vercel` CLI、無 Vercel CLI 登入狀態；未改用其他團隊／帳號。**等待 Owner 在 Vercel 釐清建立專案的權限或以正確團隊建立不自動發布 Production 的空專案。**
+## 實際的 Preview 環境變數
 
-在權限修復前，只能準備、測試與提交 PR，不得假裝已部署或寄出郵件。
+已在 **正確專案** 的 **Preview target** 建立、且 Git Branch 精確限定 `feat/initial-v3-site-20261015`，其他分支及 Production 不共用：
 
-## Preview 安全設定（待有建立權限才執行）
+- `NAOSLEDGE_BACKEND=neon`
+- `NEXT_PUBLIC_NAOSLEDGE_BACKEND=neon`
+- `NAOSLEDGE_NEON_BRANCH_ID=br-quiet-sunset-b4xx4pnx`
+- `NEON_AUTH_BASE_URL`：已核對的 Sandbox Neon Auth HTTPS Endpoint
+- `NEON_DATA_API_URL`：已核對的 Sandbox Neon Data API HTTPS Endpoint
+- `NAOSLEDGE_PREVIEW_PROJECT_ID`：`prj_JEXZkiab0njUM7VWFhDO0NhL0GtH`
+- `NEON_AUTH_COOKIE_SECRET`：高熵隨機值、Vercel Preview encrypted、**沒有**寫入 Git／CI／聊天／本機環境檔
 
-1. 只在上述 Hobby 團隊建立 `naosledge-sandbox-preview` 專案並連接正確 GitHub repository；**建立時不要自動從 `main` 發布 Production**。確認 Vercel 專案 ID（`prj_...`）且分支來源仍是既有 Draft PR。
-2. Vercel Preview 的登入保護優先使用 **Vercel Authentication**；若 Hobby 不支援所需保護且要收費，停止並由 Owner 決定。不要公開展示真實密碼或未發布文章。保留 SEO `noindex`、`robots.txt Disallow: /`。
-3. 下列變數**只可指定 Preview Target**，不得加入 Production 或其他 Vercel 專案：
-   - `NAOSLEDGE_BACKEND=neon`
-   - `NEXT_PUBLIC_NAOSLEDGE_BACKEND=neon`
-   - `NAOSLEDGE_NEON_BRANCH_ID=br-quiet-sunset-b4xx4pnx`
-   - `NEON_AUTH_BASE_URL`：Neon Sandbox **Auth** 的官方 HTTPS URL，絕不可填 Production Endpoint
-   - `NEON_DATA_API_URL`：Neon Sandbox **Data API** 的官方 HTTPS URL
-   - `NAOSLEDGE_PREVIEW_PROJECT_ID`：**剛建立的該 Vercel 專案 ID**，用來與 Vercel 系統提供的 `VERCEL_PROJECT_ID` 比對
-   - `NEON_AUTH_COOKIE_SECRET`：在安全環境產生高熵隨機字串（至少 32 字元），**只存 Vercel Preview Server-side Encrypted/Sensitive**，不得寫進 Git、PR、CI、聊天或公開變數
-4. Vercel 自動提供 `VERCEL_ENV`、`VERCEL_GIT_COMMIT_REF`、`VERCEL_PROJECT_ID`、`VERCEL_BRANCH_URL`。應用程式會拒絕不是 **Preview + 特定開發分支 + 專案 ID 一致 + `naosledge-sandbox-preview-*.vercel.app`** 的回呼，並在伺服器端再次核對已核准的 Neon Sandbox 分支／兩個服務端點。
-5. **不要為 Preview 設正式 `NEXT_PUBLIC_SITE_URL`**。就算誤填 HTTPS，Preview 也不會發布 SEO canonical／Sitemap；密碼重設信的回呼 URL 一律由受驗證的 Vercel 分支網址組成。
-6. 真正部署完成且取得**確切**分支 HTTPS Origin 後，才在**Neon Sandbox** Auth Trusted Domains 新增這個精確來源，絕不更動 Production Auth。必須核對寄件端點、驗證信的受信任來源與使用者手上的 URL 一致。任何部署 URL 變動需重新確認，不能猜測網域。
-7. 先執行不會寄信的 Preview 瀏覽器 Smoke，並查明 Vercel Preview Protection 不會阻斷使用者從郵件開啟重設頁；獲准後再使用 **Sandbox 合成測試帳號** 驗證真正寄信、失效 Token、不存在的帳號與完成後安全清理。**不得借用 Production 的真實站長帳號作 Sandbox 測試。**
+Vercel 已讀回**7 項**全數為 `target=[preview]`、`gitBranch=feat/initial-v3-site-20261015`，且 Production 環境變數筆數為 0。環境變數的新設定要到**下一次 Preview 部署**才會生效，不表示之前的 READY build 已讀取到變數。
 
-## 已完成的離線測試（不依賴 Vercel）
+**嚴禁**把 Preview 的任何變數複製到 Production 或連接已啟用正式 Migration 的 Neon 分支。
 
-- `npm run test:unit`：包含合法／不合法的 localhost 與固定 Vercel Preview 回呼網址、各種來源注入、分支與專案 ID 不相符、SEO noindex。
-- `npm run typecheck`、`npm run build`。
-- `npm run test:browser:local`：原本 Supabase 相容模式的瀏覽器回歸。
-- `npm run test:browser:neon-recovery:local`：本機 Neon Sandbox 密碼頁 UI Smoke，**不發出 Auth / Data API 呼叫，也不寄信**。
+## Runtime 防呆與安全驗證
 
-## 邊界
+1. 伺服器先檢查 `VERCEL_ENV=preview`、`VERCEL_GIT_COMMIT_REF` 精確等於 PR 開發分支、`VERCEL_PROJECT_ID` 和 `NAOSLEDGE_PREVIEW_PROJECT_ID` **同時等於目前實際的 Vercel 專案 ID**，並檢查 `VERCEL_BRANCH_URL` **精確等於**上面的固定 HTTPS 分支 Alias。其任一值不存在或不符，**fail closed**。
+2. `lib/neon/config.ts` 額外檢查 Neon Auth 和 Data API 都屬於**唯一已授權 Sandbox endpoint**，禁止 `production` branch、錯誤 hostname、含憑證或不安全 URL。
+3. 密碼恢復 `requestPasswordReset` 使用受驗證的 Vercel branch HTTPS origin，**不用**不受信任的 Host header 或使用者指定的回呼。
+4. `VERCEL_ENV=preview` 時 SEO 不產生公開 canonical／Sitemap，`robots.txt` 預設 `Disallow: /`。
+5. Preview 維持 Vercel Authentication 保護。由於目前 Vercel 整合嘗試讀取受保護 Deployment 時遇到 403，尚**不能聲稱本工具已實際載入網站頁面或登入**。Owner 可在有權限的 Vercel 帳號中點開上方 HTTPS 分支網址，提供安全的結果描述／去敏截圖。
 
-「密碼設定成功」**不等於**「Email 所有權驗證成功」或「站長授權完成」。Neon Production 的註冊／Email 驗證政策、正式站長資料、Production 網站模式、PR 合併與正式發布仍需其他明確授權。
+## 下一步：預覽實體驗收
+
+- 以精確的 PR 新 Commit 觸發 Preview-only 新部署，核對 SHA、READY、Framework、Server Runtime。不能用 `main` 的初始失敗 build 當成 Preview 驗證。
+- Preview 新部署成功後，再對 Neon **Sandbox** 的 Auth Trusted Domains 加入**確切**分支 HTTPS origin，不更動 Production Auth。實體測試使用合成帳號，不能拿真實 Owner 帳號當測試。
+- 檢查受保護網站的公開頁、`/login`、`/forgot-password`、`/reset-password`（含無效 token），確保沒有 secret 洩漏。之後才做獲授權的合成郵件、一次性 Token 及清理驗證。
+- 正式站長的 Email 驗證和密碼設定、Production Auth 安全政策、PR 合併、Neon Production 網站模式與正式網域均屬**後續獨立關卡**，不能由 Preview 的核准推定。
+- **保持免費**：若任何措施需要 Vercel / Neon 付費，停止並先由 Owner 決定。
+
+本機驗證：`npm run test:unit`、`npm run typecheck`、`npm run build`、`npm run test:browser:local` 與 `npm run test:browser:neon-recovery:local`。另已於 MSI 注入**模擬的** Vercel Preview 系統變數（精確 Project ID、Branch、HTTPS Alias），Chrome 本機驗證 `NEON_RECOVERY_UI_SUCCESS`、未發出 Auth/Data API 呼叫。這些測試不能代替受 SSO 保護的 Vercel 線上 Preview 實際驗收。

@@ -2,6 +2,16 @@
 
 驗證日期：2026-10-14 起，最新更新 2026-10-16
 
+## 2026-10-17：Vercel Preview 真實專案與 Neon Sandbox-only 設定（最新）
+
+- Owner 已建立 `Naos Tsai's projects` Hobby 的 **`naosledge`**（`prj_JEXZkiab0njUM7VWFhDO0NhL0GtH`），Vercel 實測 Framework Next.js、Node.js 24.x、Vercel Authentication 已開啟。
+- 同一專案的 `main` 首次 Production 部署狀態 **ERROR**（只包含 GitHub 初始 commit），PR #1 的 `feat/initial-v3-site-20261015` 分支則已有 **READY** Preview，固定 Alias `naosledge-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app`；不能將 Preview READY 混同正式站已上線。
+- Vercel API 已成功寫入並**讀回確認** 7 個加密環境變數，全部 `target=preview`、`gitBranch=feat/initial-v3-site-20261015`，Production 環境變數為 0；Cookie Secret 由安全隨機來源產生，不記入 Git／CI。
+- 修正先前預想的 `naosledge-sandbox-preview` 專案名稱：現在 Guard 必須精確核對**已存在的 Vercel Project ID、唯一固定 HTTPS Alias、原開發分支與 Preview Target**。同時繼續強制只連 `br-quiet-sunset-b4xx4pnx` Sandbox Auth 與 Data API。
+- Vercel Connector 的受保護 Preview 實體網頁請求因 Deployment Protection 讀取權限 403，故**尚未完成網站 Runtime、密碼信、真實 Session／JWT／RLS 的線上驗收**；仍維持 Vercel SSO 保護，不為方便檢查而關閉。
+- 後續新 Commit 觸發的 Preview-only 建置需再次比對 SHA／READY、檢查是否載入新的 Env；只有在確認線上 Runtime 後，才對 Neon **Sandbox** 設定精確 Trusted Domain、驗證合成帳號密碼恢復流程並清理，不得操作 Production Auth 或正式 Owner 站長帳號。
+- MSI 額外以**模擬的 Vercel Preview 系統環境變數**（正確專案 ID、Feature 分支、固定 Alias）執行 `npm run test:browser:neon-recovery:local`：Next.js Chrome Smoke **exit 0**、頁面及 Token 驗證全部通過，且沒有發出 Neon Auth/Data API 呼叫；不代表已驗證 Vercel 線上網站。
+
 ## 2026-10-16：Vercel Hobby Preview — 授權已取得，建立權限受阻
 
 - Owner 已授權僅在 **Vercel Hobby `Naos Tsai's projects`** 建立 `naosledge-sandbox-preview`，只部署既有 Draft PR 的 feature 分支，連接已核准的 Neon Sandbox，禁止動 Production Auth／站長授權／正式網站。Vercel Connector 唯讀確認 Hobby 方案、GitHub `Naos2w/Naosledge` 已可存取、同名專案不存在。

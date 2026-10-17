@@ -13,7 +13,8 @@ export type PreviewRecoveryContext = {
 };
 
 export const APPROVED_PREVIEW_BRANCH = "feat/initial-v3-site-20261015";
-const PREVIEW_PROJECT_PREFIX = "naosledge-sandbox-preview-";
+export const APPROVED_PREVIEW_PROJECT_ID = "prj_JEXZkiab0njUM7VWFhDO0NhL0GtH";
+export const APPROVED_PREVIEW_HOST = "naosledge-git-feat-initial-v3-site-20261015-naos-tsais-projects.vercel.app";
 
 /** None for local development; otherwise require complete Vercel metadata. */
 export function vercelPreviewContext(): PreviewRecoveryContext | undefined {
@@ -36,10 +37,9 @@ export function sandboxResetRedirect(
     if (
       context.vercelEnv !== "preview" ||
       context.gitRef !== APPROVED_PREVIEW_BRANCH ||
-      !context.projectId?.startsWith("prj_") ||
-      context.projectId !== context.authorizedProjectId ||
-      !branchHost.startsWith(PREVIEW_PROJECT_PREFIX) ||
-      !/^[a-z0-9-]+\.vercel\.app$/.test(branchHost)
+      context.projectId !== APPROVED_PREVIEW_PROJECT_ID ||
+      context.authorizedProjectId !== APPROVED_PREVIEW_PROJECT_ID ||
+      branchHost !== APPROVED_PREVIEW_HOST
     ) {
       throw new Error("只允許已授權的 Naosledge Vercel Sandbox Preview。");
     }
