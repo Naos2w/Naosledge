@@ -54,6 +54,7 @@ export async function verifyNeonBrowser({owner,guest,authUrl,dataApiUrl,branch})
   const env={
     ...process.env,
     NODE_ENV:"development",
+    NAOSLEDGE_ALLOW_UNVERIFIED_SYNTHETIC_QA:"1",
     NAOSLEDGE_BACKEND:"neon",
     NEXT_PUBLIC_NAOSLEDGE_BACKEND:"neon",
     NAOSLEDGE_NEON_BRANCH_ID:branch,

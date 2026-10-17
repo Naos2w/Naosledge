@@ -4,6 +4,16 @@ import { backend } from "@/lib/backend";
 import { neonAuth } from "@/lib/neon/auth-server";
 
 export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/owner-activation")) {
+    // Activation is an isolated managed-Auth workflow. Do NOT use either the
+    // Supabase session refresher or the Sandbox Neon backend on these routes.
+    // Prevent leaking one-time reset URLs through caches, referers or indexes.
+    const isolated = NextResponse.next();
+    isolated.headers.set("Cache-Control","private, no-store, max-age=0");
+    isolated.headers.set("Referrer-Policy","no-referrer");
+    isolated.headers.set("X-Robots-Tag","noindex, nofollow, noarchive");
+    return isolated;
+  }
   let response: NextResponse;
   if (backend() === "neon") {
     // Session refresh / login redirect is delegated to official Neon Auth.

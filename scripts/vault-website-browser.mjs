@@ -71,6 +71,7 @@ export async function verifyVaultBrowser({
  const env={
   ...process.env,
   NODE_ENV:"development",
+  NAOSLEDGE_ALLOW_UNVERIFIED_SYNTHETIC_QA:"1",
   NAOSLEDGE_BACKEND:"neon",NEXT_PUBLIC_NAOSLEDGE_BACKEND:"neon",
   NAOSLEDGE_NEON_BRANCH_ID:BRANCH,
   NEON_AUTH_BASE_URL:SANDBOX_AUTH,

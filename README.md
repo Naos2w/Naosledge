@@ -26,7 +26,7 @@ Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這
 
 **2026-10-17：Production `002` Migration 已完成。** 只在 Neon `Naosledge` 的 `production` 分支使用單一交易套用 42 項 SQL，後驗確認三張私人知識表、10 項 RLS 政策、JWT 身分函式、搜尋和 Backlinks 索引；`posts`、`blog_admins` 與正式 Auth 帳號都保留。新表資料為 0，原有文章和站長授權仍為 0。**不得重複執行 Migration。**
 
-正式帳號目前 **Email 未驗證、Credential 密碼尚未設定、尚未授權站長**。Neon Auth 正式環境仍允許 Email 公開註冊且尚未強制驗證；需要先在官方 Console 關閉註冊、啟用 Email 驗證，並準備安全且受信任的 HTTPS 重設密碼回呼網址。既有 PR #1 Preview 只連 Neon Sandbox，不能拿來重設 Production 帳號；未另行核准部署前不向真實信箱發送含失效回呼的重設連結。本人收信驗證完成後才可按精確的 Auth User ID 授權管理員，不能跳過 Email 所有權驗證。
+正式帳號目前 **Email 未驗證、Credential 密碼尚未設定、尚未授權站長**。Neon Auth 正式環境**已關閉 Email 公開註冊**，但尚未強制 Email 驗證；現有 Console 畫面也沒有獨立的強制驗證開關。因此在新開發分支加入**伺服器端管理員 Email 已驗證檢查**，並準備**只在受保護 Vercel HTTPS Preview 才能啟用**的正式帳號 Email 驗證與首次設定密碼流程。既有 PR #1 Preview 只連 Neon Sandbox，不可拿來重設 Production 帳號；新 Preview 尚未建立、也沒有發信給正式 Yahoo 帳號。本人完成驗證後，再按核對過的 Auth ID 決定是否授予站長權限。完整設定和測試邊界見 [Owner Activation 安全準備](docs/OWNER_ACTIVATION_READINESS.md)。
 
 **Production 資料表可用 ≠ 正式網站已發布。** 本階段沒有合併 PR、改動 Vercel Production，也沒有直接對正式資料庫做真人私人筆記 CRUD。
 
