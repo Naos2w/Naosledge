@@ -22,6 +22,9 @@ export type VaultPreviewConfig={
 };
 
 export function privateVaultPreviewIntent(env:VaultPreviewRuntime):boolean {
+  // Production attempts are routed through the independent release gate.
+  // The temporary private Preview must never replace public site navigation.
+  if(env.VERCEL_ENV==="production")return false;
   return env.VERCEL_GIT_COMMIT_REF===VAULT_PREVIEW_BRANCH ||
     env.NAOSLEDGE_VAULT_PREVIEW_ENABLED==="1" ||
     env.NAOSLEDGE_NEON_BRANCH_ID===VAULT_PREVIEW_NEON_BRANCH;

@@ -3,8 +3,24 @@ import { updateSession } from "@/lib/supabase/proxy";
 import { backend } from "@/lib/backend";
 import { neonAuth } from "@/lib/neon/auth-server";
 import {allowedVaultPreviewPath,privateVaultPreviewIntent,validatePrivateVaultPreview} from "@/lib/neon/vault-preview";
+import {productionReleaseIntent,validateProductionRelease} from "@/lib/neon/production-release";
 
 export async function proxy(request: NextRequest) {
+  // Every Vercel Production request is denied until an exact reviewed main
+  // SHA, production domain, project, paired Neon endpoints and secret match.
+  // Never serve the legacy Supabase fallback as an accidental release.
+  if (productionReleaseIntent(process.env)) {
+    try {
+      validateProductionRelease(process.env);
+    } catch {
+      return new NextResponse(null,{status:503,headers:{
+        "Cache-Control":"private, no-store, max-age=0",
+        "Referrer-Policy":"no-referrer",
+        "X-Robots-Tag":"noindex, nofollow, noarchive",
+        "Retry-After":"3600",
+      }});
+    }
+  }
   // This branch is an SSO-protected, temporary Private Vault acceptance site,
   // NOT a public Production blog. Even a wrong deployment target, project,
   // branch, Neon endpoint, or missing secret denies every app route.
