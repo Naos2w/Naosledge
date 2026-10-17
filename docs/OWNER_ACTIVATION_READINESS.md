@@ -1,10 +1,10 @@
 # Naosledge — Owner Activation / Production Auth 安全準備
 
-更新日期：2026-10-17。開發分支 `feat/owner-activation-20261017`，以 [PR #2](https://github.com/Naos2w/Naosledge/pull/2) 的 Private Vault 工作為基底。**這是受保護 HTTPS 帳號啟用的候選實作，不是已啟用的正式流程**。
+更新日期：2026-10-17。開發分支 `feat/owner-activation-20261017`，以 [PR #2](https://github.com/Naos2w/Naosledge/pull/2) 的 Private Vault 工作為基底。**帳號本人已完成正式 Email 驗證與密碼設定，後驗確認成功；此頁後續會重新關閉，不代表正式網站或站長權限已發布。**
 
 ## Production 現狀與邊界
 
-Naosledge Neon Project `bitter-silence-36632892` Production `br-aged-sound-b43h5r2c` 已完成 002 Private Vault Migration，但站長未啟用。既有 Owner 帳號目前 `emailVerified=false`、沒有 Credential Password，`blog_admins=0`。Auth 設定 `allow_sign_up=false`，但 `require_email_verification=false`、`verify_email_on_sign_in=false`；Neon Console 此版本沒有可供設定後兩者的介面選項。Production Trusted Domains 目前為空，`Allow Localhost` 仍然啟用。
+Naosledge Neon Project `bitter-silence-36632892` Production `br-aged-sound-b43h5r2c` 已完成 002 Private Vault Migration，但站長未啟用。既有 Owner 帳號已由本人完成驗證：Neon Production 讀回 `emailVerified=true`、Credential Password 1 筆、`blog_admins=0`。Auth 設定 `allow_sign_up=false`、`allow_localhost=false`；但 `require_email_verification=false`、`verify_email_on_sign_in=false`，Neon Console 此版本沒有獨立強制驗證開關。正式權限仍由網站的 Email 已驗證檢查與 RLS 雙重保護。
 
 既有 Vercel 專案為 `naosledge`（`prj_JEXZkiab0njUM7VWFhDO0NhL0GtH`），原 PR #1 Preview **只連 Neon Sandbox**。新的 Production Auth 啟用功能**不可**錯接 Sandbox Auth／密碼回呼，也不可將 Production Neon Data API 暴露到 Sandbox Preview。PR #1／#2／此新開發分支均不合併、也不部署正式站點，除非 Owner 另行核准。
 
@@ -22,11 +22,11 @@ Naosledge Neon Project `bitter-silence-36632892` Production `br-aged-sound-b43h5
 
 **2026-10-17 Owner 已明確核准**在現有 Hobby 專案建立受 Vercel Authentication 保護的專用 Preview，只連正式 Neon Managed Auth；未核准 Production 網站發布、PR 合併或正式站長權限。Vercel 專案 ID `prj_JEXZkiab0njUM7VWFhDO0NhL0GtH` 的 SSO 保護已唯讀確認。
 
-已用 Vercel API 將 Owner Activation 的 **5 項加密環境變數**限制到 **Preview target + `feat/owner-activation-20261017` 分支**：啟用開關 `1`、唯一 Production Auth URL、既有 Owner Email、隨機 Cookie Secret，以及經 Vercel 部署 Alias 確認的 `NAOSLEDGE_OWNER_ACTIVATION_ORIGIN=https://naosledge-git-feat-owner-activation-8d4805-naos-tsais-projects.vercel.app`。唯讀查核 Production Env=0、原 PR #1 的 7 項 Sandbox 變數保持原狀。啟用開關只允許**由已登入 Vercel 的使用者自行點按**驗證信／密碼設定通知，不會在部署或測試時自動寄送郵件。
+已用 Vercel API 將 Owner Activation 的 **5 項加密環境變數**限制到 **Preview target + `feat/owner-activation-20261017` 分支**：啟用開關在帳號本人操作完成後已重新設定 `0`（須透過新 Preview 建置才會讓既有線上執行個體停用）、唯一 Production Auth URL、既有 Owner Email、隨機 Cookie Secret，以及經 Vercel 部署 Alias 確認的 `NAOSLEDGE_OWNER_ACTIVATION_ORIGIN=https://naosledge-git-feat-owner-activation-8d4805-naos-tsais-projects.vercel.app`。唯讀查核 Production Env=0、原 PR #1 的 7 項 Sandbox 變數保持原狀。啟用開關只允許**由已登入 Vercel 的使用者自行點按**驗證信／密碼設定通知，不會在部署或測試時自動寄送郵件。
 
 **部署歷程：** Vercel Connector 建立 Preview 的 API 一度回傳 HTTP 403；Owner 於 Vercel Dashboard 手動建立首個 Preview，Commit `2870e5b`。系統隨後唯讀確認正式分支 Alias `https://naosledge-git-feat-owner-activation-8d4805-naos-tsais-projects.vercel.app`，無登入請求會 302 轉向 Vercel SSO，且 Vercel Authentication 仍開啟。Agent 獨立修正程式對實際 Alias 的精確驗證，全部本機測試通過，並透過一次性允許此分支 Git 自動部署完成新版 Commit `7eb79f9`，Vercel Deployment `dpl_2ehU9DtumQaRQZNLEdfHgjy7Hq4q` **READY**、固定 Alias 指向新部署；已於 Neon **Production Auth Trusted Domains** 增加且讀回相同的唯一 HTTPS origin。**沒有寄送正式郵件、修改正式帳號資料或授予站長權限。** 由於 Vercel Connector 讀取受保護實際網頁仍因 SSO bypass API 403 被拒，網頁內容需由 Owner 自己登入確認，不可只憑 READY 宣稱完整 UI E2E 成功。
 
-**下一個 Owner 人工操作：** 使用本人已登入的 Vercel 帳號，在上面的固定 Preview HTTPS origin 打開 `/owner-activation`；確認頁面能正常顯示後，由本人在此頁依序申請 Email 驗證通知、輸入驗證碼／按信件驗證連結、再申請及完成首次設定密碼（禁止將密碼、OTP 或完整 Token URL 貼到 ChatGPT）。Agent 會在每個步驟用 Neon 讀取帳號驗證與 Credential 狀態；**在未完成 Email 驗證／密碼設定之前不對 `blog_admins` 寫入**。另需在 Neon Console 由 Owner 關閉 Production `Allow Localhost`。再次確認 Vercel Preview 具備 SSO 保護，不准因 API 403 而取消。
+**本人啟用已完成（2026-10-17）：** Owner 自行在受 Vercel SSO 保護的 Preview 收信並完成驗證／設定密碼；Neon Production 唯讀確認 `emailVerified=true`、Credential 密碼已存在、`allow_localhost=false`。沒有讀取或接收 OTP、密碼或 Token。下一步先讓暫時性的啟用 Preview 停用寄信功能，再獲取**明確的正式 `blog_admins` 授權**，才可以建立第一筆管理員資料。未合併 PR，也沒有部署 Production 網站。
 
 所有變數僅指定 Vercel `naosledge` 專案 Preview target、Git Branch `feat/owner-activation-20261017`。**不要加入 Production target，也不要複製 PR #1 Neon Sandbox 的 Data API／Cookie 設定。**
 
@@ -56,4 +56,4 @@ Naosledge Neon Project `bitter-silence-36632892` Production `br-aged-sound-b43h5
 - `npm run test:browser:local`：正式入口未啟用時，`/owner-activation`、`/owner-activation/reset`、`/owner-activation/verified` 都返回 404，且不得快取／外洩參照。
 - **Neon Sandbox 人工 API 測試**：於 `br-quiet-sunset-b4xx4pnx` 用空密碼的合成 `@example.com` 使用者，呼叫 `send-verification-email`、`request-password-reset` 都回傳 HTTP 200。合成帳號已刪除、Sandbox `user=0`、`blog_admins=0`、`knowledge_notes=0` 已唯讀確認。**200 只表示請求被接受，不代表郵件確實送達，更不代表連結／OTP 已通過驗證。** 沒有寄送任何郵件給真實 Owner Yahoo 信箱，也沒有讀取或使用生產環境的 Token。
 
-**目前最後待驗收：** 已經取得受 Vercel SSO 保護的 HTTPS Preview 並完成固定回呼網址與 Neon Auth Trusted Domain，尚未由登入者確認正式網頁及 Email／OTP／一次性密碼回呼的真正收信結果。只有 Owner 本人能操作信箱、驗證碼與私密密碼；Agent 不會要求、保存或輸入這些秘密。Production Auth 仍允許 localhost，需 Owner 在官方 Neon Console 關閉；正式站長帳號尚未啟用，Production 網站部署和 PR 合併沒有授權。
+**最新進度：** 用戶已完成正式 Email 驗證與密碼設定，Neon 唯讀證據為 `emailVerified=true`／Credential Password 1 筆，且 Production `Allow Localhost=false`、註冊關閉，真正 `blog_admins` 仍為 0。已將專用 Preview 的 Activation Encrypted Env 旗標調回 `0`；待後續 Preview 建置完成才能宣稱線上寄信功能實際停用。受保護的暫時性 Trusted Domain 將於收尾時撤銷。正式站長授權、PR 合併與正式網站部署都尚未獲得另行核准。

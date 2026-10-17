@@ -20,13 +20,13 @@ Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這
 - **部署邊界**：Owner 已明確核准且在 **Naosledge Neon Sandbox** 套用 `002_private_knowledge_vault.sql`；SQL 與真實 Neon Auth／JWT／RLS／Chrome E2E 都已通過，測試資料清理為 0。**Production 已在 2026-10-17 取得核准並成功套用 002，三張 Private Vault 表及 RLS 已唯讀核對**。分支 `vercel.json` 仍禁止新分支自動 Preview 部署，避免影響 PR #1 的 Vercel 或耗用未核准額度。
 - **測試**：本機 PGlite 權限、SQL RPC、中文搜尋、Wikilinks、公開草稿副本、單元測試、Next.js Build 和舊網站 Chrome 回歸均通過，另外已完成**真實 MSI Chrome + Neon Sandbox** 私人筆記新增、雙向連結、Backlinks、中文搜尋、跨帳號隔離與公開草稿保護驗收。
 
-詳見 [Second Brain 架構規格](docs/SECOND_BRAIN_ARCHITECTURE.md) 與 [Neon Sandbox 實體驗收及清理證據](docs/SECOND_BRAIN_SANDBOX_VERIFICATION.md)。**Sandbox 已完成真實 E2E 驗收，Production 002 Schema 已套用並後驗確認**；但正式帳號仍未完成密碼／Email 驗證，站長權限為零。網站部署、PR 合併與正式上線仍未授權，也未執行。
+詳見 [Second Brain 架構規格](docs/SECOND_BRAIN_ARCHITECTURE.md) 與 [Neon Sandbox 實體驗收及清理證據](docs/SECOND_BRAIN_SANDBOX_VERIFICATION.md)。**Sandbox 已完成真實 E2E 驗收，Production 002 Schema 已套用並後驗確認**；正式帳號亦已由本人完成 Email 驗證與首次密碼設定、Production Allow Localhost 已關閉。**站長權限尚未授予**；網站正式部署、PR 合併與正式上線仍需另行授權。
 
 ## Production 私人知識庫 Migration 與站長啟用
 
 **2026-10-17：Production `002` Migration 已完成。** 只在 Neon `Naosledge` 的 `production` 分支使用單一交易套用 42 項 SQL，後驗確認三張私人知識表、10 項 RLS 政策、JWT 身分函式、搜尋和 Backlinks 索引；`posts`、`blog_admins` 與正式 Auth 帳號都保留。新表資料為 0，原有文章和站長授權仍為 0。**不得重複執行 Migration。**
 
-正式帳號目前 **Email 未驗證、Credential 密碼尚未設定、尚未授權站長**。Neon Auth 正式環境**已關閉 Email 公開註冊**，但尚未強制 Email 驗證；現有 Console 畫面也沒有獨立的強制驗證開關。因此在新開發分支加入**伺服器端管理員 Email 已驗證檢查**，並準備**只在受保護 Vercel HTTPS Preview 才能啟用**的正式帳號 Email 驗證與首次設定密碼流程。既有 PR #1 Preview 只連 Neon Sandbox，不可拿來重設 Production 帳號；新 Preview 尚未建立、也沒有發信給正式 Yahoo 帳號。本人完成驗證後，再按核對過的 Auth ID 決定是否授予站長權限。完整設定和測試邊界見 [Owner Activation 安全準備](docs/OWNER_ACTIVATION_READINESS.md)。
+**2026-10-17 正式帳號啟用驗證已完成。** Neon Production 已唯讀核對原有帳號 `emailVerified=true`、Credential 密碼已建立 1 筆、`Allow Localhost=false`、Email 公開註冊關閉；**`blog_admins` 仍為 0，沒有提前授予站長權限**。獨立受保護 Vercel HTTPS Preview 已被本人用來完成驗證，之後已將啟用旗標重新設為關閉，將以後續 Preview 部署完成實際停用。原 PR #1 Preview 仍只連 Sandbox，新站點沒有接通 Production Data API。Neon Console 沒有強制驗證 Email 的獨立開關，因此程式本身新增站長 Email 驗證檢查。授予站長權限仍須另行核准。見 [Owner Activation 安全準備與關閉紀錄](docs/OWNER_ACTIVATION_READINESS.md)。
 
 **Production 資料表可用 ≠ 正式網站已發布。** 本階段沒有合併 PR、改動 Vercel Production，也沒有直接對正式資料庫做真人私人筆記 CRUD。
 
