@@ -1,5 +1,5 @@
 -- Naosledge Second Brain P1/P2: ADDITIVE private-only schema.
--- Verified on authorized Neon Sandbox 2026-10-17. DO NOT APPLY to Production or Supabase without separate approval.
+-- Verified on Neon Sandbox and applied to authorized Naosledge Production 2026-10-17. DO NOT REAPPLY to either existing branch or any other project.
 -- Requires 001_initial_blog.sql, managed Better Auth, auth.user_id(), and
 -- Neon Data API anonymous/authenticated roles; Sandbox authorization does not approve Production.
 -- Existing public.posts (and its publishing behavior) is not changed.

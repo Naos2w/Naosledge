@@ -17,10 +17,18 @@ Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這
 - **私人預設**：新表使用 Neon Auth JWT + RLS，只有實際站長能讀取**自己**的私人筆記，匿名和一般登入者無表格／RPC 權限，與公開 `posts` 完全分離。
 - **經審核的公開副本**：可明確產生一篇與私人原稿分離的 **status=draft** 文章，需再進入既有 Studio 檢查、手動發布；私人關係與來源 mapping 不會公開。
 - **效能與限制**：已有 PostgreSQL `tsvector/GIN` 英文全文搜尋；中文以 Unicode 字串比對作為初期功能（尚非索引化中文搜尋）。互動圖譜、AI 語意搜尋、Obsidian 雙向自動同步留到後續階段。
-- **部署邊界**：Owner 已明確核准且在 **Naosledge Neon Sandbox** 套用 `002_private_knowledge_vault.sql`；SQL 與真實 Neon Auth／JWT／RLS／Chrome E2E 都已通過，測試資料清理為 0。**Production 尚未套用 002**。分支 `vercel.json` 仍禁止新分支自動 Preview 部署，避免影響 PR #1 的 Vercel 或耗用未核准額度。
+- **部署邊界**：Owner 已明確核准且在 **Naosledge Neon Sandbox** 套用 `002_private_knowledge_vault.sql`；SQL 與真實 Neon Auth／JWT／RLS／Chrome E2E 都已通過，測試資料清理為 0。**Production 已在 2026-10-17 取得核准並成功套用 002，三張 Private Vault 表及 RLS 已唯讀核對**。分支 `vercel.json` 仍禁止新分支自動 Preview 部署，避免影響 PR #1 的 Vercel 或耗用未核准額度。
 - **測試**：本機 PGlite 權限、SQL RPC、中文搜尋、Wikilinks、公開草稿副本、單元測試、Next.js Build 和舊網站 Chrome 回歸均通過，另外已完成**真實 MSI Chrome + Neon Sandbox** 私人筆記新增、雙向連結、Backlinks、中文搜尋、跨帳號隔離與公開草稿保護驗收。
 
-詳見 [Second Brain 架構規格](docs/SECOND_BRAIN_ARCHITECTURE.md) 與 [Neon Sandbox 實體驗收及清理證據](docs/SECOND_BRAIN_SANDBOX_VERIFICATION.md)。**Sandbox 已驗收完成**；接下來如要套用 Neon Production Migration 或把這個 Vault 部署到正式網域，需 Owner 另行授權，正式站長帳號也尚未啟用。
+詳見 [Second Brain 架構規格](docs/SECOND_BRAIN_ARCHITECTURE.md) 與 [Neon Sandbox 實體驗收及清理證據](docs/SECOND_BRAIN_SANDBOX_VERIFICATION.md)。**Sandbox 已完成真實 E2E 驗收，Production 002 Schema 已套用並後驗確認**；但正式帳號仍未完成密碼／Email 驗證，站長權限為零。網站部署、PR 合併與正式上線仍未授權，也未執行。
+
+## Production 私人知識庫 Migration 與站長啟用
+
+**2026-10-17：Production `002` Migration 已完成。** 只在 Neon `Naosledge` 的 `production` 分支使用單一交易套用 42 項 SQL，後驗確認三張私人知識表、10 項 RLS 政策、JWT 身分函式、搜尋和 Backlinks 索引；`posts`、`blog_admins` 與正式 Auth 帳號都保留。新表資料為 0，原有文章和站長授權仍為 0。**不得重複執行 Migration。**
+
+正式帳號目前 **Email 未驗證、Credential 密碼尚未設定、尚未授權站長**。Neon Auth 正式環境仍允許 Email 公開註冊且尚未強制驗證；需要先在官方 Console 關閉註冊、啟用 Email 驗證，並準備安全且受信任的 HTTPS 重設密碼回呼網址。既有 PR #1 Preview 只連 Neon Sandbox，不能拿來重設 Production 帳號；未另行核准部署前不向真實信箱發送含失效回呼的重設連結。本人收信驗證完成後才可按精確的 Auth User ID 授權管理員，不能跳過 Email 所有權驗證。
+
+**Production 資料表可用 ≠ 正式網站已發布。** 本階段沒有合併 PR、改動 Vercel Production，也沒有直接對正式資料庫做真人私人筆記 CRUD。
 
 ## v3 視覺與互動設計
 

@@ -1,5 +1,7 @@
 # Second Brain P1＋P2 — Neon Sandbox 實體驗收
 
+歷史驗收報告：本文件記錄 Sandbox 當時的執行結果。**後續在 2026-10-17 已依使用者另一項核准完成 Production 的 002 Migration**；請以 README 及 PR #2 最新更新判斷目前狀態。
+
 日期：2026-10-17（台灣時間）。目標僅為 **Naosledge Free Neon Sandbox**
 `bitter-silence-36632892` / `br-quiet-sunset-b4xx4pnx` / `neondb`。
 來源：GitHub [Draft PR #2](https://github.com/Naos2w/Naosledge/pull/2)，以 PR #1 開發分支為基底。

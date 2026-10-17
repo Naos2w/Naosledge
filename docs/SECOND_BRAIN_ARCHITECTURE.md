@@ -1,6 +1,6 @@
 # Naosledge Second Brain — P1 + P2 實作／驗收規格
 
-更新：2026-10-17。這份文件屬於獨立開發分支 `feat/private-knowledge-vault-20261017`，建基於原 Draft PR #1。**Owner 已明確核准並在 Naosledge Neon Sandbox 套用 `002`；真實 Better Auth／JWT／Data API／RLS／Chrome E2E 全部通過，合成帳號與資料已清理。Neon Production 未套用 `002`、未合併 PR、未部署新版本至 Vercel，也沒有使用正式站長帳號。**
+更新：2026-10-17。這份文件屬於獨立開發分支 `feat/private-knowledge-vault-20261017`，建基於原 Draft PR #1。**Owner 已明確核准並在 Naosledge Neon Sandbox 套用 `002`；真實 Better Auth／JWT／Data API／RLS／Chrome E2E 全部通過，合成帳號與資料已清理。Neon Production 已於 2026-10-17 另行獲准套用 `002` 並完成資料庫後驗、未合併 PR、未部署新版本至 Vercel，也沒有使用正式站長帳號。**
 
 ## 決定的產品定位
 
@@ -15,7 +15,7 @@
 | 站長 A | 僅自己持有 | 僅自己的連結／映射 | 可自行建立草稿 | 依既有 posts 管理規則 |
 | 站長 B | **無法查看 A 的私人內容** | 無法查看 A 的連結 | 無法由 A 的知識建立草稿 | 依既有 posts 管理規則 |
 
-### Migration（已核准套用 Sandbox，Production 尚未授權）
+### Migration（已核准套用 Sandbox，Production 002 已完成）
 
 - 檔案：`neon/migrations/002_private_knowledge_vault.sql`，必須先有既有 `001_initial_blog.sql`、Better Auth 與 Data API 角色。
 - `knowledge_notes`：隸屬 owner 的私人筆記，`id` 與每位 owner 內唯一的 slug、Title、Summary、Markdown、Category/Tags、日期。所有寫入、讀取由 Neon JWT 經受控 `public.vault_current_user_id()` 解析，並配合 `blog_admins` 與 RLS 強制限制。
@@ -26,7 +26,7 @@
 - `search_knowledge_notes` RPC：以 `GIN(search_document)` 搜尋英文/空白分詞，並用字串 substring 補足中文及摘要／標籤；**中文子字串尚未有倒排索引**，大量資料時須另評估 `pg_trgm` 或 tokenizer，不應宣稱是完整索引的中文全文搜尋。
 - 所有新表預設不授權匿名，不向公開文章頁傳遞私有 ID／來源映射；函式權限也撤除對 PUBLIC/anonymous 的預設 EXECUTE。
 
-**這不是可直接複製到 Production 執行的授權。** Sandbox 已按本次獨立授權完成 002 Migration 與實體驗收；Production 必須另行評估備份／回復、身分政策、正式站長、免費額度與部署安全，並獲得另一個明確授權。嚴禁操作其他既有 Supabase/Neon 專案。
+**Production 已在 2026-10-17 獲另一項核准並成功套用 002，禁止在既有 Production 分支重複執行**。本階段只完成資料庫結構與權限後驗；備份／回復、正式站長、Auth 安全政策、部署與正式網站驗收仍須另行確認。嚴禁操作其他既有 Supabase/Neon 專案。
 
 ## UI／功能
 
