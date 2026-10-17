@@ -18,9 +18,17 @@ Naosledge Neon Project `bitter-silence-36632892` Production `br-aged-sound-b43h5
 - `vercel.json`：此新功能分支 **禁用 Git 自動部署**，不影響 PR #1 既有 Sandbox Preview。正式 URL 未獲準前，沒有新的線上入口。
 - **Fail-closed**：如果不符合 Vercel `VERCEL_ENV=preview`、精確 Vercel 專案 ID、精確 feature branch、HTTPS `VERCEL_BRANCH_URL` 與相同的環境變數 origin，任何 Owner Activation 路由都返回 404，Server Actions 也拒絕實際寄信／重設；在 Vercel Production、localhost、其他專案及錯誤 Host 下均不可運作。
 
-## 唯一允許的日後 Preview 設定（尚未套用）
+## Vercel Owner Activation Preview（已授權；建立部署需要手動協助）
 
-以下**全部只指定 Vercel `naosledge` 專案的 Preview target、Git Branch `feat/owner-activation-20261017`**。設定前先獲得 Owner 對「將正式 Auth 連接到受保護 Preview 以執行個人帳號啟用」的明確授權。**不要填 Production target，也不要複製 PR #1 Neon Sandbox Data API／Cookie 設定。**
+**2026-10-17 Owner 已明確核准**在現有 Hobby 專案建立受 Vercel Authentication 保護的專用 Preview，只連正式 Neon Managed Auth；未核准 Production 網站發布、PR 合併或正式站長權限。Vercel 專案 ID `prj_JEXZkiab0njUM7VWFhDO0NhL0GtH` 的 SSO 保護已唯讀確認。
+
+已用 Vercel API 將 `NAOSLEDGE_OWNER_ACTIVATION_ENABLED=0`、Production Auth URL、既有 Owner Email 與高熵隨機 Cookie Secret 儲存成 **4 項加密環境變數**，全部限制到 **Preview target + `feat/owner-activation-20261017` 分支**。唯讀重新查詢核對，Production Env 為 0，PR #1 的 7 項 Sandbox 變數保持原樣。**沒有設定 `NAOSLEDGE_OWNER_ACTIVATION_ORIGIN`，因為確切 HTTPS Alias 必須在首次部署後才能驗證；任何寄信／重設 Server Action 目前都因開關為 0 而被拒絕。**
+
+**實際阻礙：** 在正確團隊嘗試以指定 Git Branch/Commit 建立 Preview Deployment，Vercel Connector 回傳 **HTTP 403 — no permission to create Preview Deployment**；MSI 沒有 Vercel CLI 或 CLI 登入狀態。遵照 API 回覆沒有重試相同請求或改用其他 Team／帳號。**截至此記錄沒有新的 Vercel Deployment、沒有新增 Neon Production Trusted Domain、沒有寄送任何真實郵件。**
+
+下一個 Owner 手動操作：在 Vercel Dashboard 切換 `Naos Tsai's projects`，開啟現有 `naosledge` 專案，進入 Deployments 使用提供的手動部署功能，**明確選擇 Preview 和 Git ref `feat/owner-activation-20261017`**；不要選 `main`，不要選 Production，不要取消 Deployment Protection。若 UI 無法指定分支或預覽目標，停止並回報畫面，不自行部署。因該分支 `vercel.json` 禁止**自動 Git 部署**，手動建立必須選擇正確 Git ref。初次 Preview 正常應只會顯示 404，因寄信功能尚未啟用。取得實際部署 URL 後，再由 Agent 核對 Preview SHA、Alias 與保護，再設定唯一正確的 `NAOSLEDGE_OWNER_ACTIVATION_ORIGIN`、啟用開關、登記精確 Neon Production Trusted Domain，然後需要新版 **Preview Redeploy** 才能載入更新後的 Env。
+
+所有變數僅指定 Vercel `naosledge` 專案 Preview target、Git Branch `feat/owner-activation-20261017`。**不要加入 Production target，也不要複製 PR #1 Neon Sandbox 的 Data API／Cookie 設定。**
 
 | 變數 | 用途 |
 |---|---|
