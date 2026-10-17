@@ -26,7 +26,7 @@ Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這
 
 **2026-10-17：Production `002` Migration 已完成。** 只在 Neon `Naosledge` 的 `production` 分支使用單一交易套用 42 項 SQL，後驗確認三張私人知識表、10 項 RLS 政策、JWT 身分函式、搜尋和 Backlinks 索引；`posts`、`blog_admins` 與正式 Auth 帳號都保留。新表資料為 0，原有文章和站長授權仍為 0。**不得重複執行 Migration。**
 
-**2026-10-17 正式帳號啟用驗證已完成。** Neon Production 已唯讀核對原有帳號 `emailVerified=true`、Credential 密碼已建立 1 筆、`Allow Localhost=false`、Email 公開註冊關閉；**`blog_admins` 仍為 0，沒有提前授予站長權限**。獨立受保護 Vercel HTTPS Preview 已被本人用來完成驗證，之後已將啟用旗標重新設為關閉，將以後續 Preview 部署完成實際停用。原 PR #1 Preview 仍只連 Sandbox，新站點沒有接通 Production Data API。Neon Console 沒有強制驗證 Email 的獨立開關，因此程式本身新增站長 Email 驗證檢查。授予站長權限仍須另行核准。見 [Owner Activation 安全準備與關閉紀錄](docs/OWNER_ACTIVATION_READINESS.md)。
+**2026-10-17 正式帳號啟用驗證已完成。** Neon Production 已唯讀核對原有帳號 `emailVerified=true`、Credential 密碼已建立 1 筆、`Allow Localhost=false`、Email 公開註冊關閉；**`blog_admins` 仍為 0，沒有提前授予站長權限**。獨立受保護 Vercel HTTPS Preview 已被本人用來完成驗證，之後已將啟用旗標設為 `0`，並重新部署 Preview（READY）讓停用設定生效；Neon Production Auth 也已撤銷暫時的 Trusted Domain。原 PR #1 Preview 仍只連 Sandbox，新站點沒有接通 Production Data API。Neon Console 沒有強制驗證 Email 的獨立開關，因此程式本身新增站長 Email 驗證檢查。授予站長權限仍須另行核准。見 [Owner Activation 安全準備與關閉紀錄](docs/OWNER_ACTIVATION_READINESS.md)。
 
 **Production 資料表可用 ≠ 正式網站已發布。** 本階段沒有合併 PR、改動 Vercel Production，也沒有直接對正式資料庫做真人私人筆記 CRUD。
 
