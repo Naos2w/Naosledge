@@ -6,10 +6,12 @@ import { requireAdmin } from "@/lib/auth";
 import { isPostId, validatePostInput } from "@/lib/post-validation";
 import { backend } from "@/lib/backend";
 import { neonAuth } from "@/lib/neon/auth-server";
+import {privateVaultPreviewIntent} from "@/lib/neon/vault-preview";
 
 export type ActionResult = { ok: true; id: string } | { ok: false; error: string };
 
 export async function savePost(input: unknown): Promise<ActionResult> {
+  if(privateVaultPreviewIntent(process.env))return {ok:false,error:"私人驗收站禁止建立或發布公開文章。"};
   const { supabase, user } = await requireAdmin();
   const validated = validatePostInput(input);
   if (!validated.ok) return validated;
@@ -44,6 +46,7 @@ export async function savePost(input: unknown): Promise<ActionResult> {
 }
 
 export async function deletePost(id: unknown): Promise<{ok:boolean;error?:string}> {
+  if(privateVaultPreviewIntent(process.env))return {ok:false,error:"私人驗收站禁止刪除公開文章。"};
   const { supabase, user } = await requireAdmin();
   if (!isPostId(id)) return {ok:false,error:"無效的文章 ID。"};
   const { error } = await supabase.from("posts").delete().eq("id", id).eq("author_id", user.id);
@@ -56,7 +59,7 @@ export async function deletePost(id: unknown): Promise<{ok:boolean;error?:string
 export async function signOut() {
   if (backend() === "neon") {
     await neonAuth().signOut();
-    redirect("/");
+    redirect(privateVaultPreviewIntent(process.env)?"/login":"/");
   }
   const { createClient } = await import("@/lib/supabase/server");
   const supabase = await createClient();

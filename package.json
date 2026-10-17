@@ -14,6 +14,7 @@
     "test:browser:neon-recovery:local": "node scripts/smoke-neon-recovery-ui.mjs",
     "test:browser:owner-activation:local": "node scripts/smoke-owner-activation-ui.mjs",
     "test:browser:knowledge-graph:local": "node scripts/smoke-knowledge-graph.mjs",
+    "test:release:closed:local": "node scripts/smoke-production-closed.mjs",
     "verify:owner-email:sandbox:manual": "node scripts/verify-owner-email-sandbox.mjs",
     "verify:anonymous": "node --env-file=.env.local scripts/verify-anonymous-access.mjs"
   },

@@ -15,8 +15,8 @@ import type {KnowledgeTitle} from "@/lib/wiki-links";
 import type {VaultNote,VaultRelation} from "@/lib/vault-server";
 import type {VaultNoteInput} from "@/lib/vault-validation";
 
-export default function VaultEditor({initial,targets,wikiTargets,relations}:{
-  initial?:VaultNote;targets:KnowledgeTitle[];
+export default function VaultEditor({initial,targets,wikiTargets,relations,allowPublication=true}:{
+  initial?:VaultNote;targets:KnowledgeTitle[];allowPublication?:boolean;
   wikiTargets:Record<string,string>;
   relations?:{outgoing:VaultRelation[];backlinks:VaultRelation[];unresolved:string[]};
 }) {
@@ -245,14 +245,14 @@ export default function VaultEditor({initial,targets,wikiTargets,relations}:{
           </>}
         </>}
 
-        <div className="vault-side-rule"/>
+        {allowPublication&&<><div className="vault-side-rule"/>
         <h2><ShieldCheck size={16}/> 選擇性公開</h2>
         <p>私人原稿永遠不會因為建立連結而公開。需要分享時，只能先產生獨立的未發布草稿。</p>
         {initial&&<button className="vault-publish-draft" type="button"
           disabled={busy||dirty} onClick={createPublicDraft}>
           <Globe2 size={15}/> 建立獨立公開草稿
         </button>}
-        {initial&&dirty&&<p>請先儲存私人變更，才能從最新版本建立公開草稿。</p>}
+        {initial&&dirty&&<p>請先儲存私人變更，才能從最新版本建立公開草稿。</p>}</>}
         {initial&&<button type="button" className="vault-delete" onClick={remove} disabled={busy}>
           <Trash2 size={15}/> 刪除私人筆記
         </button>}
