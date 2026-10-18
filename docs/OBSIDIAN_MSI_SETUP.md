@@ -1,15 +1,15 @@
 # MSI 電腦：Obsidian 安裝與 Naosledge 同步準備
 
-更新：2026-10-18。Owner 已選擇 **MSI（Windows 11）** 為未來的 Obsidian 同步電腦，但尚未安裝 Obsidian、尚未選擇 Vault 的實際資料夾。這份文件只說明準備流程，**不代表允許掃描本機檔案、安裝常駐程式、寫入私人筆記、刪除檔案或啟動自動同步**。
+更新：2026-10-18。Owner 已授權使用 **MSI（Windows 11）**，Obsidian **1.14.4 已由 Winget 安裝並驗證數位簽章**，且已核准並建立空白資料夾 **`C:\Naos\Obsidian\Naosledge`**。尚待在 Obsidian GUI 將此既有資料夾註冊為 Vault；目前沒有 `.obsidian` 設定或私人筆記。本方案不授權背景同步、雲端寫入、刪除或任意資料夾掃描。
 
 ## 已驗證（MSI）
 
 - 電腦名稱：`MSI`；Windows 11；`winget` 可使用。
-- Windows Package Manager 查詢到套件識別碼 `Obsidian.Obsidian`。本次查到可用套件版本 1.14.4，安裝時以使用者確認的實際來源版本為準。
-- 常見的 Obsidian 程式執行檔位置未發現安裝；此檢查不能排除非標準安裝或 Microsoft Store 類型。
+- Windows Package Manager 套件 `Obsidian.Obsidian` **1.14.4 已安裝**，執行檔簽章為 Valid；`npm run verify:obsidian:msi` 回報找到安裝程式。
+- Owner 已授權 `C:\Naos\Obsidian\Naosledge`，建立前確認該路徑不存在，目前資料夾內為 0 個檔案；**Obsidian GUI 尚未註冊成 Vault**。
 - 專案新增 **TypeScript** 唯讀前置檢查：在 MSI／Node.js 24 執行 `npm run verify:obsidian:msi`。只檢查四個常見程式安裝位置；不開啟本機筆記檔案、不搜尋其他資料夾、不裝程式。
 
-## 安裝（需要 Owner 確認後執行）
+## Obsidian 已安裝（歷史操作）
 
 在 **MSI PowerShell** 中：
 
@@ -19,15 +19,22 @@ winget install --id Obsidian.Obsidian --exact --source winget --accept-source-ag
 
 或使用官方 [Obsidian 下載頁](https://obsidian.md/download) 自行安裝。
 
-**注意：安裝應用程式會修改 MSI 的軟體清單。這份 PR 沒有執行安裝；待 Owner 明確同意才使用連接電腦的操作能力安裝。**
+**這項安裝已由 Owner 授權並完成**，不需再次執行 Winget。
 
-安裝完成後，在 Obsidian 介面選擇「Create new vault」，設定容易識別的名稱及**你自己選擇的本機資料夾**。先建立測試用途的空白 Vault，避免直接接管其他筆記。不預設安裝位置等於 Vault 位置，也不推測你的 iCloud／OneDrive／Syncthing 路徑。
+### 現在需要在 MSI 的 Obsidian GUI 完成註冊
+
+1. 開啟 MSI 上的 Obsidian。
+2. 在管理 Vault 畫面選擇 **「開啟資料夾作為儲存庫」（Open folder as vault）**，指定 `C:\Naos\Obsidian\Naosledge`。
+3. **不要**再選「建立新的儲存庫」並把此路徑當作上層資料夾，以免建立 `Naosledge\Naosledge` 巢狀位置。
+4. Obsidian 應自行於既有資料夾建立 `.obsidian` 設定；完成後檢查其位置即可，不需新增任何範例筆記。
+
+官方操作方式：[Obsidian 儲存庫說明](https://obsidian.md/zh-TW/help/vault)。尚未驗證 GUI 註冊完成，且不應手動修改使用者的 Obsidian 全域註冊資料。
 
 ## 第一次連接 Naosledge（安全順序）
 
-1. Owner 告訴專案實際 Vault 資料夾的完整路徑，例如 `C:\Users\<username>\Documents\Obsidian\<vault>`（此處只是格式示例，**不是已授權位置**）。
-2. 先用合成 Markdown，在隔離測試資料夾執行唯讀版本指紋比對，檢查 slug、SHA-256、檔案修改、衝突、刪除及資料夾更名情境。
-3. 對照 Naosledge [Obsidian 單篇手動匯入／匯出](OBSIDIAN_MARKDOWN_BRIDGE.md) 與 [同步安全預演](OBSIDIAN_SYNC_SAFETY.md)。目前的預演沒有資料夾讀取／寫入能力。
+1. Owner 已指定且核准唯一 MSI 位置：`C:\Naos\Obsidian\Naosledge`。其他資料夾沒有自動授權。
+2. 已在系統暫存目錄用**合成 Markdown**完成唯讀 SHA-256 掃描、版本指紋、單邊修改與雙方衝突預演。測試檔案未寫入實際 Vault。
+3. 在 MSI 可執行 `npm run verify:obsidian:vault:msi`，只讀取核准 Vault **根目錄**內檔名符合小寫 slug 的 `.md`，顯示數量而非筆記內容。當前結果為 **0 篇**，沒有存入同步基線或與 Neon 連線。詳見 [同步安全預演](OBSIDIAN_SYNC_SAFETY.md)。
 4. 若要自動雙向同步，還必須先決定刪除政策（預設絕不自動刪除）、衝突是否每次提示、同步頻率與是否需要 iPhone 一同參與。之後才能設計使用本人 Neon Auth／RLS 的真正執行器，且應先在 Sandbox 驗收。
 5. 不安裝背景同步服務、不開放私人筆記到公用網站、不把密碼、Cookie 或 API Token 存進 GitHub Actions。
 
@@ -37,9 +44,9 @@ winget install --id Obsidian.Obsidian --exact --source winget --accept-source-ag
 
 ## 尚未完成
 
-- Obsidian 安裝與應用程式首次開啟（需要 Owner 同意）
-- Owner 選定並授權的 Vault 位置
-- 實際 Obsidian 資料夾的本地讀取（尚未進行）
+- **使用者在 MSI 的 Obsidian GUI 註冊既有空白 Vault 資料夾**（目前已建立，尚未註冊）
+- 使用者在 Obsidian 畫面確認此 Vault 正確出現
+- 實際遠端筆記的唯讀授權、同步基線保存及後續寫入流程（目前只有本機空白資料夾掃描）
 - 真正的本地↔Neon 寫入執行器、回滾與衝突處理
 - 如有需要：iPhone 參與及多裝置一致性
 

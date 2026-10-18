@@ -33,7 +33,8 @@
       "feat/obsidian-md-bridge-20261018": false,
       "feat/ci-node24-live-smoke-20261018": false,
       "feat/obsidian-sync-planner-20261018": false,
-      "docs/obsidian-msi-typescript-guidance-20261018": false
+      "docs/obsidian-msi-typescript-guidance-20261018": false,
+      "feat/obsidian-local-readonly-sandbox-20261018": false
     }
   }
 }
