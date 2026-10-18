@@ -12,19 +12,24 @@ test("Owner-approved production SEO origin is the shorter indexed Vercel alias",
   assert.notEqual(RELEASE_ORIGIN,"https://"+legacyHost);
 });
 
-test("legacy hostname redirects permanently to the new canonical, preserving paths",()=>{
-  assert.equal(config.redirects?.length,1);
-  const r=config.redirects[0];
-  assert.equal(r.source,"/:path*");
-  assert.equal(r.destination,"https://"+mainHost+"/:path*");
-  assert.equal(r.permanent,true);
-  assert.deepEqual(r.has,[{type:"host",value:legacyHost}]);
-  assert.notEqual(r.has[0].value,mainHost);
+test("legacy hostname redirects its root and all subpaths to the canonical host",()=>{
+  assert.equal(config.redirects?.length,2);
+  const [root,paths]=config.redirects;
+  assert.equal(root.source,"/");
+  assert.equal(root.destination,"https://"+mainHost+"/");
+  assert.equal(paths.source,"/:path*");
+  assert.equal(paths.destination,"https://"+mainHost+"/:path*");
+  for(const r of [root,paths]){
+    assert.equal(r.permanent,true);
+    assert.deepEqual(r.has,[{type:"host",value:legacyHost}]);
+    assert.notEqual(r.has[0].value,mainHost);
+  }
 });
 
 test("merge to main must NOT auto-deploy before exact release SHA is approved",()=>{
   assert.equal(config.git?.deploymentEnabled?.main,false);
   assert.equal(config.git?.deploymentEnabled?.["fix/private-route-cache-and-ci-20261018"],false);
+  assert.equal(config.git?.deploymentEnabled?.["fix/legacy-home-redirect-20261018"],false);
 });
 
 test("production release gate refuses the legacy hostname as its primary origin",()=>{

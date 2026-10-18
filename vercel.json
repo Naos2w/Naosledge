@@ -2,6 +2,14 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "redirects": [
     {
+      "source": "/",
+      "has": [
+        {"type": "host", "value": "naosledge-naos-tsais-projects.vercel.app"}
+      ],
+      "destination": "https://naosledge.vercel.app/",
+      "permanent": true
+    },
+    {
       "source": "/:path*",
       "has": [
         {"type": "host", "value": "naosledge-naos-tsais-projects.vercel.app"}
@@ -19,7 +27,8 @@
       "feat/vault-preview-20261017": false,
       "feat/production-release-gate-20261017": false,
       "fix/production-sitemap-build-20261018": false,
-      "fix/private-route-cache-and-ci-20261018": false
+      "fix/private-route-cache-and-ci-20261018": false,
+      "fix/legacy-home-redirect-20261018": false
     }
   }
 }
