@@ -10,6 +10,7 @@ import {
 import Markdown from "@/components/markdown";
 import {saveVaultNote,deleteVaultNote,createVaultPublicDraft} from "@/app/vault/actions";
 import {parseMarkdownBackup,serializeMarkdownBackup,markdownBackupFilename} from "@/lib/markdown-backup";
+import {parseObsidianMarkdown,serializeObsidianMarkdown} from "@/lib/obsidian-markdown";
 import {slugify,todayTaipei} from "@/lib/format";
 import type {KnowledgeTitle} from "@/lib/wiki-links";
 import type {VaultNote,VaultRelation} from "@/lib/vault-server";
@@ -71,27 +72,41 @@ export default function VaultEditor({initial,targets,wikiTargets,relations,allow
     });
   }
 
-  function downloadBackup() {
-    const draft={
+  function currentMarkdownDraft() {
+    return {
       title,slug,excerpt:summary,category,learned_on:learnedOn,
       tags:tagsText.split(/[,，\n]/g).map(s=>s.trim()).filter(Boolean),
       content_md:content,
     };
-    const body=serializeMarkdownBackup(draft);
+  }
+
+  function downloadMarkdown(body:string,message:string) {
     const url=URL.createObjectURL(new Blob([body],{type:"text/markdown;charset=utf-8"}));
     const element=document.createElement("a");
     element.href=url;
     element.download=markdownBackupFilename(title,slug);
     document.body.appendChild(element);element.click();element.remove();
     window.setTimeout(()=>URL.revokeObjectURL(url),1500);
-    setNotice("已下載 Markdown 備份，僅保存在你選擇的裝置位置。");
+    setNotice(message);
+  }
+
+  function downloadBackup() {
+    downloadMarkdown(serializeMarkdownBackup(currentMarkdownDraft()),
+      "已下載 Markdown 備份，僅保存在你選擇的裝置位置。");
+  }
+
+  function downloadObsidian() {
+    downloadMarkdown(serializeObsidianMarkdown(currentMarkdownDraft()),
+      "已下載 Obsidian 相容的 .md；可手動放入你的 Obsidian Vault，不會自動同步。");
   }
 
   async function importBackup(file?:File) {
     if(!file) return;
     if(file.size>1_000_000) {setError("匯入檔不得超過 1 MB。");return;}
     try {
-      const parsed=parseMarkdownBackup(await file.text());
+      const text=await file.text();
+      const obsidian=parseObsidianMarkdown(text,file.name,todayTaipei());
+      const parsed=obsidian??parseMarkdownBackup(text);
       if(!window.confirm("匯入會覆蓋目前尚未儲存的編輯內容，但不會直接公開。確定繼續嗎？")) return;
       setContent(parsed.content_md);
       if(parsed.metadata) {
@@ -104,7 +119,9 @@ export default function VaultEditor({initial,targets,wikiTargets,relations,allow
         manualSlug.current=true;
       }
       setError("");
-      setNotice("Markdown 已載入編輯器，尚未儲存到私人知識庫。");
+      setNotice(obsidian
+        ?"Obsidian 筆記與屬性已載入，尚未儲存到私人知識庫。"
+        :"Markdown 已載入編輯器，尚未儲存到私人知識庫。");
     } catch(cause) {
       setError(cause instanceof Error?cause.message:"無法匯入 Markdown。");
     }
@@ -210,6 +227,9 @@ export default function VaultEditor({initial,targets,wikiTargets,relations,allow
             onChange={e=>{const f=e.currentTarget.files?.[0];e.currentTarget.value="";void importBackup(f);}}/>
           <button type="button" onClick={()=>backupFile.current?.click()}><Upload size={15}/> 匯入 Markdown</button>
           <button type="button" onClick={downloadBackup}><Download size={15}/> 下載 .md 備份</button>
+          <button type="button" disabled={!title.trim()} onClick={downloadObsidian}>
+            <Download size={15}/> Obsidian .md
+          </button>
         </div>
       </div>
 
