@@ -1,16 +1,16 @@
 # Naosledge v3 · Minimal Dark Liquid Glass
 
-一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。目前正式網站使用 **Neon Free Production（Better Auth + Data API + PostgreSQL RLS）**；本機程式仍保留 Supabase 相容回退路徑，但正式環境需通過精確 SHA 與資料庫設定的發布閘門。P4 AI 語意搜尋／問答與 Obsidian 同步尚未實作。
+一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。目前正式網站使用 **Neon Free Production（Better Auth + Data API + PostgreSQL RLS）**；本機程式仍保留 Supabase 相容回退路徑，但正式環境需通過精確 SHA 與資料庫設定的發布閘門。P4 AI 語意搜尋／問答及 Obsidian **自動雙向同步**尚未實作；私人編輯器已新增可手動使用的 Obsidian 格式匯出／匯入互通。
 
 > v3 在先前版本的基礎上加入 Dark Liquid Glass 與流暢動畫，保留文章資料結構、Supabase RLS、登入及資料存取邏輯。v1、v2 保留為歷史版本。
 
 ## 正式環境狀態（2026-10-18）
 
-- **網站已正式上線**：[Naosledge](https://naosledge.vercel.app)（2026-10-18 已核准改用短網址作為 canonical；原長網址設定永久轉址）。[PR #1～#7](https://github.com/Naos2w/Naosledge/pulls?q=is%3Apr+is%3Amerged) 均已合併至 `main`；切換網址前最後驗證的 Production SHA 為 `56dcfe316d217bca51bcd424416fafd33caa12b2`；正式切換完成後請以 Vercel Production 最新 READY 部署與核准 SHA 為準。未登入可讀公開頁，私人路由須登入。
+- **網站已正式上線**：[Naosledge](https://naosledge.vercel.app)（2026-10-18 已核准改用短網址作為 canonical；原長網址設定永久轉址）。[PR #1～#10](https://github.com/Naos2w/Naosledge/pulls?q=is%3Apr+is%3Amerged) 均已合併至 `main`，詞彙相關度搜尋已在獲核准的 Production 版本 `881b8a9f6f6a7c302a36becbddab905246613144` 完成部署與驗證。之後更新仍需按 SHA gate 手動發布。未登入可讀公開頁，私人路由須登入。
 - **站長已驗收**：Owner 親自確認正式站長登入及 `/studio`、`/vault` 可以存取；Private Vault 與 Knowledge Atlas 具備獨立 Neon JWT/RLS 權限限制。獨立 Private Vault Preview 驗收完成後已停用。
 - **資料保護**：正式 Neon 原有站長授權已建立、公開註冊與 localhost 關閉；三張 Private Vault 資料表有 10 項 RLS 政策。最終確認時沒有測試筆記或公開文章；日後實際資料量以線上資料庫為準。
 - **正式發布閘門**：需要匹配核准的 `main` SHA、Vercel Production project/branch、HTTPS origin 與 Neon Production 配對。因合併後的新 SHA 無法提前推測，Vercel `main` Git 自動部署已設為停用；請先通過 GitHub CI、合併，再核對及更新正式環境的 SHA／網址，以**手動 Production 部署**生效。切勿關閉安全閘門解決 503。Vercel Standard Protection 保護 Preview，而公開正式網域可供訪客使用。
-- **後續工作**：私人搜尋結果的詞彙相關度排序已另在功能分支實作並測試（[設計與限制](docs/PRIVATE_SEARCH_RELEVANCE.md)），不等於 P4 AI 語意搜尋。文章實際發布／下架尚未由 Owner 單獨驗收；P4 AI 問答、Obsidian 自動同步仍需另行決定隱私與費用界線。見 [正式發布閘門](docs/PRODUCTION_RELEASE_GATE.md)。
+- **後續工作**：私人搜尋已具備零 API 費用的詞彙相關度排序（[設計與限制](docs/PRIVATE_SEARCH_RELEVANCE.md)），不等於 P4 AI 語意搜尋。新增 [Obsidian 單篇 Markdown 手動互通](docs/OBSIDIAN_MARKDOWN_BRIDGE.md)，保留 YAML 欄位、Wikilinks 與匯入前確認，但**不會自動掃描本機檔案或同步**。文章發布／下架仍待 Owner 的正式驗收；P4 AI 問答、Obsidian 自動同步需另行決定隱私與費用界線。見 [正式發布閘門](docs/PRODUCTION_RELEASE_GATE.md)。
 
 ## 專案狀態
 
