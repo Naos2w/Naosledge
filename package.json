@@ -15,6 +15,7 @@
     "test:browser:owner-activation:local": "node scripts/smoke-owner-activation-ui.mjs",
     "test:browser:knowledge-graph:local": "node scripts/smoke-knowledge-graph.mjs",
     "test:browser:obsidian:local": "node scripts/smoke-obsidian-bridge.mjs",
+    "verify:obsidian:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-msi-preflight.ts",
     "test:release:closed:local": "node scripts/smoke-production-closed.mjs",
     "verify:health:manual": "node scripts/live-readonly-health.mjs",
     "verify:owner-email:sandbox:manual": "node scripts/verify-owner-email-sandbox.mjs",

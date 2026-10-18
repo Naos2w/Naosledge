@@ -12,6 +12,11 @@
 - **正式發布閘門**：需要匹配核准的 `main` SHA、Vercel Production project/branch、HTTPS origin 與 Neon Production 配對。因合併後的新 SHA 無法提前推測，Vercel `main` Git 自動部署已設為停用；請先通過 GitHub CI、合併，再核對及更新正式環境的 SHA／網址，以**手動 Production 部署**生效。切勿關閉安全閘門解決 503。Vercel Standard Protection 保護 Preview，而公開正式網域可供訪客使用。
 - **後續工作**：私人搜尋已具備零 API 費用的詞彙相關度排序（[設計與限制](docs/PRIVATE_SEARCH_RELEVANCE.md)），不等於 P4 AI 語意搜尋。[Obsidian 單篇 Markdown 手動互通](docs/OBSIDIAN_MARKDOWN_BRIDGE.md) 已上線；另在開發分支加入 [雙向同步的離線衝突／刪除安全預演](docs/OBSIDIAN_SYNC_SAFETY.md)，仍**不會自動掃描本機檔案、寫入資料或同步**。另外新增 [正式網站唯讀健康檢查](docs/LIVE_HEALTH_OPERATIONS.md)，僅由人工觸發 GitHub Actions，不會無故消耗每日額度。文章發布／下架仍待 Owner 真人驗收；P4 AI 問答、Obsidian 自動同步需另行決定隱私與費用界線。見 [正式發布閘門](docs/PRODUCTION_RELEASE_GATE.md)。
 
+## MSI Obsidian 安裝準備與 TypeScript 規則
+
+- **Obsidian 同步電腦**已由 Owner 指定為 Windows 11 **MSI**，目前尚未安裝 Obsidian、也未核准任何本機 Vault 資料夾。新增 TypeScript 唯讀工具 `npm run verify:obsidian:msi`，只確認常見程式安裝位置，絕不自動安裝或掃描私人筆記。安裝與第一次連接流程詳見 [MSI Obsidian 設定](docs/OBSIDIAN_MSI_SETUP.md)。
+- **TypeScript-first**：正式網站與共用邏輯一律優先 TS／TSX；原有 `.mjs` 多為 Node 原生測試／維護腳本，後續只在能保留 CI／舊 Node 相容性時分批遷移。詳見 [語言／測試工程規範](docs/TYPESCRIPT_GUIDELINES.md)。
+
 ## 專案狀態
 
 GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的虛構文章與不需登入的模擬後台。離線互動預覽另存於 ChatGPT 專案成果中，不是正式網站，也不會把筆記寫入 Supabase。
