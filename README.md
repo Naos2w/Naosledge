@@ -6,10 +6,10 @@
 
 ## 正式環境狀態（2026-10-18）
 
-- **網站已正式上線**：[Naosledge](https://naosledge-naos-tsais-projects.vercel.app)。[PR #1～#7](https://github.com/Naos2w/Naosledge/pulls?q=is%3Apr+is%3Amerged) 均已合併至 `main`；最後已部署並驗證的 `main` SHA 為 `56dcfe316d217bca51bcd424416fafd33caa12b2`。未登入可讀公開頁，私人路由須登入。
+- **網站已正式上線**：[Naosledge](https://naosledge.vercel.app)（2026-10-18 已核准改用短網址作為 canonical；原長網址設定永久轉址）。[PR #1～#7](https://github.com/Naos2w/Naosledge/pulls?q=is%3Apr+is%3Amerged) 均已合併至 `main`；切換網址前最後驗證的 Production SHA 為 `56dcfe316d217bca51bcd424416fafd33caa12b2`；正式切換完成後請以 Vercel Production 最新 READY 部署與核准 SHA 為準。未登入可讀公開頁，私人路由須登入。
 - **站長已驗收**：Owner 親自確認正式站長登入及 `/studio`、`/vault` 可以存取；Private Vault 與 Knowledge Atlas 具備獨立 Neon JWT/RLS 權限限制。獨立 Private Vault Preview 驗收完成後已停用。
 - **資料保護**：正式 Neon 原有站長授權已建立、公開註冊與 localhost 關閉；三張 Private Vault 資料表有 10 項 RLS 政策。最終確認時沒有測試筆記或公開文章；日後實際資料量以線上資料庫為準。
-- **正式發布閘門**：需要匹配核准的 `main` SHA、Vercel Production project/branch、HTTPS origin 與 Neon Production 配對；任何後續部署都應先安排更新 SHA 並驗證，以免新部署因 fail-closed 回傳 503。Vercel Standard Protection 保護 Preview，而公開正式網域可供訪客使用。
+- **正式發布閘門**：需要匹配核准的 `main` SHA、Vercel Production project/branch、HTTPS origin 與 Neon Production 配對。因合併後的新 SHA 無法提前推測，Vercel `main` Git 自動部署已設為停用；請先通過 GitHub CI、合併，再核對及更新正式環境的 SHA／網址，以**手動 Production 部署**生效。切勿關閉安全閘門解決 503。Vercel Standard Protection 保護 Preview，而公開正式網域可供訪客使用。
 - **後續工作**：文章實際發布／下架尚未由 Owner 單獨驗收。P4 AI 語意搜尋／問答、Obsidian 自動同步仍屬未開發範圍；需要另外設計隱私與費用界線。見 [部署前安全閘門的歷史設計與操作契約](docs/PRODUCTION_RELEASE_GATE.md)。
 
 ## 專案狀態

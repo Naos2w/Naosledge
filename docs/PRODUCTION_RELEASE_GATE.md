@@ -1,6 +1,6 @@
 # Naosledge 正式發布安全閘門 — 維護與發布前歷史
 
-**現況：2026-10-18。** Owner 已授權並完成正式發布：[Naosledge](https://naosledge-naos-tsais-projects.vercel.app)，已部署的 `main` 為 `56dcfe316d217bca51bcd424416fafd33caa12b2`，並完成本人站長登入驗收。Vercel Production 的核准 SHA、Neon Auth/Data API 配對與功能開關均已配置，Preview 仍受 SSO 保護。日後更新 `main` **必須先處理 `NAOSLEDGE_PRODUCTION_RELEASE_SHA` 的精確版本配對及發布步驟**，否則新部署會 fail-closed 為 HTTP 503。不要為了暫時開站而關閉保護。
+**現況：2026-10-18。** Owner 已授權並完成正式發布，並另行核准改用 [Naosledge 短網址](https://naosledge.vercel.app) 為正式 canonical，原長網址改為永久轉址。原已部署的 `main` 為 `56dcfe316d217bca51bcd424416fafd33caa12b2`，並完成本人站長登入驗收。Vercel Production 的核准 SHA、Neon Auth/Data API 配對與功能開關均已配置，Preview 仍受 SSO 保護。日後更新 `main` **必須先處理 `NAOSLEDGE_PRODUCTION_RELEASE_SHA` 的精確版本配對及發布步驟**，否則新部署會 fail-closed 為 HTTP 503。不要為了暫時開站而關閉保護。
 
 **以下為 2026-10-17 正式發布前的歷史規格與核准關卡**，其中「尚未設定」「尚未上線」「待核准」等描述只反映當時狀態，不是目前的 Production 實際狀態。不得因歷史已核准項目而推定可改資料庫、付費方案或私密資料。
 
