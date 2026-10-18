@@ -4,7 +4,7 @@
 
 ## 已完成
 
-- GitHub Actions 的 `checkout`、`setup-node` 均升級到 Node.js 24 相容版本，並鎖定經 Git tag 查核的 v7 完整 Commit SHA，避免以可變動的 action tag 或 Node.js 20 舊版執行。
+- GitHub Actions 的 `checkout`、`setup-node` 均升級到 Node.js 24 相容版本，並鎖定經 Git tag 查核的 v7 完整 Commit SHA。Runner 固定使用 `ubuntu-24.04`，避免 `ubuntu-latest` 在 2026-10-19 起遷移 Ubuntu 26 時影響現有 CI。
 - `scripts/live-readonly-health.mjs`：固定 14 項**無憑證、唯讀 GET** 檢查。使用 `redirect: "manual"` 防止自動追進登入或 SSO；僅對公開首頁、robots、sitemap 讀取必要的文字內容。不讀取私人筆記、JWT、Cookie、Auth 會話或任何管理 API。
 - `.github/workflows/live-health.yml`：只支援手動 `workflow_dispatch`，只允許 `main`，不加 `schedule`、外部排程或付費監控，最長 3 分鐘、不授予寫入權限、不上傳附件、關閉持續部署功能。
 
