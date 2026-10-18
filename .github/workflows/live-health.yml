@@ -1,0 +1,31 @@
+name: Naosledge Live Health (Manual)
+
+# Deliberately on-demand only. Avoid ongoing Hobby/Actions consumption,
+# external scheduling, tokens, and stored browser-authenticated sessions.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: naosledge-live-health-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  anonymous-production-check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04 # Stable image; do not follow ubuntu-latest -> 26 migration
+    timeout-minutes: 3
+    steps:
+      - name: Checkout verified main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7 / Node.js 24
+        with:
+          persist-credentials: false
+      - name: Setup Node.js 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7 / Node.js 24
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: Verify anonymous public, redirects, SEO, and private protections
+        run: node scripts/live-readonly-health.mjs
