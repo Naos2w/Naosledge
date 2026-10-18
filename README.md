@@ -14,7 +14,7 @@
 
 ## MSI Obsidian 安裝準備與 TypeScript 規則
 
-- **Obsidian 同步電腦**已由 Owner 指定為 Windows 11 **MSI**，目前尚未安裝 Obsidian、也未核准任何本機 Vault 資料夾。新增 TypeScript 唯讀工具 `npm run verify:obsidian:msi`，只確認常見程式安裝位置，絕不自動安裝或掃描私人筆記。安裝與第一次連接流程詳見 [MSI Obsidian 設定](docs/OBSIDIAN_MSI_SETUP.md)。
+- **Obsidian 同步電腦**已指定為 Windows 11 **MSI**，Obsidian 1.14.4 已安裝；Owner 核准的 `C:\Naos\Obsidian\Naosledge` 已建立、仍為空白。Obsidian GUI **尚待將此資料夾註冊為 Vault**。新增 TypeScript 唯讀工具 `npm run verify:obsidian:vault:msi`，只檢查該路徑的直接 `.md` 指紋，不外連、不新增／刪除私人資料。詳見 [MSI Vault 設定](docs/OBSIDIAN_MSI_SETUP.md) 與 [同步安全預演](docs/OBSIDIAN_SYNC_SAFETY.md)。
 - **TypeScript-first**：正式網站與共用邏輯一律優先 TS／TSX；原有 `.mjs` 多為 Node 原生測試／維護腳本，後續只在能保留 CI／舊 Node 相容性時分批遷移。詳見 [語言／測試工程規範](docs/TYPESCRIPT_GUIDELINES.md)。
 
 ## 專案狀態
