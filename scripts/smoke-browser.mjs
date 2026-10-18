@@ -394,6 +394,25 @@ try {
   assert.equal(response.status(), 200); // Next follows safe login redirect
   assert.match(page.url(), /\/login(?:\?|$)/);
   assert.ok(await page.getByRole("textbox", { name: "電子郵件" }).isVisible());
+
+  // Real HTTP middleware regression: the owner routes (including redirects)
+  // may not revert to public cache headers after Neon/Supabase Auth refresh.
+  for(const route of [
+    "/studio","/studio/new","/vault","/vault/graph","/login",
+    "/forgot-password","/reset-password?token=syntheticDummy123456789",
+    "/owner-activation",
+  ]){
+    const probe=await fetch(origin+route,{redirect:"manual"});
+    // Next.js may normalize "private, no-store" to simply "no-store".
+    // The wire-level invariant is no-store without a public directive.
+    const cacheControl=probe.headers.get("cache-control")||"";
+    assert.match(cacheControl,/\bno-store\b/,route);
+    assert.doesNotMatch(cacheControl,/\bpublic\b/,route);
+    assert.equal(probe.headers.get("referrer-policy"),"no-referrer",route);
+    assert.match(probe.headers.get("x-robots-tag")||"",/noindex/,route);
+    assert.equal(probe.headers.get("x-frame-options"),"DENY",route);
+  }
+  console.log("PASS: owner redirects and private routes remain no-store/noindex after auth middleware");
   console.log("PASS: unauthenticated visitor cannot access writing desk");
 
   // Neon password recovery must never appear in the Supabase compatibility mode.

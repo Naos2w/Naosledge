@@ -34,3 +34,7 @@ jobs:
         run: npm run typecheck
       - name: Production build
         run: npm run build
+      # Cheap synthetic 10-route HTTP smoke: no production credentials or Neon
+      # calls. Prevents an accidental release from bypassing the SHA gate.
+      - name: Closed production release smoke
+        run: npm run test:release:closed:local

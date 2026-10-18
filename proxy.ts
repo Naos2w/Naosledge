@@ -4,6 +4,7 @@ import { backend } from "@/lib/backend";
 import { neonAuth } from "@/lib/neon/auth-server";
 import {allowedVaultPreviewPath,privateVaultPreviewIntent,validatePrivateVaultPreview} from "@/lib/neon/vault-preview";
 import {productionReleaseIntent,validateProductionRelease} from "@/lib/neon/production-release";
+import {protectPrivateResponseHeaders} from "@/lib/private-response-headers";
 
 export async function proxy(request: NextRequest) {
   // Every Vercel Production request is denied until an exact reviewed main
@@ -65,9 +66,7 @@ export async function proxy(request: NextRequest) {
     // Supabase session refresher or the Sandbox Neon backend on these routes.
     // Prevent leaking one-time reset URLs through caches, referers or indexes.
     const isolated = NextResponse.next();
-    isolated.headers.set("Cache-Control","private, no-store, max-age=0");
-    isolated.headers.set("Referrer-Policy","no-referrer");
-    isolated.headers.set("X-Robots-Tag","noindex, nofollow, noarchive");
+    protectPrivateResponseHeaders(isolated.headers,request.nextUrl.pathname);
     return isolated;
   }
   let response: NextResponse;
@@ -81,20 +80,9 @@ export async function proxy(request: NextRequest) {
   } else {
     response = await updateSession(request);
   }
-  if (request.nextUrl.pathname === "/vault" ||
-      request.nextUrl.pathname.startsWith("/vault/")) {
-    // Private notebook titles, links and graph metadata must never enter
-    // browser/CDN caches, search indexes or cross-origin referrer headers.
-    response.headers.set("Cache-Control", "private, no-store, max-age=0");
-    response.headers.set("Referrer-Policy", "no-referrer");
-    response.headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
-  }
-  if (request.nextUrl.pathname === "/reset-password") {
-    // The short-lived recovery token arrives in a callback query string.
-    // Never cache that page or send its URL in a referrer to other sites.
-    response.headers.set("Cache-Control", "private, no-store, max-age=0");
-    response.headers.set("Referrer-Policy", "no-referrer");
-  }
+  // Apply after the official Auth middleware so its Set-Cookie and redirect
+  // survive while Studio, Vault, login and reset responses become no-store.
+  protectPrivateResponseHeaders(response.headers,request.nextUrl.pathname);
   return response;
 }
 
