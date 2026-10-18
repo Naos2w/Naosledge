@@ -1,8 +1,10 @@
-# Naosledge 正式發布安全閘門 — 尚未核准上線
+# Naosledge 正式發布安全閘門 — 維護與發布前歷史
 
-更新：2026-10-17。這份文件及 `feat/production-release-gate-20261017` 分支只交付**可審查的正式發布程式防護**，不代表 Owner 已授權合併 `main`、公開網站、放寬 Vercel SSO、修改正式資料庫或增加付費服務。
+**現況：2026-10-18。** Owner 已授權並完成正式發布，並另行核准改用 [Naosledge 短網址](https://naosledge.vercel.app) 為正式 canonical，原長網址改為永久轉址。原已部署的 `main` 為 `56dcfe316d217bca51bcd424416fafd33caa12b2`，並完成本人站長登入驗收。Vercel Production 的核准 SHA、Neon Auth/Data API 配對與功能開關均已配置，Preview 仍受 SSO 保護。日後更新 `main` **必須先處理 `NAOSLEDGE_PRODUCTION_RELEASE_SHA` 的精確版本配對及發布步驟**，否則新部署會 fail-closed 為 HTTP 503。不要為了暫時開站而關閉保護。
 
-## 完成與驗證範圍
+**以下為 2026-10-17 正式發布前的歷史規格與核准關卡**，其中「尚未設定」「尚未上線」「待核准」等描述只反映當時狀態，不是目前的 Production 實際狀態。不得因歷史已核准項目而推定可改資料庫、付費方案或私密資料。
+
+## 2026-10-17 發布前規格與驗證紀錄
 
 - 既有 PR [#1](https://github.com/Naos2w/Naosledge/pull/1) → #2 → #3 → #4 → #5 仍為 Draft，最後的 #5 私人 Preview 已經 Owner 真人驗收成功，測試筆記清理為 0，站長啟用旗標設為 `0` 且關閉版 Vercel Preview READY。
 - Neon `Naosledge` Production 原有的 `001`、`002` Migration 已執行，10 項私人 RLS policies 與 1 筆正式站長授權已核對，不需要也**不應**重跑 Migration。

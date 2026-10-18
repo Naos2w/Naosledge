@@ -13,9 +13,9 @@ export const RELEASE_AUTH_URL=
 export const RELEASE_DATA_API_URL=
   "https://ep-purple-recipe-b43kznn2.apirest.c-6.us-east-2.aws.neon.tech/neondb/rest/v1";
 
-// Existing Vercel project default domain, NOT approval to remove SSO.
-// An owner-selected custom domain requires a separately reviewed code change.
-export const RELEASE_ORIGIN="https://naosledge-naos-tsais-projects.vercel.app";
+// Owner-approved primary Production alias. The legacy alias redirects to this
+// origin; project deployment URLs and Preview branches remain SSO-protected.
+export const RELEASE_ORIGIN="https://naosledge.vercel.app";
 
 export type ReleaseRuntime=Record<string,string|undefined>;
 export type ReleaseConfig={

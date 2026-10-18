@@ -1,25 +1,26 @@
 # Naosledge v3 · Minimal Dark Liquid Glass
 
-一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。現階段可透過環境旗標選擇原本的 Supabase 實作，或已通過隔離驗收的 **Neon Free 測試模式**；網站程式仍預設使用 Supabase 相容回退路徑；Neon Production 的資料表與 Data API 已獲授權建立，但網站 Production 模式尚未啟用。AI 摘要留待第二階段。
+一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。目前正式網站使用 **Neon Free Production（Better Auth + Data API + PostgreSQL RLS）**；本機程式仍保留 Supabase 相容回退路徑，但正式環境需通過精確 SHA 與資料庫設定的發布閘門。P4 AI 語意搜尋／問答與 Obsidian 同步尚未實作。
 
 > v3 在先前版本的基礎上加入 Dark Liquid Glass 與流暢動畫，保留文章資料結構、Supabase RLS、登入及資料存取邏輯。v1、v2 保留為歷史版本。
 
-## 2026-10-17 最新整合與發布狀態
+## 正式環境狀態（2026-10-18）
 
-- **P0–P3** 公開部落格、Private Vault、正式站長啟用及 Knowledge Atlas 已在 Draft PR #1～#4 實作；受 SSO 保護的私人驗收環境由 Owner 親自驗收通過，驗收後已清理資料，且 PR #5 的 Preview 旗標關閉、精確 Neon Trusted Origin 已撤銷。
-- **正式上線尚未核准**：PR #1～#5 仍全部 Draft 且未合併 `main`，Vercel `naosledge` 的 Production 網站仍未發布。請勿把 Neon Production Schema 已就緒解讀為網站已公開。
-- **正式部署安全閘門開發分支**：`feat/production-release-gate-20261017` 已實作 SHA、Vercel project、branch、正式 HTTPS domain、Neon Auth/Data API、Cookie Secret 的精確比對；Owner 未核准時全部應用路由將 fail-closed。純本機 HTTP 測試覆蓋 10 個路由，沒有實際連線 Neon。詳見 [正式發布閘門](docs/PRODUCTION_RELEASE_GATE.md)。
-- **未完成的後續階段**：正式網域選擇、Release PR 審核/合併/部署需要 Owner 明確授權；P4 AI 語意搜尋、知識問答與 Obsidian 同步仍未開發。所有新功能分支維持省額度 Draft 模式，不呼叫 Claude/Copilot 或啟動無必要 CI。
+- **網站已正式上線**：[Naosledge](https://naosledge.vercel.app)（2026-10-18 已核准改用短網址作為 canonical；原長網址設定永久轉址）。[PR #1～#7](https://github.com/Naos2w/Naosledge/pulls?q=is%3Apr+is%3Amerged) 均已合併至 `main`；切換網址前最後驗證的 Production SHA 為 `56dcfe316d217bca51bcd424416fafd33caa12b2`；正式切換完成後請以 Vercel Production 最新 READY 部署與核准 SHA 為準。未登入可讀公開頁，私人路由須登入。
+- **站長已驗收**：Owner 親自確認正式站長登入及 `/studio`、`/vault` 可以存取；Private Vault 與 Knowledge Atlas 具備獨立 Neon JWT/RLS 權限限制。獨立 Private Vault Preview 驗收完成後已停用。
+- **資料保護**：正式 Neon 原有站長授權已建立、公開註冊與 localhost 關閉；三張 Private Vault 資料表有 10 項 RLS 政策。最終確認時沒有測試筆記或公開文章；日後實際資料量以線上資料庫為準。
+- **正式發布閘門**：需要匹配核准的 `main` SHA、Vercel Production project/branch、HTTPS origin 與 Neon Production 配對。因合併後的新 SHA 無法提前推測，Vercel `main` Git 自動部署已設為停用；請先通過 GitHub CI、合併，再核對及更新正式環境的 SHA／網址，以**手動 Production 部署**生效。切勿關閉安全閘門解決 503。Vercel Standard Protection 保護 Preview，而公開正式網域可供訪客使用。
+- **後續工作**：文章實際發布／下架尚未由 Owner 單獨驗收。P4 AI 語意搜尋／問答、Obsidian 自動同步仍屬未開發範圍；需要另外設計隱私與費用界線。見 [部署前安全閘門的歷史設計與操作契約](docs/PRODUCTION_RELEASE_GATE.md)。
 
 ## 專案狀態
 
 GitHub 原始碼為可部署的 Next.js 網站，不包含離線 UI 展示用的虛構文章與不需登入的模擬後台。離線互動預覽另存於 ChatGPT 專案成果中，不是正式網站，也不會把筆記寫入 Supabase。
 
-目前 MSI 已通過 `npm run test:unit`、`npm run typecheck` 與 `npm run build`；Neon 正式帳號與站長授權已驗證，尚待網站正式發布的網域、完整 PR 合併審查、Production 安全設定及 Vercel 部署。**2026-10-15 Supabase 免費專案名額已滿，使用者選擇維持免費且不影響現有服務**，因此不得建立／共用現有 Supabase 資料庫或擅自升級方案。Neon **隔離分支**已完成真實 Better Auth／JWT／Data API／PostgreSQL RLS 與站長 CRUD 驗證，合成帳號／文章已清除；而 **Next.js 網站已可在 Neon Sandbox 模式下以真正的 Auth／Data API 完成登入、草稿、發布、編輯及刪除**；Neon `production` 已另行獲准建立文章表、RLS 及 Data API（目前無公開文章、已有 1 筆獲核准的站長授權），正式網站仍未部署。詳見 [Neon 隔離整合驗收報告](docs/NEON_INTEGRATION_READINESS.md) 及 [上線清單](docs/DEPLOY_READINESS.md)。
+目前正式版本已有 Next.js 公開部落格、Neon Auth 站長工作室、私人知識庫與 P3 Knowledge Atlas，並完成 Owner 登入驗收。仍使用 Neon Free／Vercel Hobby，不得在未經核准下升級付費或操作其他專案。CI 使用 Node.js 24，執行離線單元測試、TypeScript、正式建置與關閉版安全檢查；本機另有離線 Chrome 回歸。下方 P1–P3 與資料庫啟用段落保留當時的**開發歷史與安全驗收紀錄**，如與本節日期不同，以本節的已確認狀態為準。
 
-## P1 + P2：私人第二大腦（獨立開發中）
+## P1 + P2：私人第二大腦（已完成，以下為歷史開發紀錄）
 
-Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這一階段在獨立分支 `feat/private-knowledge-vault-20261017` 開發，**不是原 PR #1 已上線功能**。新建 `/vault`、`/vault/new`、`/vault/[id]`，以獨立 `knowledge_notes` 保存私人 Markdown，並支援搜尋索引、`[[slug]]`、`[[標題|顯示名稱]]`、雙向反向連結與尚未解析的關係。
+Naosledge 已擴展為 **Private-first 第二大腦**。本節記錄最初在獨立分支 `feat/private-knowledge-vault-20261017` 的開發與驗收（現已整合到 `main`）。新建 `/vault`、`/vault/new`、`/vault/[id]`，以獨立 `knowledge_notes` 保存私人 Markdown，並支援搜尋索引、`[[slug]]`、`[[標題|顯示名稱]]`、雙向反向連結與尚未解析的關係。
 
 - **私人預設**：新表使用 Neon Auth JWT + RLS，只有實際站長能讀取**自己**的私人筆記，匿名和一般登入者無表格／RPC 權限，與公開 `posts` 完全分離。
 - **經審核的公開副本**：可明確產生一篇與私人原稿分離的 **status=draft** 文章，需再進入既有 Studio 檢查、手動發布；私人關係與來源 mapping 不會公開。
@@ -29,7 +30,7 @@ Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這
 
 詳見 [Second Brain 架構規格](docs/SECOND_BRAIN_ARCHITECTURE.md) 與 [Neon Sandbox 實體驗收及清理證據](docs/SECOND_BRAIN_SANDBOX_VERIFICATION.md)。**Sandbox 已完成真實 E2E 驗收，Production 002 Schema 已套用並後驗確認**；正式帳號亦已由本人完成 Email 驗證與首次密碼設定、Production Allow Localhost 已關閉。**正式站長已另行獲核准並新增 1 筆 `blog_admins`**；實際 Production 網頁登入驗收、PR 合併與正式發布仍需另行授權。
 
-## P3 — Knowledge Atlas 私人知識網絡（獨立開發）
+## P3 — Knowledge Atlas 私人知識網絡（已完成，歷史開發紀錄）
 
 在獨立分支 `feat/knowledge-graph-p3-20261017` 新增 **`/vault/graph`**，只對通過正式 Neon Auth／Email 驗證／RLS 站長權限的本人開放，沿用 Naosledge 現有深色閱讀風格。
 
@@ -41,7 +42,7 @@ Naosledge 將從公開學習網站擴展為 **Private-first 第二大腦**。這
 
 詳細規格與測試見 [P3 Knowledge Atlas](docs/KNOWLEDGE_GRAPH_P3.md)。
 
-## Production 私人知識庫 Migration 與站長啟用
+## Production 私人知識庫 Migration 與站長啟用（2026-10-17 歷史紀錄）
 
 **2026-10-17：Production `002` Migration 已完成。** 只在 Neon `Naosledge` 的 `production` 分支使用單一交易套用 42 項 SQL，後驗確認三張私人知識表、10 項 RLS 政策、JWT 身分函式、搜尋和 Backlinks 索引；`posts`、`blog_admins` 與正式 Auth 帳號都保留。新表資料為 0，原有文章及站長授權在遷移當下仍為 0；後續另經明確核准，現有 1 筆站長授權。**不得重複執行 Migration。**
 
