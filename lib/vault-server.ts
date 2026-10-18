@@ -8,6 +8,7 @@ import {wikiTargetMap} from "@/lib/wiki-links";
 import type {KnowledgeTitle} from "@/lib/wiki-links";
 import {buildKnowledgeGraph,type KnowledgeGraph,type KnowledgeGraphNote} from "@/lib/knowledge-graph";
 import {graphNoteIdBatches,selectGraphReferences,type DatedGraphReference} from "@/lib/vault-graph-queries";
+import {rankVaultSearchResults} from "@/lib/vault-search-rank";
 
 export type VaultContext = Awaited<ReturnType<typeof requireAdmin>>;
 export type VaultNote = {
@@ -43,7 +44,10 @@ export async function searchVaultNotes(
     : await supabase.from("knowledge_notes").select(LIST_FIELDS)
         .eq("owner_id",user.id).order("updated_at",{ascending:false}).limit(100);
   if(result.error) throw vaultReadError();
-  return (result.data||[]) as unknown as VaultNoteSummary[];
+  const notes=(result.data||[]) as unknown as VaultNoteSummary[];
+  // Only reorder already-retrieved, JWT/RLS-authorized RPC results.
+  // Never expand the query or load extra private Markdown for ranking.
+  return q?rankVaultSearchResults(notes,q):notes;
 }
 
 export async function listVaultTitles({supabase,user}:VaultContext):Promise<KnowledgeTitle[]> {

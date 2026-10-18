@@ -28,7 +28,8 @@
       "feat/production-release-gate-20261017": false,
       "fix/production-sitemap-build-20261018": false,
       "fix/private-route-cache-and-ci-20261018": false,
-      "fix/legacy-home-redirect-20261018": false
+      "fix/legacy-home-redirect-20261018": false,
+      "feat/vault-relevance-20261018": false
     }
   }
 }
