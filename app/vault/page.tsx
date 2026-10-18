@@ -39,7 +39,7 @@ export default async function VaultHome({searchParams}:{
       <p>第二大腦的 Migration 尚未套用到獲核准的環境，原有公開網站與文章不受影響。</p>
     </div> : <>
       <div className="vault-list-heading"><h2>{query?"搜尋結果":"最近的私人筆記"}</h2>
-        <span>本次顯示 {notes.length} 篇，最多 100 篇</span></div>
+        <span>{query?"依符合程度排序 · ":""}本次顯示 {notes.length} 篇，最多 100 篇</span></div>
       <div className="vault-list">
         {notes.length?notes.map(n=><Link href={`/vault/${n.id}`} key={n.id}
           className="vault-list-item"><div>
