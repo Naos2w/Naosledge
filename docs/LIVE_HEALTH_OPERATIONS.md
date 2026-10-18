@@ -2,6 +2,8 @@
 
 更新：2026-10-18。
 
+**雲端驗收已完成：**Owner 於 2026-10-18 透過有權限的 GitHub 介面手動執行 [Run #39117955295](https://github.com/Naos2w/Naosledge/actions/runs/39117955295)，`workflow_dispatch` 與 `anonymous-production-check` 均為 `completed/success`。此成功只表示當次匿名 HTTP／SEO／權限外觀檢查通過，**不**表示已完成登入後文章發布或私人筆記操作測試。監控仍僅支援手動執行，沒有建立週期排程。
+
 ## 已完成
 
 - GitHub Actions 的 `checkout`、`setup-node` 均升級到 Node.js 24 相容版本，並鎖定經 Git tag 查核的 v7 完整 Commit SHA。Runner 固定使用 `ubuntu-24.04`，避免 `ubuntu-latest` 在 2026-10-19 起遷移 Ubuntu 26 時影響現有 CI。
