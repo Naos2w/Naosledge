@@ -6,15 +6,15 @@
 
 ## 正式環境狀態（2026-10-18）
 
-- **網站已正式上線**：[Naosledge](https://naosledge.vercel.app)（2026-10-18 已核准改用短網址作為 canonical；原長網址設定永久轉址）。[PR #1～#11](https://github.com/Naos2w/Naosledge/pulls?q=is%3Apr+is%3Amerged) 均已合併至 `main`，已核准的 Production 版本 `a5f3428c8a5d9d81d7f32b5fdd50399d6faf6f3b` 已部署，包含私人詞彙搜尋與 Obsidian 手動 Markdown 互通。之後更新仍需按 SHA gate 手動發布。未登入可讀公開頁，私人路由須登入。
+- **網站已正式上線**：[Naosledge](https://naosledge.vercel.app)（2026-10-18 已核准改用短網址作為 canonical；原長網址設定永久轉址）。[PR #1～#15](https://github.com/Naos2w/Naosledge/pulls?q=is%3Apr+is%3Amerged) 均已合併至 `main`，已核准的 Production 版本 `a5f3428c8a5d9d81d7f32b5fdd50399d6faf6f3b` 已部署，包含私人詞彙搜尋與 Obsidian 手動 Markdown 互通。之後更新仍需按 SHA gate 手動發布。未登入可讀公開頁，私人路由須登入。
 - **站長已驗收**：Owner 親自確認正式站長登入及 `/studio`、`/vault` 可以存取；Private Vault 與 Knowledge Atlas 具備獨立 Neon JWT/RLS 權限限制。獨立 Private Vault Preview 驗收完成後已停用。
 - **資料保護**：正式 Neon 原有站長授權已建立、公開註冊與 localhost 關閉；三張 Private Vault 資料表有 10 項 RLS 政策。最終確認時沒有測試筆記或公開文章；日後實際資料量以線上資料庫為準。
 - **正式發布閘門**：需要匹配核准的 `main` SHA、Vercel Production project/branch、HTTPS origin 與 Neon Production 配對。因合併後的新 SHA 無法提前推測，Vercel `main` Git 自動部署已設為停用；請先通過 GitHub CI、合併，再核對及更新正式環境的 SHA／網址，以**手動 Production 部署**生效。切勿關閉安全閘門解決 503。Vercel Standard Protection 保護 Preview，而公開正式網域可供訪客使用。
-- **後續工作**：私人搜尋已具備零 API 費用的詞彙相關度排序（[設計與限制](docs/PRIVATE_SEARCH_RELEVANCE.md)），不等於 P4 AI 語意搜尋。[Obsidian 單篇 Markdown 手動互通](docs/OBSIDIAN_MARKDOWN_BRIDGE.md) 已上線；另在開發分支加入 [雙向同步的離線衝突／刪除安全預演](docs/OBSIDIAN_SYNC_SAFETY.md)，仍**不會自動掃描本機檔案、寫入資料或同步**。另外新增 [正式網站唯讀健康檢查](docs/LIVE_HEALTH_OPERATIONS.md)，僅由人工觸發 GitHub Actions，不會無故消耗每日額度。文章發布／下架仍待 Owner 真人驗收；P4 AI 問答、Obsidian 自動同步需另行決定隱私與費用界線。見 [正式發布閘門](docs/PRODUCTION_RELEASE_GATE.md)。
+- **後續工作**：私人搜尋已具備零 API 費用的詞彙相關度排序（[設計與限制](docs/PRIVATE_SEARCH_RELEVANCE.md)），不等於 P4 AI 語意搜尋。[Obsidian 單篇 Markdown 手動互通](docs/OBSIDIAN_MARKDOWN_BRIDGE.md) 已上線；並已將 [雙向同步的離線衝突／刪除安全預演](docs/OBSIDIAN_SYNC_SAFETY.md) 合併到 `main`，仍**不會自動掃描本機檔案、寫入資料或同步**。另外新增 [正式網站唯讀健康檢查](docs/LIVE_HEALTH_OPERATIONS.md)，僅由人工觸發 GitHub Actions，不會無故消耗每日額度。文章發布／下架仍待 Owner 真人驗收；P4 AI 問答、Obsidian 自動同步需另行決定隱私與費用界線。見 [正式發布閘門](docs/PRODUCTION_RELEASE_GATE.md)。
 
 ## MSI Obsidian 安裝準備與 TypeScript 規則
 
-- **Obsidian 同步電腦**已指定為 Windows 11 **MSI**，Obsidian 1.14.4 已安裝；Owner 核准的 `C:\Naos\Obsidian\Naosledge` 已建立、仍為空白。Obsidian GUI **尚待將此資料夾註冊為 Vault**。新增 TypeScript 唯讀工具 `npm run verify:obsidian:vault:msi`，只檢查該路徑的直接 `.md` 指紋，不外連、不新增／刪除私人資料。詳見 [MSI Vault 設定](docs/OBSIDIAN_MSI_SETUP.md) 與 [同步安全預演](docs/OBSIDIAN_SYNC_SAFETY.md)。
+- **Obsidian 同步電腦**已指定為 Windows 11 **MSI**，Obsidian 1.14.4 已安裝；Owner 核准的 `C:\Naos\Obsidian\Naosledge` 已建立、仍為空白。Obsidian GUI 已完成首次註冊並由 MSI 唯讀驗證。新增 TypeScript 唯讀工具 `npm run verify:obsidian:vault:msi`，只檢查該路徑的直接 `.md` 指紋，不外連、不新增／刪除私人資料。詳見 [MSI Vault 設定](docs/OBSIDIAN_MSI_SETUP.md) 與 [同步安全預演](docs/OBSIDIAN_SYNC_SAFETY.md)。
 - **TypeScript-first**：正式網站與共用邏輯一律優先 TS／TSX；原有 `.mjs` 多為 Node 原生測試／維護腳本，後續只在能保留 CI／舊 Node 相容性時分批遷移。詳見 [語言／測試工程規範](docs/TYPESCRIPT_GUIDELINES.md)。
 
 ## 專案狀態
