@@ -37,7 +37,8 @@
       "feat/obsidian-local-readonly-sandbox-20261018": false,
       "feat/obsidian-registration-guard-20261019": false,
       "feat/obsidian-manual-sandbox-transfers-20261019": false,
-      "feat/obsidian-neon-sandbox-readonly-20261019": false
+      "feat/obsidian-neon-sandbox-readonly-20261019": false,
+      "feat/obsidian-neon-sandbox-owner-e2e-20261019": false
     }
   }
 }
