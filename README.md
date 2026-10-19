@@ -10,7 +10,7 @@
 - **站長已驗收**：Owner 親自確認正式站長登入及 `/studio`、`/vault` 可以存取；Private Vault 與 Knowledge Atlas 具備獨立 Neon JWT/RLS 權限限制。獨立 Private Vault Preview 驗收完成後已停用。
 - **資料保護**：正式 Neon 原有站長授權已建立、公開註冊與 localhost 關閉；三張 Private Vault 資料表有 10 項 RLS 政策。最終確認時沒有測試筆記或公開文章；日後實際資料量以線上資料庫為準。
 - **正式發布閘門**：需要匹配核准的 `main` SHA、Vercel Production project/branch、HTTPS origin 與 Neon Production 配對。因合併後的新 SHA 無法提前推測，Vercel `main` Git 自動部署已設為停用；請先通過 GitHub CI、合併，再核對及更新正式環境的 SHA／網址，以**手動 Production 部署**生效。切勿關閉安全閘門解決 503。Vercel Standard Protection 保護 Preview，而公開正式網域可供訪客使用。
-- **後續工作**：私人搜尋已具備零 API 費用的詞彙相關度排序（[設計與限制](docs/PRIVATE_SEARCH_RELEVANCE.md)），不等於 P4 AI 語意搜尋。[Obsidian 單篇 Markdown 手動互通](docs/OBSIDIAN_MARKDOWN_BRIDGE.md) 已上線；並已將 [雙向同步的離線衝突／刪除安全預演](docs/OBSIDIAN_SYNC_SAFETY.md) 合併到 `main`，另在獨立功能分支加入 [可手動逐篇確認的合成同步沙盒](docs/OBSIDIAN_SANDBOX_SYNC.md)。**尚未**接上 Neon Auth 的同步執行器，不會自動讀寫真正的私人 Vault 或 Production。另外新增 [正式網站唯讀健康檢查](docs/LIVE_HEALTH_OPERATIONS.md)，僅由人工觸發 GitHub Actions，不會無故消耗每日額度。文章發布／下架仍待 Owner 真人驗收；P4 AI 問答、Obsidian 自動同步需另行決定隱私與費用界線。見 [正式發布閘門](docs/PRODUCTION_RELEASE_GATE.md)。
+- **後續工作**：私人搜尋已具備零 API 費用的詞彙相關度排序（[設計與限制](docs/PRIVATE_SEARCH_RELEVANCE.md)），不等於 P4 AI 語意搜尋。[Obsidian 單篇 Markdown 手動互通](docs/OBSIDIAN_MARKDOWN_BRIDGE.md) 已上線；並已將 [雙向同步的離線衝突／刪除安全預演](docs/OBSIDIAN_SYNC_SAFETY.md) 合併到 `main`，並已合併 [可手動逐篇確認的合成同步沙盒](docs/OBSIDIAN_SANDBOX_SYNC.md)；目前另建置 [Neon Sandbox 限縮式唯讀介面與匿名權限驗證](docs/OBSIDIAN_NEON_SANDBOX_READONLY.md)。**尚未**接上 Neon Auth 的同步執行器，不會自動讀寫真正的私人 Vault 或 Production。另外新增 [正式網站唯讀健康檢查](docs/LIVE_HEALTH_OPERATIONS.md)，僅由人工觸發 GitHub Actions，不會無故消耗每日額度。文章發布／下架仍待 Owner 真人驗收；P4 AI 問答、Obsidian 自動同步需另行決定隱私與費用界線。見 [正式發布閘門](docs/PRODUCTION_RELEASE_GATE.md)。
 
 ## MSI Obsidian 安裝準備與 TypeScript 規則
 
