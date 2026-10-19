@@ -19,6 +19,7 @@
     "verify:obsidian:vault:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-msi-vault-readonly.ts",
     "verify:obsidian:sync:sandbox": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-sync-sandbox-demo.ts",
     "verify:obsidian:neon:sandbox:anonymous": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-sandbox-anonymous-access.ts",
+    "verify:obsidian:neon:sandbox:owner:e2e": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-obsidian-neon-owner-sandbox.ts",
     "test:release:closed:local": "node scripts/smoke-production-closed.mjs",
     "verify:health:manual": "node scripts/live-readonly-health.mjs",
     "verify:owner-email:sandbox:manual": "node scripts/verify-owner-email-sandbox.mjs",

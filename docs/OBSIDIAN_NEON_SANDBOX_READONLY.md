@@ -22,11 +22,11 @@ npm run verify:obsidian:neon:sandbox:anonymous
 
 2026-10-19 MSI 實際執行結果：**`NEON_SANDBOX_ANONYMOUS_RLS_PASS`，3／3 張表拒絕匿名讀取；0 次寫入**。這只能證明匿名使用者看不到表格，不能替代站長角色成功存取、內容同步或刪除／回滾測試。
 
-## 限制與後續驗收
+## 2026-10-19 Owner 核准後的驗收更新
 
-目前既有 Sandbox 分支的唯讀 SQL 檢查為 **0 篇私人筆記、0 筆管理員授權、10 項 RLS 政策**。因此目前沒有可供 Owner JWT 完整 E2E 的測試身分。
+Owner 已正式核准只在整合 Sandbox 建立合成站長／一般使用者、測試筆記 CRUD／衝突與清理；**上述真實 Owner-JWT 測試已完成且全部成功**。包括非站長拒絕寫入、不同身分 RLS 隔離、筆記及 Wikilink CRUD、Obsidian 格式 SHA-256、帶 `updated_at` 條件的過期更新拒絕、雙方修改衝突判定、刪除合成筆記／連結，以及精確清理合成帳號／授權。詳見 [Neon Sandbox 真實合成站長 E2E 紀錄](OBSIDIAN_NEON_SANDBOX_OWNER_E2E.md)。
 
-下一階段需要**另外核准**以下 Sandbox 測試動作：短暫建立合成帳號、只在 Sandbox 新增測試站長授權、以真正 JWT/RLS 完成合成筆記讀取／建立／修改／衝突／復原，並在確認後清理合成資料。**不可在 Production 進行這些測試**，也不得把 Sandbox 帳號或 token 拿來登入正式網站。
+清理後 Sandbox 回復 **0 篇私人筆記、0 筆站長授權、0 篇文章、10 項 RLS 政策**；兩位當次合成 Auth 使用者及對應帳號均已確認不存在。**未在 Production 進行任何 CRUD**，此結果也不代表正式 Vault 已雙向同步。
 
 實際的 Obsidian Vault 已在 MSI GUI 註冊、目前 0 篇 Markdown。除原有的單獨唯讀 Vault 指紋檢查外，這個 Neon Sandbox 模組**不會**讀取或修改實際 Vault。
 
