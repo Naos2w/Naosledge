@@ -22,7 +22,7 @@
 
 `npm run verify:obsidian:vault:msi` 固定鎖定已獲核准的 `C:\Naos\Obsidian\Naosledge`，也鎖定 Windows 電腦名稱 `MSI`。工具只回報檔案數量、忽略項目數、`cloudWrites=0`、`localWrites=0` 和 `automaticSyncEnabled=false`，**不會印出 SHA、私人 Markdown 正文或筆記檔名**。合成資料測試全部寫進 OS 暫存目錄，測試完成後清理。
 
-此掃描不會自動從 Neon 取得遠端 manifest、保存 baseline 或執行任何同步計畫；`lib/obsidian-sync-plan.ts` 仍是需要人工確認的純函式。
+此掃描不會自動從 Neon 取得遠端 manifest、保存 baseline 或執行任何同步計畫；`lib/obsidian-sync-plan.ts` 仍是需要人工確認的純函式。另新增 `lib/obsidian-vault-registration.ts`，唯讀核對 Obsidian `.obsidian/app.json` 與全域 `obsidian.json` 的**精確 Vault 路徑**，拒絕重複或不一致註冊，不列印其他 Vault 名稱／路徑。MSI 實機驗證為 **1 筆註冊符合、4 個設定檔、0 篇 Markdown**；Neon Production 的唯讀筆數確認為 **0 篇私人筆記、0 條知識連結**。這不是已執行雙向同步。
 
 ## 安全處理矩陣
 
