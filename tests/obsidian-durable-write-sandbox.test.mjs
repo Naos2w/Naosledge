@@ -4,7 +4,7 @@ import {createHash,randomUUID} from "node:crypto";
 import {lstat,readFile,writeFile,rm,open,access,symlink,link,readdir,mkdir} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
-import {createDurableSyntheticObsidianWorkspace} from "../lib/obsidian-durable-write-sandbox.ts";
+import {createDurableSyntheticObsidianWorkspace,hasSyntheticBackupPairCapacity} from "../lib/obsidian-durable-write-sandbox.ts";
 
 const sha=text=>createHash("sha256").update(text).digest("hex");
 
@@ -571,6 +571,17 @@ test("unexpected backup subdirectory is rejected without traversing it",async()=
     assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
     assert.equal(await readFile(path.join(unsafe,"private-synthetic.md"),"utf8"),"do not read");
   });
+});
+
+test("synthetic backup capacity reserves space for both transaction files",()=>{
+  assert.equal(hasSyntheticBackupPairCapacity(0),true);
+  assert.equal(hasSyntheticBackupPairCapacity(511),true);
+  assert.equal(hasSyntheticBackupPairCapacity(512),false,
+    "a full catalog must refuse the next pair before creating .bak");
+  assert.equal(hasSyntheticBackupPairCapacity(513),false);
+  for(const invalid of [-1,1.5,Number.NaN,Number.MAX_SAFE_INTEGER]){
+    assert.equal(hasSyntheticBackupPairCapacity(invalid),false);
+  }
 });
 
 test("sandbox wipe is scoped to its own random temporary folder",async()=>{

@@ -25,6 +25,12 @@ const MAX_MINUTES=10;
 const MAX_BACKUP_FILES=1024;
 const BACKUP_ENTRY=/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(bak|json)$/;
 
+/** Reserve both transaction files BEFORE starting a new synthetic backup. */
+export function hasSyntheticBackupPairCapacity(existingPairs:number):boolean{
+  return Number.isSafeInteger(existingPairs)&&existingPairs>=0&&
+    existingPairs*2+2<=MAX_BACKUP_FILES;
+}
+
 export type DurableBackupInfo={
   id:string;slug:string;beforeSha:string;afterSha:string;
   createdAt:string;syntheticOnly:true;
@@ -183,7 +189,10 @@ export async function createDurableSyntheticObsidianWorkspace(){
   async function saveBackup(slug:string,before:Buffer,afterSha:string):Promise<DurableBackupInfo>{
     // Refuse to continue after a synthetic interruption leaves any orphan,
     // corrupt or unexpected backup entry. Never prune or heal automatically.
-    await readBackupCatalog();
+    const existing=await readBackupCatalog();
+    if(!hasSyntheticBackupPairCapacity(existing.length)){
+      throw Error("Synthetic backup catalog has no room for another complete transaction");
+    }
     if(!HASH.test(afterSha))throw Error("Invalid future synthetic content hash");
     const id=randomUUID();
     const originalHash=sha(before);
