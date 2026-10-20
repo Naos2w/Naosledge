@@ -35,9 +35,19 @@ export type SyntheticConsent={
   confirmation:string;
   expiresAt:number;
 };
+export type SyntheticStageConsent={
+  slug:string;choice:"review-download"|"review-missing-local"|"conflict";
+  expectedLocalSha:string|null;expectedRemoteSha:string;
+  expectedRemoteRevision:string;confirmation:string;expiresAt:number;
+};
 export type DurableSyntheticReceipt={
   slug:string;beforeSha:string|null;afterSha:string;
   backupId:string|null;syntheticOnly:true;automaticSyncEnabled:false;
+};
+export type StagedSyntheticIncomingReceipt={
+  slug:string;stagedRelativePath:string;sourceSha:string;
+  sourceRevision:string;syntheticOnly:true;
+  originalLocalModified:false;automaticSyncEnabled:false;
 };
 type Remote={bytes:Buffer;revision:number};
 type Pending={consent:SyntheticConsent;nonce:string};
@@ -116,20 +126,23 @@ export async function createDurableSyntheticObsidianWorkspace(){
   const notes=path.join(folder,"notes");
   const backups=path.join(folder,"backups");
   const locks=path.join(folder,"locks");
+  const incoming=path.join(folder,"incoming");
   await mkdir(notes,{mode:0o700});
   await mkdir(backups,{mode:0o700});
   await mkdir(locks,{mode:0o700});
+  await mkdir(incoming,{mode:0o700});
 
   const remote=new Map<string,Remote>();
   const baseline=new Map<string,SyncFingerprint>();
   const pending=new Map<string,Pending>();
+  const stagePending=new Map<string,SyntheticStageConsent>();
   const restorations=new Map<string,{confirmation:string;expectedSha:string;expiresAt:number}>();
   let destroyed=false;
   const active=new Set<string>();
 
   const ensureActive=async()=>{
     if(destroyed)throw Error("Synthetic workspace is closed");
-    await Promise.all([folder,notes,backups,locks].map(ensureRealDirectory));
+    await Promise.all([folder,notes,backups,locks,incoming].map(ensureRealDirectory));
   };
   const notePath=(slug:string)=>{
     slugValid(slug);
@@ -143,7 +156,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
     const data=await stableBytes(notePath(slug));
     return data===null?null:sha(data);
   };
-  const resetConsent=()=>{pending.clear();restorations.clear();};
+  const resetConsent=()=>{pending.clear();stagePending.clear();restorations.clear();};
 
   async function withLock<T>(slug:string,run:()=>Promise<T>):Promise<T>{
     await ensureActive();slugValid(slug);
@@ -250,7 +263,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
       for(const item of value)baseline.set(item.slug,{...item});
       resetConsent();
     },
-    async preview():Promise<{plan:SyncPlan;consents:SyntheticConsent[]}>{
+    async preview():Promise<{plan:SyncPlan;consents:SyntheticConsent[];stageConsents:SyntheticStageConsent[]}>{
       await ensureActive();
       const snapshot=await readObsidianLocalManifest(notes);
       if(snapshot.unsupportedMarkdownFiles||snapshot.otherFiles||snapshot.directoriesNotScanned){
@@ -263,9 +276,23 @@ export async function createDurableSyntheticObsidianWorkspace(){
       });
       resetConsent();
       const consents:SyntheticConsent[]=[];
+      const stageConsents:SyntheticStageConsent[]=[];
       for(const decision of plan.decisions){
-        if(decision.choice!=="review-download"&&decision.choice!=="review-missing-local")continue;
         if(!decision.expectedRemoteSha||!decision.expectedRemoteRevision)continue;
+        if(decision.choice==="review-download"||
+           decision.choice==="review-missing-local"||decision.choice==="conflict"){
+          const stage:SyntheticStageConsent={
+            slug:decision.slug,choice:decision.choice,
+            expectedLocalSha:decision.expectedLocalSha,
+            expectedRemoteSha:decision.expectedRemoteSha,
+            expectedRemoteRevision:decision.expectedRemoteRevision,
+            confirmation:"CONFIRM STAGE "+decision.slug+" "+randomUUID(),
+            expiresAt:Date.now()+MAX_MINUTES*60_000,
+          };
+          stagePending.set(decision.slug,stage);
+          stageConsents.push({...stage});
+        }
+        if(decision.choice!=="review-download"&&decision.choice!=="review-missing-local")continue;
         const nonce=randomUUID();
         const confirmation="CONFIRM DOWNLOAD "+decision.slug+" "+nonce;
         const consent:SyntheticConsent={
@@ -279,7 +306,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
         pending.set(decision.slug,{consent,nonce});
         consents.push({...consent});
       }
-      return {plan,consents};
+      return {plan,consents,stageConsents};
     },
     async approvedDownload(args:{
       slug:string;confirmation:string;
@@ -292,8 +319,9 @@ export async function createDurableSyntheticObsidianWorkspace(){
          Date.now()>current.consent.expiresAt){
         throw Error("Explicit, unexpired per-note synthetic approval required");
       }
-      // Single-use consent must be consumed even if the operation fails.
+      // One reviewed note can authorize at most one operation per preview.
       pending.delete(slug);
+      stagePending.delete(slug);
       return await withLock(slug,async()=>{
         const c=current.consent;
         const l=await localSha(slug),r=remoteFp(slug);
@@ -335,6 +363,63 @@ export async function createDurableSyntheticObsidianWorkspace(){
           slug,beforeSha:l,afterSha:c.expectedRemoteSha,
           backupId:backup?.id??null,syntheticOnly:true,automaticSyncEnabled:false,
         };
+      });
+    },
+    /**
+     * Non-destructive alternative for a conflict or incoming revision:
+     * create an independent no-clobber Markdown copy in the synthetic inbox.
+     * Never renames, deletes or opens the original note for writing. This is
+     * deliberately NOT a real Vault or Production synchronization adapter.
+     */
+    async approvedStageIncoming(args:{
+      slug:string;confirmation:string;
+      beforeStageForSyntheticTest?:()=>Promise<void>;
+      afterStageForSyntheticTest?:()=>Promise<void>;
+    }):Promise<StagedSyntheticIncomingReceipt>{
+      const {slug,confirmation}=args;
+      await ensureActive();slugValid(slug);
+      const c=stagePending.get(slug);
+      if(!c||c.confirmation!==confirmation||Date.now()>c.expiresAt){
+        throw Error("Fresh per-note synthetic staging approval required");
+      }
+      stagePending.delete(slug);
+      pending.delete(slug);
+      return await withLock(slug,async()=>{
+        const checkVersions=async()=>{
+          const local=await localSha(slug),remoteNow=remoteFp(slug);
+          if(local!==c.expectedLocalSha||
+             remoteNow?.sha256!==c.expectedRemoteSha||
+             remoteNow?.revision!==c.expectedRemoteRevision){
+            throw Error("Staging refused: local or synthetic remote changed since preview");
+          }
+        };
+        await checkVersions();
+        const bytes=remote.get(slug)?.bytes;
+        if(!bytes||sha(bytes)!==c.expectedRemoteSha){
+          throw Error("Staging refused: incoming synthetic contents do not match approval");
+        }
+        if(args.beforeStageForSyntheticTest)await args.beforeStageForSyntheticTest();
+        await checkVersions();
+        await ensureRealDirectory(incoming);
+        const filename=slug+"-"+randomUUID()+".md";
+        const location=path.join(incoming,filename);
+        let accepted=false;
+        try{
+          await writeSyncNew(location,Buffer.from(bytes));
+          await syncDirectoryBestEffort(incoming);
+          if(args.afterStageForSyntheticTest)await args.afterStageForSyntheticTest();
+          await checkVersions();
+          accepted=true;
+          resetConsent();
+          return {
+            slug,stagedRelativePath:"incoming/"+filename,
+            sourceSha:c.expectedRemoteSha,sourceRevision:c.expectedRemoteRevision,
+            syntheticOnly:true,originalLocalModified:false,
+            automaticSyncEnabled:false,
+          };
+        }finally{
+          if(!accepted)await rm(location,{force:true}).catch(()=>{});
+        }
       });
     },
     async prepareRestore(id:string){
