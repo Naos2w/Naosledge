@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash,randomUUID} from "node:crypto";
-import {lstat,readFile,writeFile,rm,open,access,symlink,link} from "node:fs/promises";
+import {lstat,readFile,writeFile,rm,open,access,symlink,link,readdir,mkdir} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
-import {createDurableSyntheticObsidianWorkspace} from "../lib/obsidian-durable-write-sandbox.ts";
+import {createDurableSyntheticObsidianWorkspace,hasSyntheticBackupPairCapacity} from "../lib/obsidian-durable-write-sandbox.ts";
 
 const sha=text=>createHash("sha256").update(text).digest("hex");
 
@@ -295,6 +295,293 @@ test("symlink/hardlink local files are rejected rather than followed",async t=>{
     }
     await assert.rejects(box.preview(),/hardlinked/);
   });
+});
+
+test("manual stage saves a new incoming copy without overwriting the approved note",async()=>{
+  await withScratch(async box=>{
+    await sampleUpdate(box);
+    const review=await box.preview();
+    const stage=find({consents:review.stageConsents},"shared-note");
+    const download=find(review,"shared-note");
+    assert.match(stage.confirmation,/^CONFIRM STAGE shared-note [0-9a-f-]+$/);
+    const result=await box.approvedStageIncoming({
+      slug:"shared-note",confirmation:stage.confirmation,
+    });
+    assert.equal(result.syntheticOnly,true);
+    assert.equal(result.originalLocalModified,false);
+    assert.equal(result.automaticSyncEnabled,false);
+    assert.equal(result.sourceSha,sha("new remote contents"));
+    assert.match(result.stagedRelativePath,/^incoming\/shared-note-[0-9a-f-]+\.md$/);
+    assert.equal(await readFile(path.join(box.syntheticWorkspacePath,result.stagedRelativePath),"utf8"),
+      "new remote contents");
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.deepEqual(await box.listDurableBackups(),[]);
+    assert.equal((await readdir(path.join(box.syntheticWorkspacePath,"incoming"))).length,1);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:download.confirmation,
+    }),/Explicit, unexpired/);
+    assert.equal((await box.preview()).plan.decisions[0].choice,"review-download",
+      "staging must not advance the baseline");
+  });
+});
+
+test("divergent conflict can only be staged as a separate copy, not downloaded",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("conflict-note","untouched local");
+    await box.seedRemote("conflict-note","remote alternative");
+    const p=await box.preview();
+    assert.equal(p.plan.decisions[0].choice,"conflict");
+    assert.deepEqual(p.consents,[]);
+    assert.equal(p.stageConsents.length,1);
+    const r=await box.approvedStageIncoming({
+      slug:"conflict-note",confirmation:p.stageConsents[0].confirmation,
+    });
+    assert.equal(await readFile(path.join(box.syntheticWorkspacePath,r.stagedRelativePath),"utf8"),
+      "remote alternative");
+    assert.equal(await box.readLocalForSyntheticTest("conflict-note"),"untouched local");
+    assert.deepEqual(await box.listDurableBackups(),[]);
+  });
+});
+
+test("incoming copy for a missing note never creates or overwrites the original",async()=>{
+  await withScratch(async box=>{
+    await box.seedRemote("missing-note","remote first");
+    const p=await box.preview();
+    assert.equal(p.plan.decisions[0].choice,"review-missing-local");
+    const r=await box.approvedStageIncoming({
+      slug:"missing-note",confirmation:p.stageConsents[0].confirmation,
+    });
+    assert.equal(await box.readLocalForSyntheticTest("missing-note"),null);
+    assert.equal(await readFile(path.join(box.syntheticWorkspacePath,r.stagedRelativePath),"utf8"),
+      "remote first");
+  });
+});
+
+test("invalid and stale stage approvals refuse copying and never change local notes",async()=>{
+  await withScratch(async box=>{
+    await sampleUpdate(box);
+    const p=await box.preview();
+    const c=p.stageConsents[0];
+    await assert.rejects(box.approvedStageIncoming({
+      slug:"shared-note",confirmation:"yes",
+    }),/Fresh per-note/);
+    const note=path.join(box.syntheticWorkspacePath,"notes","shared-note.md");
+    await writeFile(note,"local changed after preview");
+    await assert.rejects(box.approvedStageIncoming({
+      slug:"shared-note",confirmation:c.confirmation,
+    }),/Staging refused/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"local changed after preview");
+    assert.deepEqual(await readdir(path.join(box.syntheticWorkspacePath,"incoming")),[]);
+    await assert.rejects(box.approvedStageIncoming({
+      slug:"shared-note",confirmation:c.confirmation,
+    }),/Fresh per-note/);
+  });
+});
+
+test("remote mutation just before stage refuses the stale incoming copy",async()=>{
+  await withScratch(async box=>{
+    await sampleUpdate(box);
+    const c=(await box.preview()).stageConsents[0];
+    await assert.rejects(box.approvedStageIncoming({
+      slug:"shared-note",confirmation:c.confirmation,
+      beforeStageForSyntheticTest:async()=>{
+        await box.mutateRemote("shared-note","newest remote revision");
+      },
+    }),/Staging refused/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.deepEqual(await readdir(path.join(box.syntheticWorkspacePath,"incoming")),[]);
+  });
+});
+
+test("late external edit after staging is detected; incoming copy is discarded",async()=>{
+  await withScratch(async box=>{
+    await sampleUpdate(box);
+    const c=(await box.preview()).stageConsents[0];
+    const note=path.join(box.syntheticWorkspacePath,"notes","shared-note.md");
+    await assert.rejects(box.approvedStageIncoming({
+      slug:"shared-note",confirmation:c.confirmation,
+      afterStageForSyntheticTest:async()=>{
+        await writeFile(note,"new user edit during staging");
+      },
+    }),/Staging refused/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new user edit during staging");
+    assert.deepEqual(await readdir(path.join(box.syntheticWorkspacePath,"incoming")),[]);
+    assert.deepEqual(await box.listDurableBackups(),[]);
+  });
+});
+
+test("stage consent is single-use and superseded by a fresh preview",async()=>{
+  await withScratch(async box=>{
+    await sampleUpdate(box);
+    const old=(await box.preview()).stageConsents[0];
+    const current=(await box.preview()).stageConsents[0];
+    await assert.rejects(box.approvedStageIncoming({
+      slug:"shared-note",confirmation:old.confirmation,
+    }),/Fresh per-note/);
+    await box.approvedStageIncoming({
+      slug:"shared-note",confirmation:current.confirmation,
+    });
+    await assert.rejects(box.approvedStageIncoming({
+      slug:"shared-note",confirmation:current.confirmation,
+    }),/Fresh per-note/);
+  });
+});
+
+test("expired staging approval remains invalid even if the returned preview is edited",async()=>{
+  await withScratch(async box=>{
+    await sampleUpdate(box);
+    const c=(await box.preview()).stageConsents[0];
+    const originalExpiration=c.expiresAt;
+    c.expiresAt=Number.MAX_SAFE_INTEGER;
+    c.expectedLocalSha=sha("tampered fingerprint");
+    const clock=Date.now;
+    Date.now=()=>originalExpiration+1;
+    try{
+      await assert.rejects(box.approvedStageIncoming({
+        slug:"shared-note",confirmation:c.confirmation,
+      }),/Fresh per-note/);
+    }finally{Date.now=clock;}
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.deepEqual(await readdir(path.join(box.syntheticWorkspacePath,"incoming")),[]);
+  });
+});
+
+test("external synthetic lock prevents staging while preserving the original",async()=>{
+  await withScratch(async box=>{
+    await sampleUpdate(box);
+    const c=(await box.preview()).stageConsents[0];
+    const lock=path.join(box.syntheticWorkspacePath,"locks","shared-note.lock");
+    const h=await open(lock,"wx");
+    try{
+      await assert.rejects(box.approvedStageIncoming({
+        slug:"shared-note",confirmation:c.confirmation,
+      }),/EEXIST/);
+    }finally{
+      await h.close();
+      await rm(lock,{force:true});
+    }
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.deepEqual(await readdir(path.join(box.syntheticWorkspacePath,"incoming")),[]);
+  });
+});
+
+test("interrupted backup before metadata is visible and halts all synthetic downloads",async()=>{
+  await withScratch(async box=>{
+    const consent=await sampleUpdate(box);
+    const orphan=path.join(box.syntheticWorkspacePath,"backups",randomUUID()+".bak");
+    await writeFile(orphan,"unfinished synthetic backup contents");
+    await assert.rejects(box.listDurableBackups(),/incomplete transaction/);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:consent.confirmation,
+    }),/incomplete transaction/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.equal(await readFile(orphan,"utf8"),"unfinished synthetic backup contents",
+      "orphan is preserved for manual investigation");
+  });
+});
+
+test("interrupted metadata-only backup blocks creation of a missing local note",async()=>{
+  await withScratch(async box=>{
+    await box.seedRemote("newer-note","incoming synthetic content");
+    const consent=find(await box.preview(),"newer-note");
+    const orphan=path.join(box.syntheticWorkspacePath,"backups",randomUUID()+".json");
+    await writeFile(orphan,"{}");
+    await assert.rejects(box.listDurableBackups(),/incomplete transaction/);
+    await assert.rejects(box.approvedDownload({
+      slug:"newer-note",confirmation:consent.confirmation,
+    }),/incomplete transaction/);
+    assert.equal(await box.readLocalForSyntheticTest("newer-note"),null);
+    assert.equal(await readFile(orphan,"utf8"),"{}");
+  });
+});
+
+test("missing metadata of a completed synthetic backup is never silently ignored",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const result=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const metadata=path.join(box.syntheticWorkspacePath,"backups",result.backupId+".json");
+    await rm(metadata);
+    await assert.rejects(box.listDurableBackups(),/incomplete transaction/);
+    await assert.rejects(box.readBackupForSyntheticTest(result.backupId),
+      /incomplete/,"incomplete pair cannot be recovered through normal read");
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+  });
+});
+
+test("corrupt backup bytes are detected before a newer revision could overwrite",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const receipt=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const backup=path.join(box.syntheticWorkspacePath,"backups",receipt.backupId+".bak");
+    await writeFile(backup,"corrupt synthetic backup");
+    await box.mutateRemote("shared-note","second remote revision");
+    const consent=find(await box.preview(),"shared-note");
+    assert.ok(consent,"a new remote update would otherwise be eligible");
+    await assert.rejects(box.listDurableBackups(),/integrity mismatch/);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:consent.confirmation,
+    }),/integrity mismatch/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+    assert.equal(await readFile(backup,"utf8"),"corrupt synthetic backup");
+  });
+});
+
+test("unrecognized backup entry blocks destructive rehearsal but can be inspected",async()=>{
+  await withScratch(async box=>{
+    const consent=await sampleUpdate(box);
+    const unexpected=path.join(box.syntheticWorkspacePath,"backups","journal.partial");
+    await writeFile(unexpected,"not a completed backup");
+    await assert.rejects(box.listDurableBackups(),/unsafe or unexpected/);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:consent.confirmation,
+    }),/unsafe or unexpected/);
+    assert.equal(await readFile(unexpected,"utf8"),"not a completed backup");
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+  });
+});
+
+test("incomplete unrelated backup blocks manual restore before a new backup",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const r=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const orphan=path.join(box.syntheticWorkspacePath,"backups",randomUUID()+".bak");
+    await writeFile(orphan,"interrupted other note");
+    await assert.rejects(box.prepareRestore(r.backupId),/incomplete transaction/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+    assert.equal((await readdir(path.join(box.syntheticWorkspacePath,"backups"))).length,3);
+  });
+});
+
+test("unexpected backup subdirectory is rejected without traversing it",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const unsafe=path.join(box.syntheticWorkspacePath,"backups","unapproved");
+    await mkdir(unsafe);
+    await writeFile(path.join(unsafe,"private-synthetic.md"),"do not read");
+    await assert.rejects(box.listDurableBackups(),/unsafe or unexpected/);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    }),/unsafe or unexpected/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.equal(await readFile(path.join(unsafe,"private-synthetic.md"),"utf8"),"do not read");
+  });
+});
+
+test("synthetic backup capacity reserves space for both transaction files",()=>{
+  assert.equal(hasSyntheticBackupPairCapacity(0),true);
+  assert.equal(hasSyntheticBackupPairCapacity(511),true);
+  assert.equal(hasSyntheticBackupPairCapacity(512),false,
+    "a full catalog must refuse the next pair before creating .bak");
+  assert.equal(hasSyntheticBackupPairCapacity(513),false);
+  for(const invalid of [-1,1.5,Number.NaN,Number.MAX_SAFE_INTEGER]){
+    assert.equal(hasSyntheticBackupPairCapacity(invalid),false);
+  }
 });
 
 test("sandbox wipe is scoped to its own random temporary folder",async()=>{
