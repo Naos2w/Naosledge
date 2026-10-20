@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash,randomUUID} from "node:crypto";
-import {lstat,readFile,writeFile,rm,open,access,symlink,link,readdir} from "node:fs/promises";
+import {lstat,readFile,writeFile,rm,open,access,symlink,link,readdir,mkdir} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import {createDurableSyntheticObsidianWorkspace} from "../lib/obsidian-durable-write-sandbox.ts";
@@ -462,6 +462,114 @@ test("external synthetic lock prevents staging while preserving the original",as
     }
     assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
     assert.deepEqual(await readdir(path.join(box.syntheticWorkspacePath,"incoming")),[]);
+  });
+});
+
+test("interrupted backup before metadata is visible and halts all synthetic downloads",async()=>{
+  await withScratch(async box=>{
+    const consent=await sampleUpdate(box);
+    const orphan=path.join(box.syntheticWorkspacePath,"backups",randomUUID()+".bak");
+    await writeFile(orphan,"unfinished synthetic backup contents");
+    await assert.rejects(box.listDurableBackups(),/incomplete transaction/);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:consent.confirmation,
+    }),/incomplete transaction/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.equal(await readFile(orphan,"utf8"),"unfinished synthetic backup contents",
+      "orphan is preserved for manual investigation");
+  });
+});
+
+test("interrupted metadata-only backup blocks creation of a missing local note",async()=>{
+  await withScratch(async box=>{
+    await box.seedRemote("newer-note","incoming synthetic content");
+    const consent=find(await box.preview(),"newer-note");
+    const orphan=path.join(box.syntheticWorkspacePath,"backups",randomUUID()+".json");
+    await writeFile(orphan,"{}");
+    await assert.rejects(box.listDurableBackups(),/incomplete transaction/);
+    await assert.rejects(box.approvedDownload({
+      slug:"newer-note",confirmation:consent.confirmation,
+    }),/incomplete transaction/);
+    assert.equal(await box.readLocalForSyntheticTest("newer-note"),null);
+    assert.equal(await readFile(orphan,"utf8"),"{}");
+  });
+});
+
+test("missing metadata of a completed synthetic backup is never silently ignored",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const result=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const metadata=path.join(box.syntheticWorkspacePath,"backups",result.backupId+".json");
+    await rm(metadata);
+    await assert.rejects(box.listDurableBackups(),/incomplete transaction/);
+    await assert.rejects(box.readBackupForSyntheticTest(result.backupId),
+      /incomplete/,"incomplete pair cannot be recovered through normal read");
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+  });
+});
+
+test("corrupt backup bytes are detected before a newer revision could overwrite",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const receipt=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const backup=path.join(box.syntheticWorkspacePath,"backups",receipt.backupId+".bak");
+    await writeFile(backup,"corrupt synthetic backup");
+    await box.mutateRemote("shared-note","second remote revision");
+    const consent=find(await box.preview(),"shared-note");
+    assert.ok(consent,"a new remote update would otherwise be eligible");
+    await assert.rejects(box.listDurableBackups(),/integrity mismatch/);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:consent.confirmation,
+    }),/integrity mismatch/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+    assert.equal(await readFile(backup,"utf8"),"corrupt synthetic backup");
+  });
+});
+
+test("unrecognized backup entry blocks destructive rehearsal but can be inspected",async()=>{
+  await withScratch(async box=>{
+    const consent=await sampleUpdate(box);
+    const unexpected=path.join(box.syntheticWorkspacePath,"backups","journal.partial");
+    await writeFile(unexpected,"not a completed backup");
+    await assert.rejects(box.listDurableBackups(),/unsafe or unexpected/);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:consent.confirmation,
+    }),/unsafe or unexpected/);
+    assert.equal(await readFile(unexpected,"utf8"),"not a completed backup");
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+  });
+});
+
+test("incomplete unrelated backup blocks manual restore before a new backup",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const r=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const orphan=path.join(box.syntheticWorkspacePath,"backups",randomUUID()+".bak");
+    await writeFile(orphan,"interrupted other note");
+    await assert.rejects(box.prepareRestore(r.backupId),/incomplete transaction/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+    assert.equal((await readdir(path.join(box.syntheticWorkspacePath,"backups"))).length,3);
+  });
+});
+
+test("unexpected backup subdirectory is rejected without traversing it",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const unsafe=path.join(box.syntheticWorkspacePath,"backups","unapproved");
+    await mkdir(unsafe);
+    await writeFile(path.join(unsafe,"private-synthetic.md"),"do not read");
+    await assert.rejects(box.listDurableBackups(),/unsafe or unexpected/);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    }),/unsafe or unexpected/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.equal(await readFile(path.join(unsafe,"private-synthetic.md"),"utf8"),"do not read");
   });
 });
 

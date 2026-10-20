@@ -22,6 +22,8 @@ const SAFE=/^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HASH=/^[0-9a-f]{64}$/;
 const MAX_BYTES=250_000;
 const MAX_MINUTES=10;
+const MAX_BACKUP_FILES=1024;
+const BACKUP_ENTRY=/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(bak|json)$/;
 
 export type DurableBackupInfo={
   id:string;slug:string;beforeSha:string;afterSha:string;
@@ -179,6 +181,9 @@ export async function createDurableSyntheticObsidianWorkspace(){
   }
 
   async function saveBackup(slug:string,before:Buffer,afterSha:string):Promise<DurableBackupInfo>{
+    // Refuse to continue after a synthetic interruption leaves any orphan,
+    // corrupt or unexpected backup entry. Never prune or heal automatically.
+    await readBackupCatalog();
     if(!HASH.test(afterSha))throw Error("Invalid future synthetic content hash");
     const id=randomUUID();
     const originalHash=sha(before);
@@ -212,6 +217,37 @@ export async function createDurableSyntheticObsidianWorkspace(){
       throw Error("Persistent scratch backup integrity mismatch");
     }
     return {info,data};
+  }
+
+  /**
+   * A torn .bak/.json pair is evidence of an interrupted transaction.
+   * Do not silently skip it when listing completed backups. The catalog is
+   * bounded and read-only; cleanup and recovery must remain manual.
+   */
+  async function readBackupCatalog():Promise<DurableBackupInfo[]>{
+    await ensureRealDirectory(backups);
+    const entries=await readdir(backups,{withFileTypes:true});
+    if(entries.length>MAX_BACKUP_FILES){
+      throw Error("Synthetic backup catalog capacity exceeded; manual inspection required");
+    }
+    const pairs=new Map<string,Set<string>>();
+    for(const entry of entries){
+      const match=BACKUP_ENTRY.exec(entry.name);
+      if(!entry.isFile()||entry.isSymbolicLink()||!match){
+        throw Error("Synthetic backup catalog has an unsafe or unexpected entry");
+      }
+      const kinds=pairs.get(match[1])??new Set<string>();
+      kinds.add(match[2]);
+      pairs.set(match[1],kinds);
+    }
+    const records:DurableBackupInfo[]=[];
+    for(const [id,kinds] of pairs){
+      if(kinds.size!==2){
+        throw Error("Synthetic backup catalog has an incomplete transaction");
+      }
+      records.push((await loadBackup(id)).info);
+    }
+    return records.sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   }
 
   async function replaceStaged(
@@ -323,6 +359,8 @@ export async function createDurableSyntheticObsidianWorkspace(){
       pending.delete(slug);
       stagePending.delete(slug);
       return await withLock(slug,async()=>{
+        // An incomplete prior backup must halt even the next fresh download.
+        await readBackupCatalog();
         const c=current.consent;
         const l=await localSha(slug),r=remoteFp(slug);
         if(l!==c.expectedLocalSha||r?.sha256!==c.expectedRemoteSha||
@@ -424,6 +462,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
     },
     async prepareRestore(id:string){
       await ensureActive();
+      await readBackupCatalog();
       const {info}=await loadBackup(id);
       const current=await localSha(info.slug);
       if(current!==info.afterSha){
@@ -474,10 +513,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
     },
     async listDurableBackups():Promise<DurableBackupInfo[]>{
       await ensureActive();
-      const names=(await readdir(backups)).filter(x=>x.endsWith(".json"));
-      const all:DurableBackupInfo[]=[];
-      for(const name of names)all.push((await loadBackup(name.slice(0,-5))).info);
-      return all.sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+      return await readBackupCatalog();
     },
     async readLocalForSyntheticTest(slug:string){
       await ensureActive();
