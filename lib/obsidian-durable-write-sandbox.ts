@@ -11,7 +11,7 @@
  * platform-specific Windows locks and must NOT use this as Production writer.
  */
 import {createHash,randomUUID} from "node:crypto";
-import {open,mkdir,mkdtemp,lstat,readFile,realpath,readdir,rename,rm,writeFile,unlink} from "node:fs/promises";
+import {open,opendir,mkdir,mkdtemp,lstat,readFile,realpath,readdir,rename,rm,writeFile,unlink} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {planObsidianReconciliation,type SyncFingerprint,type SyncPlan} from "./obsidian-sync-plan.ts";
@@ -27,6 +27,17 @@ const REQUIRED_BACKUP_FIELDS=new Set([
   "id","slug","beforeSha","afterSha","createdAt","syntheticOnly",
 ]);
 const UTC_BACKUP_TIME=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const BACKUP_ENTRY=/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.(bak|json)$/;
+const MAX_AUDIT_ENTRIES=1024;
+
+/** Redacted, bounded synthetic backup inspection; never contains file paths or note text. */
+export type SyntheticBackupRecoveryReport={
+  syntheticOnly:true;readOnly:true;inspectionComplete:boolean;
+  scannedEntries:number;
+  validPairs:number|null;orphanBackups:number|null;
+  orphanMetadata:number|null;invalidPairs:number|null;
+  unexpectedEntries:number|null;needsManualReview:boolean;
+};
 
 export type DurableBackupInfo={
   id:string;slug:string;beforeSha:string;afterSha:string;
@@ -216,6 +227,61 @@ export async function createDurableSyntheticObsidianWorkspace(){
     return {info,data};
   }
 
+  /**
+   * Inspect this factory's temporary backup area without changing any file.
+   * An incomplete scan returns nullable counts rather than an incomplete
+   * result that could be mistaken for a clean inventory.
+   */
+  async function inspectSyntheticBackupRecovery():Promise<SyntheticBackupRecoveryReport>{
+    await ensureActive();
+    const pairs=new Map<string,{bak:boolean;json:boolean}>();
+    let scannedEntries=0;
+    let unexpectedEntries=0;
+    const directory=await opendir(backups);
+    for await(const entry of directory){
+      scannedEntries++;
+      if(scannedEntries>MAX_AUDIT_ENTRIES){
+        return {
+          syntheticOnly:true,readOnly:true,inspectionComplete:false,
+          scannedEntries,validPairs:null,orphanBackups:null,
+          orphanMetadata:null,invalidPairs:null,unexpectedEntries:null,
+          needsManualReview:true,
+        };
+      }
+      const match=BACKUP_ENTRY.exec(entry.name);
+      if(!entry.isFile()||entry.isSymbolicLink()||!match){
+        unexpectedEntries++;
+        continue;
+      }
+      const item=pairs.get(match[1])??{bak:false,json:false};
+      if(match[2]==="bak")item.bak=true;
+      else item.json=true;
+      pairs.set(match[1],item);
+    }
+    let validPairs=0;
+    let orphanBackups=0;
+    let orphanMetadata=0;
+    let invalidPairs=0;
+    for(const [id,item] of pairs){
+      if(!item.json){orphanBackups++;continue;}
+      if(!item.bak){orphanMetadata++;continue;}
+      try{
+        await loadBackup(id);
+        validPairs++;
+      }catch{
+        // Counts only: never disclose note bodies, paths or raw error details.
+        invalidPairs++;
+      }
+    }
+    return {
+      syntheticOnly:true,readOnly:true,inspectionComplete:true,
+      scannedEntries,validPairs,orphanBackups,orphanMetadata,
+      invalidPairs,unexpectedEntries,
+      needsManualReview:orphanBackups+orphanMetadata+
+        invalidPairs+unexpectedEntries>0,
+    };
+  }
+
   async function replaceStaged(
     slug:string,body:Buffer,expectedLocalSha:string,
     hook?:()=>Promise<void>,
@@ -401,6 +467,9 @@ export async function createDurableSyntheticObsidianWorkspace(){
           backupId:undo.id,syntheticOnly:true,automaticSyncEnabled:false,
         };
       });
+    },
+    async inspectSyntheticBackupRecovery(){
+      return await inspectSyntheticBackupRecovery();
     },
     async listDurableBackups():Promise<DurableBackupInfo[]>{
       await ensureActive();

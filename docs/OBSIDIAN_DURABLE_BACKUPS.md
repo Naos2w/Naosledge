@@ -41,6 +41,15 @@ npm run verify:obsidian:backup:sandbox -- --approve-download=shared-note --appro
 
 這些檢查只增加**格式與內容完整性防護**，不代表具有可防惡意持有人竄改的數位簽章，也不解決 Windows 外部編輯器競爭、真正的持久化備份、斷電復原或 PR #21 的獨立安全審查。
 
+### 合成備份唯讀復原盤點
+
+`createDurableSyntheticObsidianWorkspace()` 現提供 `inspectSyntheticBackupRecovery()`，在工具自行建立的 **TEMP 隔離沙盒**內，對備份進行唯讀檢查並回傳**不含檔名、路徑、筆記 slug、Markdown 內容或備份 ID** 的統計摘要：
+
+- 完整且通過原有 SHA-256／JSON 驗證的 `.bak`＋`.json` 配對數；缺少 metadata 的 `.bak` 數；缺少備份的 `.json` 數；配對損壞與非預期目錄項目數。
+- 最多檢視 1,024 個目錄項目；超過上限時，`inspectionComplete=false`、未完成的分類計數一律為 `null`，`needsManualReview=true`。不可將部分掃描當作健康結果。
+- `needsManualReview=false` 只表示**當次盤點未發現問題**，**不是**同意覆寫或還原的授權；盤點不會清理任何資料，也不會自行阻擋舊版合成覆寫 API。真正的檔案覆寫安全關卡仍須依獨立 PR #21 完整整合與驗收。
+- 此 API 沒有可傳入的任意目錄參數，不會重新開啟已終止的沙盒，也沒有正式備份磁碟、持續監控或真實 Windows 外部編輯器 CAS 能力；事故時必須保留檔案並另行人工調查。
+
 ## 測試與保證的界線
 
 `tests/obsidian-durable-write-sandbox.test.mjs` 主要測試包含：正確 nonce 批准與期限、備份檔真實落盤與 metadata、先備份再覆寫、雙向變更偵測、stale preview、在 commit 前被修改時阻止寫入、同名新檔 `O_EXCL`、硬連結拒絕、兩個同步作業互斥、備份損壞拒絕復原、復原前更動拒絕、每次復原另留備份、一次性授權與確實清除合成測試路徑。

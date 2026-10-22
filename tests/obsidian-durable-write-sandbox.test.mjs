@@ -304,6 +304,110 @@ test("tampering with a backup manifest after restore approval refuses restoratio
   });
 });
 
+test("read-only recovery audit reports healthy empty and complete scratch catalogs",async()=>{
+  await withScratch(async box=>{
+    const empty=await box.inspectSyntheticBackupRecovery();
+    assert.deepEqual(empty,{
+      syntheticOnly:true,readOnly:true,inspectionComplete:true,
+      scannedEntries:0,validPairs:0,orphanBackups:0,
+      orphanMetadata:0,invalidPairs:0,unexpectedEntries:0,
+      needsManualReview:false,
+    });
+    const c=await sampleUpdate(box);
+    const receipt=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const report=await box.inspectSyntheticBackupRecovery();
+    assert.equal(report.inspectionComplete,true);
+    assert.equal(report.validPairs,1);
+    assert.equal(report.scannedEntries,2);
+    assert.equal(report.needsManualReview,false);
+    assert.equal((await box.listDurableBackups()).length,1);
+    const serialized=JSON.stringify(report);
+    assert.ok(!serialized.includes(receipt.backupId));
+    assert.ok(!serialized.includes("shared-note"));
+    assert.ok(!serialized.includes("old contents"));
+    assert.ok(!serialized.includes(box.syntheticWorkspacePath));
+  });
+});
+
+test("read-only recovery audit detects orphan and unexpected backup entries without deleting evidence",async()=>{
+  await withScratch(async box=>{
+    const dir=path.join(box.syntheticWorkspacePath,"backups");
+    const orphanBackup=path.join(dir,randomUUID()+".bak");
+    const orphanMetadata=path.join(dir,randomUUID()+".json");
+    const unexpected=path.join(dir,"unexpected.partial");
+    await writeFile(orphanBackup,"synthetic missing metadata");
+    await writeFile(orphanMetadata,"{\"synthetic\":true}");
+    await writeFile(unexpected,"synthetic crash trace");
+    const before=(await readdir(dir)).sort();
+    const report=await box.inspectSyntheticBackupRecovery();
+    assert.equal(report.inspectionComplete,true);
+    assert.equal(report.validPairs,0);
+    assert.equal(report.orphanBackups,1);
+    assert.equal(report.orphanMetadata,1);
+    assert.equal(report.unexpectedEntries,1);
+    assert.equal(report.invalidPairs,0);
+    assert.equal(report.scannedEntries,3);
+    assert.equal(report.needsManualReview,true);
+    assert.deepEqual((await readdir(dir)).sort(),before);
+    assert.equal(await readFile(orphanBackup,"utf8"),"synthetic missing metadata");
+    assert.equal(await readFile(unexpected,"utf8"),"synthetic crash trace");
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),null);
+    const redacted=JSON.stringify(report);
+    for(const item of [...before,"synthetic crash trace","synthetic missing metadata"]){
+      assert.ok(!redacted.includes(item),"recovery report must not expose filenames or bodies");
+    }
+  });
+});
+
+test("read-only recovery audit detects corrupted paired bytes while preserving the original",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const receipt=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const filename=path.join(box.syntheticWorkspacePath,"backups",receipt.backupId+".bak");
+    await writeFile(filename,"tampered synthetic backup");
+    const report=await box.inspectSyntheticBackupRecovery();
+    assert.equal(report.inspectionComplete,true);
+    assert.equal(report.validPairs,0);
+    assert.equal(report.invalidPairs,1);
+    assert.equal(report.needsManualReview,true);
+    assert.equal(report.orphanBackups,0);
+    assert.equal(report.orphanMetadata,0);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+    assert.equal(await readFile(filename,"utf8"),"tampered synthetic backup");
+  });
+});
+
+test("over-limit recovery audit marks counts unknown and requires manual review",async()=>{
+  await withScratch(async box=>{
+    const dir=path.join(box.syntheticWorkspacePath,"backups");
+    for(let i=0;i<1025;i++){
+      await writeFile(path.join(dir,"unexpected-"+i+".partial"),"");
+    }
+    const report=await box.inspectSyntheticBackupRecovery();
+    assert.equal(report.syntheticOnly,true);
+    assert.equal(report.readOnly,true);
+    assert.equal(report.inspectionComplete,false);
+    assert.equal(report.scannedEntries,1025);
+    assert.equal(report.needsManualReview,true);
+    assert.equal(report.validPairs,null);
+    assert.equal(report.orphanBackups,null);
+    assert.equal(report.orphanMetadata,null);
+    assert.equal(report.invalidPairs,null);
+    assert.equal(report.unexpectedEntries,null);
+    assert.equal((await readdir(dir)).length,1025);
+  });
+});
+
+test("closed synthetic workspace refuses subsequent recovery inspection",async()=>{
+  const box=await createDurableSyntheticObsidianWorkspace();
+  await box.destroyScratch();
+  await assert.rejects(box.inspectSyntheticBackupRecovery(),/closed/);
+});
+
 test("corrupted persistent backup cannot be applied during restore",async()=>{
   await withScratch(async box=>{
     const c=await sampleUpdate(box);
