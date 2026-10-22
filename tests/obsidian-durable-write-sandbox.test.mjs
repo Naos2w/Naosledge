@@ -1,12 +1,59 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash,randomUUID} from "node:crypto";
+import {execFile} from "node:child_process";
+import {promisify} from "node:util";
 import {lstat,readFile,writeFile,rm,open,access,symlink,link,readdir} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import {createDurableSyntheticObsidianWorkspace} from "../lib/obsidian-durable-write-sandbox.ts";
 
 const sha=text=>createHash("sha256").update(text).digest("hex");
+const execFileAsync=promisify(execFile);
+
+/**
+ * A real, independent Node process plays an external editor. Its destination
+ * is limited to this test's own factory-created synthetic scratch notes.
+ * Completion is awaited to make collision timing deterministic.
+ */
+async function editSyntheticNoteFromChild(box,slug,contents,{exclusive=false}={}){
+  assert.match(slug,/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+  const notes=path.join(box.syntheticWorkspacePath,"notes");
+  const filename=path.join(notes,slug+".md");
+  assert.equal(path.dirname(filename),notes);
+  const script=[
+    "const fs=require('node:fs');",
+    "fs.writeFileSync(process.argv[1],process.argv[2],{flag:process.argv[3]});",
+    "process.stdout.write(String(process.pid));",
+  ].join("");
+  const {stdout}=await execFileAsync(
+    process.execPath,
+    ["-e",script,filename,contents,exclusive?"wx":"w"],
+    {windowsHide:true,timeout:10_000,maxBuffer:1024},
+  );
+  const childPid=Number(stdout);
+  assert.ok(Number.isSafeInteger(childPid)&&childPid>0);
+  assert.notEqual(childPid,process.pid,"the editor must be a separate OS process");
+}
+
+/** Keep the prior inode alive so the replacement cannot reuse its file ID. */
+async function replaceSyntheticIdentityFromChild(box,slug,contents){
+  assert.match(slug,/^[a-z0-9]+(?:-[a-z0-9]+)*$/);
+  const notes=path.join(box.syntheticWorkspacePath,"notes");
+  const current=path.join(notes,slug+".md");
+  const preserved=path.join(notes,".synthetic-external-preserved-"+randomUUID()+".bak");
+  const script=[
+    "const fs=require('node:fs');",
+    "fs.renameSync(process.argv[1],process.argv[2]);",
+    "fs.writeFileSync(process.argv[1],process.argv[3],{flag:'wx'});",
+    "process.stdout.write(String(process.pid));",
+  ].join("");
+  const {stdout}=await execFileAsync(process.execPath,
+    ["-e",script,current,preserved,contents],
+    {windowsHide:true,timeout:10_000,maxBuffer:1024});
+  assert.notEqual(Number(stdout),process.pid);
+  return preserved;
+}
 
 async function withScratch(fn){
   const box=await createDurableSyntheticObsidianWorkspace();
@@ -185,6 +232,105 @@ test("a new file appearing after preview cannot be overwritten (exclusive create
     }),/EEXIST/);
     assert.equal(await box.readLocalForSyntheticTest("new-note"),"someone newly created it");
     assert.deepEqual(await box.listDurableBackups(),[]);
+  });
+});
+
+test("external Windows child edit during synthetic overwrite is detected after backup",async()=>{
+  await withScratch(async box=>{
+    const approval=await sampleUpdate(box);
+    const note=path.join(box.syntheticWorkspacePath,"notes","shared-note.md");
+    const lock=path.join(box.syntheticWorkspacePath,"locks","shared-note.lock");
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:approval.confirmation,
+      beforeCommitForSyntheticTest:async()=>{
+        assert.equal((await lstat(lock)).isFile(),true,
+          "a cooperative lock exists but cannot stop a separate editor");
+        await editSyntheticNoteFromChild(box,"shared-note","child process last-minute edit");
+      },
+    }),/changed after backup/);
+    assert.equal(await readFile(note,"utf8"),"child process last-minute edit");
+    const backups=await box.listDurableBackups();
+    assert.equal(backups.length,1);
+    assert.equal(await box.readBackupForSyntheticTest(backups[0].id),"old contents");
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"child process last-minute edit");
+  });
+});
+
+test("external child creates missing note before download; exclusive create refuses overwrite",async()=>{
+  await withScratch(async box=>{
+    await box.seedRemote("brand-new-note","synthetic remote content");
+    const approval=find(await box.preview(),"brand-new-note");
+    await assert.rejects(box.approvedDownload({
+      slug:"brand-new-note",confirmation:approval.confirmation,
+      beforeCommitForSyntheticTest:()=>editSyntheticNoteFromChild(
+        box,"brand-new-note","child created its own note",{exclusive:true},
+      ),
+    }),/EEXIST/);
+    assert.equal(await box.readLocalForSyntheticTest("brand-new-note"),
+      "child created its own note");
+    assert.deepEqual(await box.listDurableBackups(),[]);
+  });
+});
+
+test("external Windows child edit during approved synthetic restore preserves latest note",async()=>{
+  await withScratch(async box=>{
+    const consent=await sampleUpdate(box);
+    const download=await box.approvedDownload({
+      slug:"shared-note",confirmation:consent.confirmation,
+    });
+    const restore=await box.prepareRestore(download.backupId);
+    await assert.rejects(box.approvedRestore({
+      id:download.backupId,confirmation:restore.confirmation,
+      beforeCommitForSyntheticTest:()=>editSyntheticNoteFromChild(
+        box,"shared-note","child edited during restore",
+      ),
+    }),/changed after backup/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),
+      "child edited during restore");
+    const backups=await box.listDurableBackups();
+    assert.equal(backups.length,2,"reversible restore backup survives aborted restore");
+    assert.ok(backups.some(b=>b.beforeSha===sha("new remote contents")));
+  });
+});
+
+test("external child replacing an identical-content inode cannot trick synthetic overwrite",async()=>{
+  await withScratch(async box=>{
+    const consent=await sampleUpdate(box);
+    let moved;
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:consent.confirmation,
+      beforeCommitForSyntheticTest:async()=>{
+        moved=await replaceSyntheticIdentityFromChild(box,"shared-note","old contents");
+      },
+    }),/identity changed after backup/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.equal(await readFile(moved,"utf8"),"old contents");
+    const backups=await box.listDurableBackups();
+    assert.equal(backups.length,1,"abort retains reversible backup");
+    assert.equal(await box.readBackupForSyntheticTest(backups[0].id),"old contents");
+  });
+});
+
+test("external child swapping identical-content inode also cancels approved restore",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const download=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const approval=await box.prepareRestore(download.backupId);
+    let moved;
+    await assert.rejects(box.approvedRestore({
+      id:download.backupId,confirmation:approval.confirmation,
+      beforeCommitForSyntheticTest:async()=>{
+        moved=await replaceSyntheticIdentityFromChild(
+          box,"shared-note","new remote contents",
+        );
+      },
+    }),/identity changed after backup/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+    assert.equal(await readFile(moved,"utf8"),"new remote contents");
+    assert.equal((await box.listDurableBackups()).length,2,
+      "restore abort keeps undo backup without changing original");
   });
 });
 

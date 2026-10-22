@@ -100,6 +100,34 @@ async function stableBytes(filename:string):Promise<Buffer|null>{
     throw error;
   }
 }
+type SyntheticNoteIdentity={
+  dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number;
+};
+function noteIdentity(value:SyntheticNoteIdentity):SyntheticNoteIdentity{
+  return {
+    dev:value.dev,ino:value.ino,size:value.size,
+    mtimeMs:value.mtimeMs,ctimeMs:value.ctimeMs,
+  };
+}
+function sameNoteIdentity(a:SyntheticNoteIdentity,b:SyntheticNoteIdentity):boolean{
+  return a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&
+    a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
+}
+/** Metadata is an additional optimistic guard, not a Windows atomic CAS. */
+async function stableNoteIdentity(filename:string,expectedSha:string):
+  Promise<SyntheticNoteIdentity>{
+  try{
+    const before=noteIdentity(await lstat(filename));
+    const contents=await stableBytes(filename);
+    const after=noteIdentity(await lstat(filename));
+    if(!contents||sha(contents)!==expectedSha||!sameNoteIdentity(before,after)){
+      throw Error("Synthetic note changed after backup but before replacement");
+    }
+    return after;
+  }catch{
+    throw Error("Synthetic note changed after backup but before replacement");
+  }
+}
 async function writeSyncNew(filename:string,bytes:Buffer):Promise<void>{
   const handle=await open(filename,"wx",0o600);
   try{
@@ -284,6 +312,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
 
   async function replaceStaged(
     slug:string,body:Buffer,expectedLocalSha:string,
+    expectedIdentity:SyntheticNoteIdentity,
     hook?:()=>Promise<void>,
     recheckRemote?:()=>void,
   ):Promise<void>{
@@ -292,8 +321,9 @@ export async function createDurableSyntheticObsidianWorkspace(){
     try{
       if(hook)await hook();
       if(recheckRemote)recheckRemote();
-      if(await localSha(slug)!==expectedLocalSha){
-        throw Error("Synthetic note changed after backup but before replacement");
+      const currentIdentity=await stableNoteIdentity(notePath(slug),expectedLocalSha);
+      if(!sameNoteIdentity(currentIdentity,expectedIdentity)){
+        throw Error("Synthetic note identity changed after backup but before replacement");
       }
       // Scratch-only, same-FS rename: real Obsidian needs mandatory Windows
       // file-lock / compare-and-swap integration before reuse.
@@ -403,12 +433,14 @@ export async function createDurableSyntheticObsidianWorkspace(){
         }else{
           const previous=await stableBytes(notePath(slug));
           if(!previous||sha(previous)!==l)throw Error("Synthetic local note altered before backup");
+          const expectedIdentity=await stableNoteIdentity(notePath(slug),l);
           backup=await saveBackup(slug,previous,sha(bytes));
           const fresh=remoteFp(slug);
           if(fresh?.sha256!==c.expectedRemoteSha||fresh?.revision!==c.expectedRemoteRevision){
             throw Error("Synthetic remote changed after backup");
           }
-          await replaceStaged(slug,bytes,l,args.beforeCommitForSyntheticTest,checkSource);
+          await replaceStaged(slug,bytes,l,expectedIdentity,
+            args.beforeCommitForSyntheticTest,checkSource);
         }
         baseline.set(slug,{slug,sha256:c.expectedRemoteSha});
         resetConsent();
@@ -451,10 +483,12 @@ export async function createDurableSyntheticObsidianWorkspace(){
         if(!existing||sha(existing)!==info.afterSha){
           throw Error("Restoration source content no longer matches post-write revision");
         }
+        const expectedIdentity=await stableNoteIdentity(notePath(info.slug),now);
         // Restore is also reversible: store a new, independent backup of
         // the current content before writing the previous content.
         const undo=await saveBackup(info.slug,existing,info.beforeSha);
-        await replaceStaged(info.slug,data,now,args.beforeCommitForSyntheticTest);
+        await replaceStaged(info.slug,data,now,expectedIdentity,
+          args.beforeCommitForSyntheticTest);
         const remoteNow=remoteFp(info.slug);
         if(remoteNow&&remoteNow.sha256===info.beforeSha){
           baseline.set(info.slug,{slug:info.slug,sha256:info.beforeSha});
