@@ -22,6 +22,11 @@ const SAFE=/^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HASH=/^[0-9a-f]{64}$/;
 const MAX_BYTES=250_000;
 const MAX_MINUTES=10;
+const MAX_BACKUP_METADATA_BYTES=4096;
+const REQUIRED_BACKUP_FIELDS=new Set([
+  "id","slug","beforeSha","afterSha","createdAt","syntheticOnly",
+]);
+const UTC_BACKUP_TIME=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 export type DurableBackupInfo={
   id:string;slug:string;beforeSha:string;afterSha:string;
@@ -188,13 +193,23 @@ export async function createDurableSyntheticObsidianWorkspace(){
     const meta=await stableBytes(path.join(backups,id+".json"));
     const data=await stableBytes(path.join(backups,id+".bak"));
     if(!meta||!data)throw Error("Persistent scratch backup is incomplete");
+    if(meta.byteLength>MAX_BACKUP_METADATA_BYTES){
+      throw Error("Persistent scratch backup metadata exceeds safe limits");
+    }
     let info:DurableBackupInfo;
     try{info=JSON.parse(meta.toString("utf8")) as DurableBackupInfo;}
     catch{throw Error("Persistent scratch backup metadata invalid");}
-    if(!info||info.id!==id||info.syntheticOnly!==true||
-       typeof info.slug!=="string"||!SAFE.test(info.slug)||
+    if(!info||typeof info!=="object"||Array.isArray(info)||
+       Object.keys(info).length!==REQUIRED_BACKUP_FIELDS.size||
+       Object.keys(info).some(key=>!REQUIRED_BACKUP_FIELDS.has(key))||
+       info.id!==id||info.syntheticOnly!==true||
+       typeof info.slug!=="string"||info.slug.length<3||
+       info.slug.length>120||!SAFE.test(info.slug)||
        typeof info.beforeSha!=="string"||!HASH.test(info.beforeSha)||
        typeof info.afterSha!=="string"||!HASH.test(info.afterSha)||
+       typeof info.createdAt!=="string"||!UTC_BACKUP_TIME.test(info.createdAt)||
+       Number.isNaN(Date.parse(info.createdAt))||
+       new Date(info.createdAt).toISOString()!==info.createdAt||
        sha(data)!==info.beforeSha){
       throw Error("Persistent scratch backup integrity mismatch");
     }

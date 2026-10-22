@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash,randomUUID} from "node:crypto";
-import {lstat,readFile,writeFile,rm,open,access,symlink,link} from "node:fs/promises";
+import {lstat,readFile,writeFile,rm,open,access,symlink,link,readdir} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import {createDurableSyntheticObsidianWorkspace} from "../lib/obsidian-durable-write-sandbox.ts";
@@ -250,6 +250,57 @@ test("an independent lock file prevents competing sync jobs",async()=>{
       }),/EEXIST/);
       assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
     }finally{await h.close();await rm(file,{force:true});}
+  });
+});
+
+test("untrusted backup manifest fields, identity and time fail closed",async()=>{
+  const cases=[
+    {label:"unexpected path",change:x=>({...x,localPath:"../../outside"})},
+    {label:"missing timestamp",change:x=>{const {createdAt,...rest}=x;return rest;}},
+    {label:"noncanonical timestamp",change:x=>({...x,createdAt:"2026-02-30T00:00:00.000Z"})},
+    {label:"path traversal slug",change:x=>({...x,slug:"../../outside"})},
+    {label:"incorrect transaction ID",change:x=>({...x,id:randomUUID()})},
+    {label:"oversized metadata",change:x=>({...x,padding:"a".repeat(5000)}),
+      reason:/metadata exceeds safe limits/},
+  ];
+  for(const c of cases){
+    await withScratch(async box=>{
+      const approval=await sampleUpdate(box);
+      const receipt=await box.approvedDownload({
+        slug:"shared-note",confirmation:approval.confirmation,
+      });
+      const location=path.join(box.syntheticWorkspacePath,"backups",receipt.backupId+".json");
+      const original=JSON.parse(await readFile(location,"utf8"));
+      const modified=JSON.stringify(c.change(original));
+      await writeFile(location,modified);
+      await assert.rejects(box.listDurableBackups(),c.reason??/integrity mismatch/,c.label);
+      await assert.rejects(box.prepareRestore(receipt.backupId),
+        c.reason??/integrity mismatch/,c.label);
+      assert.equal(await box.readLocalForSyntheticTest("shared-note"),
+        "new remote contents",c.label);
+      assert.equal(await readFile(location,"utf8"),modified,
+        "suspicious synthetic manifest remains for manual inspection");
+    });
+  }
+});
+
+test("tampering with a backup manifest after restore approval refuses restoration",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const receipt=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const approval=await box.prepareRestore(receipt.backupId);
+    const location=path.join(box.syntheticWorkspacePath,"backups",receipt.backupId+".json");
+    const meta=JSON.parse(await readFile(location,"utf8"));
+    await writeFile(location,JSON.stringify({...meta,createdAt:"invalid-date"}));
+    await assert.rejects(box.approvedRestore({
+      id:receipt.backupId,confirmation:approval.confirmation,
+    }),/integrity mismatch/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),
+      "new remote contents");
+    assert.equal((await readdir(path.join(box.syntheticWorkspacePath,"backups"))).length,2,
+      "a refused restore must not generate a new backup");
   });
 });
 
