@@ -189,27 +189,57 @@ export async function createDurableSyntheticObsidianWorkspace(){
   };
   const resetConsent=()=>{pending.clear();restorations.clear();};
 
+  /**
+   * Convert the existing read-only inventory into a fail-closed write gate.
+   * The check is scoped to this factory's random TEMP scratch directory only.
+   */
+  async function requireHealthyBackupCatalog(reservePair:boolean):Promise<void>{
+    const report=await inspectSyntheticBackupRecovery();
+    if(!report.inspectionComplete||report.needsManualReview){
+      throw Error("Synthetic backup catalog unsafe; manual inspection required");
+    }
+    if(reservePair&&report.scannedEntries>MAX_AUDIT_ENTRIES-2){
+      throw Error("Synthetic backup catalog at capacity; no new transaction permitted");
+    }
+  }
+
   async function withLock<T>(slug:string,run:()=>Promise<T>):Promise<T>{
     await ensureActive();slugValid(slug);
     if(active.has(slug))throw Error("Synthetic note is already being changed");
     active.add(slug);
     const location=path.join(locks,slug+".lock");
+    const catalogLocation=path.join(locks,"backup-catalog.lock");
     let lock;
+    let catalogLock;
     try{
+      // Serialize all cooperating note writes, not only the same slug:
+      // a second backup transaction must not see a half-written .bak/.json.
+      catalogLock=await open(catalogLocation,"wx",0o600);
+      await catalogLock.writeFile("synthetic-catalog-only");
+      await catalogLock.sync();
       lock=await open(location,"wx",0o600);
       await lock.writeFile("sandbox-only");
       await lock.sync();
+      await requireHealthyBackupCatalog(true);
       return await run();
     }finally{
-      if(lock){
-        await lock.close();
-        await unlink(location).catch(()=>{});
+      try{
+        if(lock){
+          await lock.close();
+          await unlink(location).catch(()=>{});
+        }
+      }finally{
+        if(catalogLock){
+          await catalogLock.close();
+          await unlink(catalogLocation).catch(()=>{});
+        }
+        active.delete(slug);
       }
-      active.delete(slug);
     }
   }
 
   async function saveBackup(slug:string,before:Buffer,afterSha:string):Promise<DurableBackupInfo>{
+    await requireHealthyBackupCatalog(true);
     if(!HASH.test(afterSha))throw Error("Invalid future synthetic content hash");
     const id=randomUUID();
     const originalHash=sha(before);
@@ -321,6 +351,8 @@ export async function createDurableSyntheticObsidianWorkspace(){
     try{
       if(hook)await hook();
       if(recheckRemote)recheckRemote();
+      // Detect corruption introduced after backup fsync but before rename.
+      await requireHealthyBackupCatalog(false);
       const currentIdentity=await stableNoteIdentity(notePath(slug),expectedLocalSha);
       if(!sameNoteIdentity(currentIdentity,expectedIdentity)){
         throw Error("Synthetic note identity changed after backup but before replacement");
@@ -428,6 +460,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
           // Must never overwrite an existing user note accidentally.
           if(args.beforeCommitForSyntheticTest)await args.beforeCommitForSyntheticTest();
           checkSource();
+          await requireHealthyBackupCatalog(true);
           await writeSyncNew(notePath(slug),Buffer.from(bytes));
           await syncDirectoryBestEffort(notes);
         }else{

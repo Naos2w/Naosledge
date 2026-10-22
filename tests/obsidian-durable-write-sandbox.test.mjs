@@ -548,6 +548,140 @@ test("over-limit recovery audit marks counts unknown and requires manual review"
   });
 });
 
+test("an orphaned backup blocks a new approved overwrite and preserves original",async()=>{
+  await withScratch(async box=>{
+    const approval=await sampleUpdate(box);
+    const file=path.join(box.syntheticWorkspacePath,"backups",randomUUID()+".bak");
+    await writeFile(file,"synthetic crash evidence");
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:approval.confirmation,
+    }),/Synthetic backup catalog unsafe/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.equal(await readFile(file,"utf8"),"synthetic crash evidence");
+    assert.deepEqual(await readdir(path.join(box.syntheticWorkspacePath,"locks")),[]);
+  });
+});
+
+test("even a missing local note cannot be created with a corrupt backup catalog",async()=>{
+  await withScratch(async box=>{
+    await box.seedRemote("first-note","synthetic incoming");
+    const approval=find(await box.preview(),"first-note");
+    const file=path.join(box.syntheticWorkspacePath,"backups","unfinished.partial");
+    await writeFile(file,"unfinished synthetic backup");
+    await assert.rejects(box.approvedDownload({
+      slug:"first-note",confirmation:approval.confirmation,
+    }),/Synthetic backup catalog unsafe/);
+    assert.equal(await box.readLocalForSyntheticTest("first-note"),null);
+    assert.equal(await readFile(file,"utf8"),"unfinished synthetic backup");
+  });
+});
+
+test("corrupting a completed backup during the synthetic commit hook blocks replacement",async()=>{
+  await withScratch(async box=>{
+    const approval=await sampleUpdate(box);
+    const backups=path.join(box.syntheticWorkspacePath,"backups");
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:approval.confirmation,
+      beforeCommitForSyntheticTest:async()=>{
+        const [filename]= (await readdir(backups)).filter(x=>x.endsWith(".bak"));
+        assert.ok(filename);
+        await writeFile(path.join(backups,filename),"corrupt backup during commit");
+      },
+    }),/Synthetic backup catalog unsafe/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    const report=await box.inspectSyntheticBackupRecovery();
+    assert.equal(report.invalidPairs,1);
+    assert.equal(report.needsManualReview,true);
+  });
+});
+
+test("unrelated corrupt backup prevents approved restore and preserves both note and evidence",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const written=await box.approvedDownload({slug:"shared-note",confirmation:c.confirmation});
+    const restore=await box.prepareRestore(written.backupId);
+    const dir=path.join(box.syntheticWorkspacePath,"backups");
+    const orphan=path.join(dir,randomUUID()+".json");
+    await writeFile(orphan,"{}");
+    await assert.rejects(box.approvedRestore({
+      id:written.backupId,confirmation:restore.confirmation,
+    }),/Synthetic backup catalog unsafe/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+    assert.equal((await readdir(dir)).length,3);
+    assert.equal(await readFile(orphan,"utf8"),"{}");
+  });
+});
+
+test("cooperative writes to different notes share one exclusive scratch catalog lock",async()=>{
+  await withScratch(async box=>{
+    await box.setBaseline([
+      {slug:"alpha-note",sha256:sha("old alpha")},
+      {slug:"beta-note",sha256:sha("old beta")},
+    ]);
+    await box.seedLocal("alpha-note","old alpha");
+    await box.seedLocal("beta-note","old beta");
+    await box.seedRemote("alpha-note","new alpha");
+    await box.seedRemote("beta-note","new beta");
+    const review=await box.preview();
+    const a=find(review,"alpha-note"),b=find(review,"beta-note");
+    assert.ok(a&&b);
+    let enterFirst,releaseFirst;
+    const firstEntered=new Promise(resolve=>{enterFirst=resolve;});
+    const holdFirst=new Promise(resolve=>{releaseFirst=resolve;});
+    const first=box.approvedDownload({
+      slug:"alpha-note",confirmation:a.confirmation,
+      beforeCommitForSyntheticTest:async()=>{
+        enterFirst();
+        await holdFirst;
+      },
+    });
+    await firstEntered;
+    try{
+      const catalogLock=path.join(box.syntheticWorkspacePath,"locks","backup-catalog.lock");
+      assert.equal((await lstat(catalogLock)).isFile(),true);
+      await assert.rejects(box.approvedDownload({
+        slug:"beta-note",confirmation:b.confirmation,
+      }),/EEXIST/);
+      assert.equal(await box.readLocalForSyntheticTest("beta-note"),"old beta");
+    }finally{
+      releaseFirst();
+    }
+    await first;
+    assert.equal(await box.readLocalForSyntheticTest("alpha-note"),"new alpha");
+    assert.equal(await box.readLocalForSyntheticTest("beta-note"),"old beta");
+    assert.deepEqual(await readdir(path.join(box.syntheticWorkspacePath,"locks")),[]);
+    const report=await box.inspectSyntheticBackupRecovery();
+    assert.equal(report.validPairs,1);
+    assert.equal(report.needsManualReview,false);
+  });
+});
+
+test("full but valid backup catalog refuses a new transaction before creating files",async()=>{
+  await withScratch(async box=>{
+    const approval=await sampleUpdate(box);
+    const backups=path.join(box.syntheticWorkspacePath,"backups");
+    const previous="archived synthetic content";
+    for(let i=0;i<512;i++){
+      const id=randomUUID();
+      await writeFile(path.join(backups,id+".bak"),previous);
+      await writeFile(path.join(backups,id+".json"),JSON.stringify({
+        id,slug:"archived-note",beforeSha:sha(previous),afterSha:sha("later"),
+        createdAt:"2026-10-22T00:00:00.000Z",syntheticOnly:true,
+      }));
+    }
+    const report=await box.inspectSyntheticBackupRecovery();
+    assert.equal(report.inspectionComplete,true);
+    assert.equal(report.needsManualReview,false);
+    assert.equal(report.scannedEntries,1024);
+    assert.equal(report.validPairs,512);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:approval.confirmation,
+    }),/at capacity/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.equal((await readdir(backups)).length,1024);
+  });
+});
+
 test("closed synthetic workspace refuses subsequent recovery inspection",async()=>{
   const box=await createDurableSyntheticObsidianWorkspace();
   await box.destroyScratch();
