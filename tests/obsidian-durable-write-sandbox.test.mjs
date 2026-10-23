@@ -297,6 +297,157 @@ test("symlink/hardlink local files are rejected rather than followed",async t=>{
   });
 });
 
+test("M3 synthetic upload creates a missing remote only after single-use per-note consent",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("brand-new-note","# Local author\n");
+    const before=await box.preview();
+    assert.equal(before.plan.summary["review-missing-remote"],1);
+    assert.deepEqual(before.consents,[]);
+    assert.equal(before.uploadConsents.length,1);
+    const approval=before.uploadConsents[0];
+    assert.match(approval.confirmation,/^CONFIRM UPLOAD brand-new-note [0-9a-f-]+$/);
+    await assert.rejects(box.approvedUpload({
+      slug:approval.slug,confirmation:"approve anything",
+    }),/Explicit, unexpired/);
+    assert.equal(await box.readRemoteForSyntheticTest(approval.slug),null);
+    const receipt=await box.approvedUpload({
+      slug:approval.slug,confirmation:approval.confirmation,
+    });
+    assert.deepEqual(receipt,{
+      slug:"brand-new-note",priorRemoteSha:null,afterSha:sha("# Local author\n"),
+      remoteRevision:"synthetic-r1",syntheticOnly:true,
+      automaticSyncEnabled:false,deleteAllowed:false,
+    });
+    assert.equal(await box.readRemoteForSyntheticTest(approval.slug),"# Local author\n");
+    assert.equal((await box.preview()).plan.summary.unchanged,1);
+    await assert.rejects(box.approvedUpload({
+      slug:approval.slug,confirmation:approval.confirmation,
+    }),/Explicit, unexpired/);
+    assert.deepEqual(await box.listDurableBackups(),[]);
+  });
+});
+
+test("M3 synthetic upload updates only the unchanged-baseline remote and advances revision",async()=>{
+  await withScratch(async box=>{
+    await box.setBaseline([{slug:"existing-note",sha256:sha("shared v1")}]);
+    await box.seedLocal("existing-note","local v2");
+    await box.seedRemote("existing-note","shared v1");
+    const before=await box.preview();
+    assert.equal(before.plan.summary["review-upload"],1);
+    const approval=before.uploadConsents[0];
+    assert.equal(approval.choice,"review-upload");
+    assert.equal(approval.expectedRemoteRevision,"synthetic-r1");
+    const receipt=await box.approvedUpload({
+      slug:approval.slug,confirmation:approval.confirmation,
+    });
+    assert.equal(receipt.priorRemoteSha,sha("shared v1"));
+    assert.equal(receipt.afterSha,sha("local v2"));
+    assert.equal(receipt.remoteRevision,"synthetic-r2");
+    assert.equal(await box.readRemoteForSyntheticTest("existing-note"),"local v2");
+    assert.equal(await box.readLocalForSyntheticTest("existing-note"),"local v2");
+    assert.equal((await box.preview()).plan.summary.unchanged,1);
+  });
+});
+
+test("M3 synthetic upload cannot overwrite conflicting edits, deletions or reverse directions",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("dual-edit","local changed");
+    await box.seedRemote("dual-edit","remote changed");
+    await box.seedRemote("only-remote","remote sole author");
+    const p=await box.preview();
+    assert.equal(p.plan.summary.conflict,1);
+    assert.equal(p.plan.summary["review-missing-local"],1);
+    assert.deepEqual(p.uploadConsents,[]);
+    await assert.rejects(box.approvedUpload({
+      slug:"dual-edit",confirmation:"CONFIRM UPLOAD dual-edit force",
+    }),/Explicit, unexpired/);
+    await assert.rejects(box.approvedUpload({
+      slug:"only-remote",confirmation:"CONFIRM UPLOAD only-remote force",
+    }),/Explicit, unexpired/);
+    assert.equal(await box.readRemoteForSyntheticTest("dual-edit"),"remote changed");
+    assert.equal(await box.readRemoteForSyntheticTest("only-remote"),"remote sole author");
+    assert.equal(typeof box.deleteRemote,"undefined");
+  });
+});
+
+test("M3 upload rejects a local user edit after preview; remote and baseline remain unchanged",async()=>{
+  await withScratch(async box=>{
+    await box.setBaseline([{slug:"upload-note",sha256:sha("base")}]);
+    await box.seedLocal("upload-note","first local edit");
+    await box.seedRemote("upload-note","base");
+    const approval=(await box.preview()).uploadConsents[0];
+    const file=path.join(box.syntheticWorkspacePath,"notes","upload-note.md");
+    await writeFile(file,"second local edit");
+    await assert.rejects(box.approvedUpload({
+      slug:"upload-note",confirmation:approval.confirmation,
+    }),/Preview is stale/);
+    assert.equal(await box.readRemoteForSyntheticTest("upload-note"),"base");
+    assert.equal((await box.preview()).plan.summary["review-upload"],1);
+    await assert.rejects(box.approvedUpload({
+      slug:"upload-note",confirmation:approval.confirmation,
+    }),/Explicit, unexpired/);
+  });
+});
+
+test("M3 upload rejects remote revision changes even when contents are unchanged",async()=>{
+  await withScratch(async box=>{
+    await box.setBaseline([{slug:"upload-note",sha256:sha("base")}]);
+    await box.seedLocal("upload-note","local change");
+    await box.seedRemote("upload-note","base");
+    const approval=(await box.preview()).uploadConsents[0];
+    await box.mutateRemote("upload-note","base"); // same SHA, different revision
+    await assert.rejects(box.approvedUpload({
+      slug:"upload-note",confirmation:approval.confirmation,
+    }),/Preview is stale/);
+    assert.equal(await box.readRemoteForSyntheticTest("upload-note"),"base");
+    assert.equal((await box.preview()).plan.summary["review-upload"],1);
+  });
+});
+
+test("M3 upload rechecks both sides after final pause and preserves old baseline on failure",async()=>{
+  await withScratch(async box=>{
+    await box.setBaseline([{slug:"upload-note",sha256:sha("base")}]);
+    await box.seedLocal("upload-note","local change");
+    await box.seedRemote("upload-note","base");
+    const first=(await box.preview()).uploadConsents[0];
+    await assert.rejects(box.approvedUpload({
+      slug:"upload-note",confirmation:first.confirmation,
+      beforeCommitForSyntheticTest:async()=>{
+        await box.mutateRemote("upload-note","remote concurrently changed");
+      },
+    }),/changed before upload commit/);
+    assert.equal(await box.readRemoteForSyntheticTest("upload-note"),"remote concurrently changed");
+    assert.equal((await box.preview()).plan.summary.conflict,1,
+      "failed upload must not advance baseline past the original version");
+  });
+  await withScratch(async box=>{
+    await box.seedLocal("upload-note","first version");
+    const first=(await box.preview()).uploadConsents[0];
+    const file=path.join(box.syntheticWorkspacePath,"notes","upload-note.md");
+    await assert.rejects(box.approvedUpload({
+      slug:"upload-note",confirmation:first.confirmation,
+      beforeCommitForSyntheticTest:async()=>{await writeFile(file,"new user version");},
+    }),/changed before upload commit/);
+    assert.equal(await box.readRemoteForSyntheticTest("upload-note"),null);
+    assert.equal((await box.preview()).plan.summary["review-missing-remote"],1);
+  });
+});
+
+test("M3 upload consent expiration stops all synthetic writes",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("upload-note","local only");
+    const approval=(await box.preview()).uploadConsents[0];
+    const realNow=Date.now;
+    Date.now=()=>approval.expiresAt+1;
+    try{
+      await assert.rejects(box.approvedUpload({
+        slug:approval.slug,confirmation:approval.confirmation,
+      }),/Explicit, unexpired/);
+    }finally{Date.now=realNow;}
+    assert.equal(await box.readRemoteForSyntheticTest("upload-note"),null);
+  });
+});
+
 test("sandbox wipe is scoped to its own random temporary folder",async()=>{
   const box=await createDurableSyntheticObsidianWorkspace();
   const home=box.syntheticWorkspacePath;

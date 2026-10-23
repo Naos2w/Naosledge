@@ -35,12 +35,31 @@ export type SyntheticConsent={
   confirmation:string;
   expiresAt:number;
 };
+/** M3 synthetic-only approval: cannot be exchanged for a Neon write token. */
+export type SyntheticUploadConsent={
+  slug:string;choice:"review-upload"|"review-missing-remote";
+  expectedLocalSha:string;
+  expectedRemoteSha:string|null;
+  expectedRemoteRevision:string|null;
+  confirmation:string;
+  expiresAt:number;
+};
+export type SyntheticUploadReceipt={
+  slug:string;
+  priorRemoteSha:string|null;
+  afterSha:string;
+  remoteRevision:string;
+  syntheticOnly:true;
+  automaticSyncEnabled:false;
+  deleteAllowed:false;
+};
 export type DurableSyntheticReceipt={
   slug:string;beforeSha:string|null;afterSha:string;
   backupId:string|null;syntheticOnly:true;automaticSyncEnabled:false;
 };
 type Remote={bytes:Buffer;revision:number};
 type Pending={consent:SyntheticConsent;nonce:string};
+type PendingUpload={consent:SyntheticUploadConsent;nonce:string};
 
 function slugValid(slug:string):void{
   if(typeof slug!=="string"||slug.length<3||slug.length>120||!SAFE.test(slug)){
@@ -123,6 +142,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
   const remote=new Map<string,Remote>();
   const baseline=new Map<string,SyncFingerprint>();
   const pending=new Map<string,Pending>();
+  const pendingUploads=new Map<string,PendingUpload>();
   const restorations=new Map<string,{confirmation:string;expectedSha:string;expiresAt:number}>();
   let destroyed=false;
   const active=new Set<string>();
@@ -143,7 +163,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
     const data=await stableBytes(notePath(slug));
     return data===null?null:sha(data);
   };
-  const resetConsent=()=>{pending.clear();restorations.clear();};
+  const resetConsent=()=>{pending.clear();pendingUploads.clear();restorations.clear();};
 
   async function withLock<T>(slug:string,run:()=>Promise<T>):Promise<T>{
     await ensureActive();slugValid(slug);
@@ -250,7 +270,11 @@ export async function createDurableSyntheticObsidianWorkspace(){
       for(const item of value)baseline.set(item.slug,{...item});
       resetConsent();
     },
-    async preview():Promise<{plan:SyncPlan;consents:SyntheticConsent[]}>{
+    async preview():Promise<{
+      plan:SyncPlan;
+      consents:SyntheticConsent[];
+      uploadConsents:SyntheticUploadConsent[];
+    }>{
       await ensureActive();
       const snapshot=await readObsidianLocalManifest(notes);
       if(snapshot.unsupportedMarkdownFiles||snapshot.otherFiles||snapshot.directoriesNotScanned){
@@ -263,7 +287,25 @@ export async function createDurableSyntheticObsidianWorkspace(){
       });
       resetConsent();
       const consents:SyntheticConsent[]=[];
+      const uploadConsents:SyntheticUploadConsent[]=[];
       for(const decision of plan.decisions){
+        if(decision.choice==="review-upload"||decision.choice==="review-missing-remote"){
+          if(!decision.expectedLocalSha)continue;
+          if(decision.choice==="review-upload"&&
+             (!decision.expectedRemoteSha||!decision.expectedRemoteRevision))continue;
+          const nonce=randomUUID();
+          const consent:SyntheticUploadConsent={
+            slug:decision.slug,
+            choice:decision.choice,
+            expectedLocalSha:decision.expectedLocalSha,
+            expectedRemoteSha:decision.expectedRemoteSha,
+            expectedRemoteRevision:decision.expectedRemoteRevision,
+            confirmation:"CONFIRM UPLOAD "+decision.slug+" "+nonce,
+            expiresAt:Date.now()+MAX_MINUTES*60_000,
+          };
+          pendingUploads.set(decision.slug,{consent,nonce});
+          uploadConsents.push({...consent});
+        }
         if(decision.choice!=="review-download"&&decision.choice!=="review-missing-local")continue;
         if(!decision.expectedRemoteSha||!decision.expectedRemoteRevision)continue;
         const nonce=randomUUID();
@@ -279,7 +321,65 @@ export async function createDurableSyntheticObsidianWorkspace(){
         pending.set(decision.slug,{consent,nonce});
         consents.push({...consent});
       }
-      return {plan,consents};
+      return {plan,consents,uploadConsents};
+    },
+    /**
+     * M3 upload rehearsal: source is only a scratch Markdown note; destination
+     * is only the in-memory synthetic remote Map. Neither API can access a real
+     * Obsidian Vault or Neon, and no remote HTTP method is exposed.
+     */
+    async approvedUpload(args:{
+      slug:string;confirmation:string;
+      beforeCommitForSyntheticTest?:()=>Promise<void>;
+    }):Promise<SyntheticUploadReceipt>{
+      if(!args||typeof args!=="object")throw Error("Synthetic upload approval required");
+      const {slug,confirmation}=args;
+      await ensureActive();slugValid(slug);
+      const grant=pendingUploads.get(slug);
+      if(!grant||confirmation!==grant.consent.confirmation||
+         Date.now()>grant.consent.expiresAt){
+        throw Error("Explicit, unexpired per-note synthetic upload approval required");
+      }
+      // Consent is single-use even when a competing edit aborts the operation.
+      pendingUploads.delete(slug);
+      return await withLock(slug,async()=>{
+        const c=grant.consent;
+        const currentLocal=await localSha(slug);
+        const currentRemote=remoteFp(slug);
+        if(currentLocal!==c.expectedLocalSha||
+           (currentRemote?.sha256??null)!==c.expectedRemoteSha||
+           (currentRemote?.revision??null)!==c.expectedRemoteRevision){
+          throw Error("Preview is stale; local or synthetic remote was modified");
+        }
+        const bytes=await stableBytes(notePath(slug));
+        if(!bytes||sha(bytes)!==c.expectedLocalSha){
+          throw Error("Synthetic upload source differs from reviewed fingerprint");
+        }
+        if(args.beforeCommitForSyntheticTest)await args.beforeCommitForSyntheticTest();
+        // Recheck both sides immediately before the atomic in-memory commit.
+        // Hash + revision protects against remote ABA/version-only changes.
+        const latestLocal=await localSha(slug);
+        const latestRemote=remoteFp(slug);
+        if(latestLocal!==c.expectedLocalSha||
+           (latestRemote?.sha256??null)!==c.expectedRemoteSha||
+           (latestRemote?.revision??null)!==c.expectedRemoteRevision){
+          throw Error("Synthetic source or remote changed before upload commit");
+        }
+        const before=remote.get(slug);
+        remote.set(slug,{bytes:Buffer.from(bytes),revision:(before?.revision??0)+1});
+        const after=remoteFp(slug)!;
+        if(after.sha256!==c.expectedLocalSha){
+          throw Error("Synthetic upload did not reproduce the approved source");
+        }
+        // Baseline advances only after an approved upload is confirmed equal.
+        baseline.set(slug,{slug,sha256:after.sha256});
+        resetConsent();
+        return {
+          slug,priorRemoteSha:c.expectedRemoteSha,afterSha:after.sha256,
+          remoteRevision:after.revision!,
+          syntheticOnly:true,automaticSyncEnabled:false,deleteAllowed:false,
+        };
+      });
     },
     async approvedDownload(args:{
       slug:string;confirmation:string;
@@ -398,6 +498,10 @@ export async function createDurableSyntheticObsidianWorkspace(){
       await ensureActive();
       const body=await stableBytes(notePath(slug));
       return body?.toString("utf8")??null;
+    },
+    async readRemoteForSyntheticTest(slug:string){
+      await ensureActive();slugValid(slug);
+      return remote.get(slug)?.bytes.toString("utf8")??null;
     },
     async readBackupForSyntheticTest(id:string){
       await ensureActive();
