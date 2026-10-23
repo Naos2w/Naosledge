@@ -62,6 +62,10 @@ npm run verify:obsidian:backup:sandbox -- --approve-download=shared-note --appro
 
 另完成 [合成中斷後跨程序唯讀復原盤點](OBSIDIAN_SYNTHETIC_CRASH_RECOVERY.md)：第一個 Node 程序留下完整備份、孤兒 `.bak` 與互斥鎖後刻意退出，第二個獨立程序可統計異常及阻止自動復原；檢查器不修補／刪除任何檔案，所有資料仍只在隨機 TEMP 測試資料夾。此演練**不是**真實 Windows 重新開機或斷電驗收。
 
+## AES-256-GCM 加密備份格式實證（2026-10-23，隔離資料）
+
+已新增 [加密備份合成沙盒與跨程序解密測試](OBSIDIAN_SYNTHETIC_ENCRYPTED_BACKUP.md)，以隨機獨立金鑰對合成內容進行 AES-256-GCM 認證加密，只在 OS TEMP 儲存不含明文與金鑰的封存檔；新程序必須從測試驅動器獨立取得金鑰才能驗證。錯誤金鑰、Tag／密文篡改、不合法 Header 與未知檔案皆拒絕，且原封保留證據；**仍無正式的金鑰保管、獨立備份磁碟、保留策略、斷電驗收與 Production 恢復**。
+
 ## Windows 真正同步之前的工程決策（未實作）
 
 1. **預設保留不覆寫模式。** 目前僅 `incoming/` 新建獨立副本可作安全研究；凡是可能取代正在編輯的原稿，必須先另行完成 Windows 原生跨程序同步方案和真人驗收。
