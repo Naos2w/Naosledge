@@ -53,6 +53,26 @@ export type SyntheticUploadReceipt={
   automaticSyncEnabled:false;
   deleteAllowed:false;
 };
+/** M4 consent only authorizes a new copy in this session's synthetic Incoming. */
+export type SyntheticIncomingConsent={
+  slug:string;
+  choice:"review-download"|"review-missing-local"|"conflict";
+  expectedLocalSha:string|null;
+  expectedRemoteSha:string;
+  expectedRemoteRevision:string;
+  confirmation:string;
+  expiresAt:number;
+};
+export type SyntheticIncomingReceipt={
+  slug:string;
+  incomingFileName:string;
+  sha256:string;
+  syntheticOnly:true;
+  originalUntouched:true;
+  baselineUnchanged:true;
+  automaticSyncEnabled:false;
+  deleteAllowed:false;
+};
 export type DurableSyntheticReceipt={
   slug:string;beforeSha:string|null;afterSha:string;
   backupId:string|null;syntheticOnly:true;automaticSyncEnabled:false;
@@ -60,6 +80,7 @@ export type DurableSyntheticReceipt={
 type Remote={bytes:Buffer;revision:number};
 type Pending={consent:SyntheticConsent;nonce:string};
 type PendingUpload={consent:SyntheticUploadConsent;nonce:string};
+type PendingIncoming={consent:SyntheticIncomingConsent;nonce:string};
 
 function slugValid(slug:string):void{
   if(typeof slug!=="string"||slug.length<3||slug.length>120||!SAFE.test(slug)){
@@ -135,21 +156,24 @@ export async function createDurableSyntheticObsidianWorkspace(){
   const notes=path.join(folder,"notes");
   const backups=path.join(folder,"backups");
   const locks=path.join(folder,"locks");
+  const incoming=path.join(folder,"incoming");
   await mkdir(notes,{mode:0o700});
   await mkdir(backups,{mode:0o700});
   await mkdir(locks,{mode:0o700});
+  await mkdir(incoming,{mode:0o700});
 
   const remote=new Map<string,Remote>();
   const baseline=new Map<string,SyncFingerprint>();
   const pending=new Map<string,Pending>();
   const pendingUploads=new Map<string,PendingUpload>();
+  const pendingIncoming=new Map<string,PendingIncoming>();
   const restorations=new Map<string,{confirmation:string;expectedSha:string;expiresAt:number}>();
   let destroyed=false;
   const active=new Set<string>();
 
   const ensureActive=async()=>{
     if(destroyed)throw Error("Synthetic workspace is closed");
-    await Promise.all([folder,notes,backups,locks].map(ensureRealDirectory));
+    await Promise.all([folder,notes,backups,locks,incoming].map(ensureRealDirectory));
   };
   const notePath=(slug:string)=>{
     slugValid(slug);
@@ -163,7 +187,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
     const data=await stableBytes(notePath(slug));
     return data===null?null:sha(data);
   };
-  const resetConsent=()=>{pending.clear();pendingUploads.clear();restorations.clear();};
+  const resetConsent=()=>{pending.clear();pendingUploads.clear();pendingIncoming.clear();restorations.clear();};
 
   async function withLock<T>(slug:string,run:()=>Promise<T>):Promise<T>{
     await ensureActive();slugValid(slug);
@@ -274,6 +298,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
       plan:SyncPlan;
       consents:SyntheticConsent[];
       uploadConsents:SyntheticUploadConsent[];
+      incomingConsents:SyntheticIncomingConsent[];
     }>{
       await ensureActive();
       const snapshot=await readObsidianLocalManifest(notes);
@@ -288,6 +313,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
       resetConsent();
       const consents:SyntheticConsent[]=[];
       const uploadConsents:SyntheticUploadConsent[]=[];
+      const incomingConsents:SyntheticIncomingConsent[]=[];
       for(const decision of plan.decisions){
         if(decision.choice==="review-upload"||decision.choice==="review-missing-remote"){
           if(!decision.expectedLocalSha)continue;
@@ -306,6 +332,21 @@ export async function createDurableSyntheticObsidianWorkspace(){
           pendingUploads.set(decision.slug,{consent,nonce});
           uploadConsents.push({...consent});
         }
+        if(["review-download","review-missing-local","conflict"].includes(decision.choice)&&
+           decision.expectedRemoteSha&&decision.expectedRemoteRevision){
+          const nonce=randomUUID();
+          const incomingConsent:SyntheticIncomingConsent={
+            slug:decision.slug,
+            choice:decision.choice as SyntheticIncomingConsent["choice"],
+            expectedLocalSha:decision.expectedLocalSha,
+            expectedRemoteSha:decision.expectedRemoteSha,
+            expectedRemoteRevision:decision.expectedRemoteRevision,
+            confirmation:"CONFIRM INCOMING "+decision.slug+" "+nonce,
+            expiresAt:Date.now()+MAX_MINUTES*60_000,
+          };
+          pendingIncoming.set(decision.slug,{consent:incomingConsent,nonce});
+          incomingConsents.push({...incomingConsent});
+        }
         if(decision.choice!=="review-download"&&decision.choice!=="review-missing-local")continue;
         if(!decision.expectedRemoteSha||!decision.expectedRemoteRevision)continue;
         const nonce=randomUUID();
@@ -321,7 +362,78 @@ export async function createDurableSyntheticObsidianWorkspace(){
         pending.set(decision.slug,{consent,nonce});
         consents.push({...consent});
       }
-      return {plan,consents,uploadConsents};
+      return {plan,consents,uploadConsents,incomingConsents};
+    },
+    /**
+     * M4 rehearsal: an explicit single-note decision can ONLY create a fresh
+     * Incoming copy inside this factory's random synthetic scratch directory.
+     * Conflicts are eligible for "keep both", never a local replacement.
+     * It does not advance baseline: the owner still needs to reconcile notes.
+     */
+    async approvedIncomingDownload(args:{
+      slug:string;confirmation:string;
+      beforeCommitForSyntheticTest?:()=>Promise<void>;
+    }):Promise<SyntheticIncomingReceipt>{
+      if(!args||typeof args!=="object")throw Error("Synthetic Incoming approval required");
+      const {slug,confirmation}=args;
+      await ensureActive();slugValid(slug);
+      const grant=pendingIncoming.get(slug);
+      if(!grant||confirmation!==grant.consent.confirmation||
+         Date.now()>grant.consent.expiresAt){
+        throw Error("Explicit, unexpired per-note synthetic Incoming approval required");
+      }
+      pendingIncoming.delete(slug); // consumed even on stale revision or I/O failure
+      return await withLock(slug,async()=>{
+        const c=grant.consent;
+        const unchanged=async()=>{
+          const local=await localSha(slug),remoteNow=remoteFp(slug);
+          return local===c.expectedLocalSha&&
+            remoteNow?.sha256===c.expectedRemoteSha&&
+            remoteNow?.revision===c.expectedRemoteRevision;
+        };
+        if(!await unchanged())throw Error("Incoming preview is stale");
+        const remoteData=remote.get(slug);
+        if(!remoteData)throw Error("Synthetic Incoming source no longer exists");
+        const bytes=Buffer.from(remoteData.bytes);
+        if(bytes.byteLength>MAX_BYTES||sha(bytes)!==c.expectedRemoteSha){
+          throw Error("Synthetic Incoming content hash mismatch");
+        }
+        if(args.beforeCommitForSyntheticTest)await args.beforeCommitForSyntheticTest();
+        // Independent Incoming folder never points at the notes directory.
+        await ensureRealDirectory(incoming);
+        if(!await unchanged())throw Error("Incoming source or local note changed before copy");
+        const fileName=slug+"--"+randomUUID()+".md";
+        const filename=path.join(incoming,fileName);
+        let created=false;
+        try{
+          // Exclusive new-file creation rejects pre-existing files/symlinks.
+          const handle=await open(filename,"wx",0o600);
+          created=true;
+          try{
+            await handle.writeFile(bytes);
+            await handle.sync();
+          }finally{await handle.close();}
+          const copied=await stableBytes(filename);
+          if(!copied||sha(copied)!==c.expectedRemoteSha){
+            throw Error("Incoming copy integrity verification failed");
+          }
+          if(!await unchanged())throw Error("Incoming source changed during copy");
+          await syncDirectoryBestEffort(incoming);
+          // Copying does not reconcile versions; require a new review before
+          // any further synthetic action, including an older overwrite grant.
+          resetConsent();
+          return {
+            slug,incomingFileName:fileName,sha256:c.expectedRemoteSha,
+            syntheticOnly:true,originalUntouched:true,baselineUnchanged:true,
+            automaticSyncEnabled:false,deleteAllowed:false,
+          };
+        }catch(error){
+          // A failed copy cannot leave a partial/unreviewed Incoming file.
+          // Never remove the name if exclusive open was rejected.
+          if(created)await rm(filename,{force:true}).catch(()=>{});
+          throw error;
+        }
+      });
     },
     /**
      * M3 upload rehearsal: source is only a scratch Markdown note; destination

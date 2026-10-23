@@ -14,11 +14,11 @@
 
 ## 最新優先 TODO（2026-10-24）
 
-1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) 仍為 Ready、未合併；已確認 HEAD `9077b95` 的 CI #94 SUCCESS。此後每次都應重新檢查 GitHub **最新** HEAD/CI；確認差異及合併授權後才能合入 `main`；**合併不等於部署**。
+1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) 仍為 Ready、未合併；2026-10-24 已確認 HEAD `4048d4c` 的 CI #95 SUCCESS。此後每次都應重新檢查 GitHub **最新** HEAD/CI；確認差異及合併授權後才能合入 `main`；**合併不等於部署**。
 2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。認證失敗、超限或不完整時必須停止；不能把合成 HTTP 測試當作真實驗收。
 3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。
 4. **P1｜M3 Sandbox 手動上傳**：已新增**完全隔離的合成上傳預演**（單篇隨機一次性確認、重新讀取本機 SHA 與合成遠端 SHA/revision，建立與更新分開測試、失敗不更新 Baseline）。真實 Neon Sandbox 寫入介面、站長授權整合與 MSI 實際驗收仍**未實作／未授權**，不得直接接到 Production。
-5. **P2｜M4/M5**：先建立不覆寫原稿的 Incoming 下載副本，再做衝突比較與持久 Baseline；任何刪除仍需另外的明確人工決定。
+5. **P2｜M4/M5**：M4 **合成 Incoming 副本預演已新增**（只在隨機 Scratch 的獨立 Incoming 建檔，支援衝突保留兩份，不修改原稿、不更新 Baseline）；下一步是授權後的真正 MSI 下載適配器及 M5 衝突比較／持久 Baseline；任何刪除仍需另外的明確人工決定。
 6. **P2｜M6/M7**：完成 Sandbox 真實 E2E 與回復測試後，另取得 Owner 對正式資料範圍及發布的明確授權；不可為省略 QA 而省略資料安全／發布閘門。
 
 **暫緩**：PR #21–25 安全研究整合、TPM/DPAPI、企業級 AES 備份輪換、強制斷電實驗、Cron 自動同步及自動覆寫。這些不是 M2／M3 一般開發前置條件。
@@ -29,9 +29,9 @@
 | --- | --- | --- | --- |
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
 | **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 尚未驗收，不代表正式同步可用；獨立 QA 不再是一般開發前置條件** |
-| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認 HEAD `9077b95` 的 CI #94 SUCCESS；未合併／部署，真實資料預覽尚未接線。後續提交需重新驗證 CI。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
+| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認 HEAD `4048d4c` 的 CI #95 SUCCESS；未合併／部署，真實資料預覽尚未接線。後續提交需重新驗證 CI。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **合成 Scratch／記憶體遠端的逐篇上傳預演已完成；真正 Auth、Neon Sandbox API、真實內容傳輸待開發／授權，未正式啟用** |
-| **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | 待開發 |
+| **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | **合成 Scratch Incoming 副本預演已實作／測試；真人 Vault 或 Neon Sandbox API 尚未接線／授權** |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | 待開發 |
 | **M6** | 在獨立 Sandbox 做真實 Auth/RLS/API ＋ MSI 測試 | 上傳、下載、同名雙改、部分清單、網路失敗、回復與防刪案例通過，測試資料清理留證據 | 待開發 |
 | **M7** | 正式 Vault ↔ Production 受控啟用 | Owner 指定資料範圍／備份位置／逐篇授權、功能及安全驗收、精確發布 SHA 與回復計畫；遵守正式發布閘門，不以一般開發獨立 QA 作額外要求 | 需另行授權 |
@@ -59,6 +59,13 @@ try {
 - 只有 M1 規劃器回報 `review-upload` 或 `review-missing-remote` 才提供 `uploadConsents`。逐篇授權含亂數 nonce 與 10 分鐘期限，僅一次有效；上傳前及人工介入後再次比對兩端 SHA、遠端 revision，版本變動、雙改衝突與非法方向一律拒絕。
 - 合成遠端首次建立與更新皆可單獨驗收；**成功驗證兩端內容相同後**才更新合成 Baseline。失敗不更新 Baseline，不執行 DELETE；此項不代表 Neon Sandbox 真實寫入功能已完成。
 - 既有 `consents` 仍只供下載預演，新增的 `uploadConsents` **不能當作 M2 React 選擇、真實寫入授權、API 憑證或正式同步工作清單**。後續仍要補真正的 Owner Auth / RLS + Sandbox E2E，並確認遠端寫入有版本條件與恢復策略。
+
+## M4 Incoming 隔離預演（2026-10-24）
+
+- `createDurableSyntheticObsidianWorkspace()` 另設**全新隨機 Scratch 下的 `incoming/`**；`preview().incomingConsents` 只針對 `review-download`、`review-missing-local`、`conflict` 提供逐篇亂數、10 分鐘有效確認碼。衝突是 **keep-both 的獨立 Incoming 副本**，不是允許既有 `approvedDownload()` 的覆寫。
+- `approvedIncomingDownload()` **只有合成 Remote Map** 作為來源，對本次工廠建立的 `incoming/` 以排他 `wx` 建立唯一名稱的新 Markdown，拒絕危險 slug、舊 SHA/Revision、局部不同、偽造／重放／過期確認碼、被替換的 Incoming 目錄，失敗時不留下已建立的未確認副本。
+- 成功下載僅表示「產生一份待人檢視的副本」：**不修改合成原稿、不修改或清理 Baseline、不自動刪除、不產生任何正式同步權限**。其他舊授權一律失效，下一篇需重新預覽。`tests/obsidian-m4-incoming-sandbox.test.mjs` 驗證新檔、衝突、過期版本、檔名、競態與預設拒絕。
+- **仍未接入真實 NaosLedge、Neon 或 MSI Obsidian Vault**；`syntheticWorkspacePath` 僅供測試，絕不可把本工廠當正式寫入適配器。真實下載前需完成 Owner／Sandbox 驗收與獨立 Inbox 路徑安全設計。
 
 ## M1 唯讀整合（本次提供的原型程式碼）
 
