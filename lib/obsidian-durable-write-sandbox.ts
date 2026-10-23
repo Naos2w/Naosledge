@@ -11,7 +11,7 @@
  * platform-specific Windows locks and must NOT use this as Production writer.
  */
 import {createHash,randomUUID} from "node:crypto";
-import {open,mkdir,mkdtemp,lstat,readFile,realpath,readdir,rename,rm,writeFile,unlink} from "node:fs/promises";
+import {open,opendir,mkdir,mkdtemp,lstat,readFile,realpath,readdir,rename,rm,writeFile,unlink} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {planObsidianReconciliation,type SyncFingerprint,type SyncPlan} from "./obsidian-sync-plan.ts";
@@ -35,6 +35,16 @@ export function hasSyntheticBackupPairCapacity(existingPairs:number):boolean{
   return Number.isSafeInteger(existingPairs)&&existingPairs>=0&&
     existingPairs*2+2<=MAX_BACKUP_FILES;
 }
+const MAX_AUDIT_ENTRIES=MAX_BACKUP_FILES;
+
+/** Redacted, bounded synthetic backup inspection; never contains file paths or note text. */
+export type SyntheticBackupRecoveryReport={
+  syntheticOnly:true;readOnly:true;inspectionComplete:boolean;
+  scannedEntries:number;
+  validPairs:number|null;orphanBackups:number|null;
+  orphanMetadata:number|null;invalidPairs:number|null;
+  unexpectedEntries:number|null;needsManualReview:boolean;
+};
 
 export type DurableBackupInfo={
   id:string;slug:string;beforeSha:string;afterSha:string;
@@ -107,6 +117,34 @@ async function stableBytes(filename:string):Promise<Buffer|null>{
     throw error;
   }
 }
+type SyntheticNoteIdentity={
+  dev:number;ino:number;size:number;mtimeMs:number;ctimeMs:number;
+};
+function noteIdentity(value:SyntheticNoteIdentity):SyntheticNoteIdentity{
+  return {
+    dev:value.dev,ino:value.ino,size:value.size,
+    mtimeMs:value.mtimeMs,ctimeMs:value.ctimeMs,
+  };
+}
+function sameNoteIdentity(a:SyntheticNoteIdentity,b:SyntheticNoteIdentity):boolean{
+  return a.dev===b.dev&&a.ino===b.ino&&a.size===b.size&&
+    a.mtimeMs===b.mtimeMs&&a.ctimeMs===b.ctimeMs;
+}
+/** Metadata is an additional optimistic guard, not a Windows atomic CAS. */
+async function stableNoteIdentity(filename:string,expectedSha:string):
+  Promise<SyntheticNoteIdentity>{
+  try{
+    const before=noteIdentity(await lstat(filename));
+    const contents=await stableBytes(filename);
+    const after=noteIdentity(await lstat(filename));
+    if(!contents||sha(contents)!==expectedSha||!sameNoteIdentity(before,after)){
+      throw Error("Synthetic note changed after backup but before replacement");
+    }
+    return after;
+  }catch{
+    throw Error("Synthetic note changed after backup but before replacement");
+  }
+}
 async function writeSyncNew(filename:string,bytes:Buffer):Promise<void>{
   const handle=await open(filename,"wx",0o600);
   try{
@@ -171,33 +209,57 @@ export async function createDurableSyntheticObsidianWorkspace(){
   };
   const resetConsent=()=>{pending.clear();stagePending.clear();restorations.clear();};
 
-  async function withLock<T>(slug:string,run:()=>Promise<T>):Promise<T>{
+  /**
+   * Convert the existing read-only inventory into a fail-closed write gate.
+   * The check is scoped to this factory's random TEMP scratch directory only.
+   */
+  async function requireHealthyBackupCatalog(reservePair:boolean):Promise<void>{
+    const report=await inspectSyntheticBackupRecovery();
+    if(!report.inspectionComplete||report.needsManualReview){
+      throw Error("Synthetic backup catalog unsafe; manual inspection required");
+    }
+    if(reservePair&&report.scannedEntries>MAX_AUDIT_ENTRIES-2){
+      throw Error("Synthetic backup catalog at capacity; no new transaction permitted");
+    }
+  }
+
+  async function withLock<T>(slug:string,run:()=>Promise<T>,reserveBackupPair=true):Promise<T>{
     await ensureActive();slugValid(slug);
     if(active.has(slug))throw Error("Synthetic note is already being changed");
     active.add(slug);
     const location=path.join(locks,slug+".lock");
+    const catalogLocation=path.join(locks,"backup-catalog.lock");
     let lock;
+    let catalogLock;
     try{
+      // Serialize all cooperating note writes, not only the same slug:
+      // a second backup transaction must not see a half-written .bak/.json.
+      catalogLock=await open(catalogLocation,"wx",0o600);
+      await catalogLock.writeFile("synthetic-catalog-only");
+      await catalogLock.sync();
       lock=await open(location,"wx",0o600);
       await lock.writeFile("sandbox-only");
       await lock.sync();
+      await requireHealthyBackupCatalog(reserveBackupPair);
       return await run();
     }finally{
-      if(lock){
-        await lock.close();
-        await unlink(location).catch(()=>{});
+      try{
+        if(lock){
+          await lock.close();
+          await unlink(location).catch(()=>{});
+        }
+      }finally{
+        if(catalogLock){
+          await catalogLock.close();
+          await unlink(catalogLocation).catch(()=>{});
+        }
+        active.delete(slug);
       }
-      active.delete(slug);
     }
   }
 
   async function saveBackup(slug:string,before:Buffer,afterSha:string):Promise<DurableBackupInfo>{
-    // Refuse to continue after a synthetic interruption leaves any orphan,
-    // corrupt or unexpected backup entry. Never prune or heal automatically.
-    const existing=await readBackupCatalog();
-    if(!hasSyntheticBackupPairCapacity(existing.length)){
-      throw Error("Synthetic backup catalog has no room for another complete transaction");
-    }
+    await requireHealthyBackupCatalog(true);
     if(!HASH.test(afterSha))throw Error("Invalid future synthetic content hash");
     const id=randomUUID();
     const originalHash=sha(before);
@@ -274,18 +336,88 @@ export async function createDurableSyntheticObsidianWorkspace(){
     return records.sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
   }
 
+  /**
+   * Inspect this factory's temporary backup area without changing any file.
+   * An incomplete scan returns nullable counts rather than an incomplete
+   * result that could be mistaken for a clean inventory.
+   */
+  async function inspectSyntheticBackupRecovery():Promise<SyntheticBackupRecoveryReport>{
+    await ensureActive();
+    const pairs=new Map<string,{bak:boolean;json:boolean}>();
+    let scannedEntries=0;
+    let unexpectedEntries=0;
+    const directory=await opendir(backups);
+    for await(const entry of directory){
+      scannedEntries++;
+      if(scannedEntries>MAX_AUDIT_ENTRIES){
+        return {
+          syntheticOnly:true,readOnly:true,inspectionComplete:false,
+          scannedEntries,validPairs:null,orphanBackups:null,
+          orphanMetadata:null,invalidPairs:null,unexpectedEntries:null,
+          needsManualReview:true,
+        };
+      }
+      const match=BACKUP_ENTRY.exec(entry.name);
+      if(!entry.isFile()||entry.isSymbolicLink()||!match){
+        unexpectedEntries++;
+        continue;
+      }
+      const item=pairs.get(match[1])??{bak:false,json:false};
+      if(match[2]==="bak")item.bak=true;
+      else item.json=true;
+      pairs.set(match[1],item);
+    }
+    let validPairs=0;
+    let orphanBackups=0;
+    let orphanMetadata=0;
+    let invalidPairs=0;
+    for(const [id,item] of pairs){
+      if(!item.json){orphanBackups++;continue;}
+      if(!item.bak){orphanMetadata++;continue;}
+      try{
+        await loadBackup(id);
+        validPairs++;
+      }catch{
+        // Counts only: never disclose note bodies, paths or raw error details.
+        invalidPairs++;
+      }
+    }
+    return {
+      syntheticOnly:true,readOnly:true,inspectionComplete:true,
+      scannedEntries,validPairs,orphanBackups,orphanMetadata,
+      invalidPairs,unexpectedEntries,
+      needsManualReview:orphanBackups+orphanMetadata+
+        invalidPairs+unexpectedEntries>0,
+    };
+  }
+
   async function replaceStaged(
     slug:string,body:Buffer,expectedLocalSha:string,
+    expectedIdentity:SyntheticNoteIdentity,
     hook?:()=>Promise<void>,
     recheckRemote?:()=>void,
   ):Promise<void>{
     const staged=path.join(notes,".staged-"+randomUUID());
     await writeSyncNew(staged,body);
     try{
+      // Keep a fingerprint of the exact fsynced scratch file, not only
+      // the bytes supplied to writeSyncNew. This is NOT native Windows CAS.
+      const stagedSha=sha(body);
+      const originalStagedIdentity=await stableNoteIdentity(staged,stagedSha)
+        .catch(()=>{throw Error("Synthetic staged replacement integrity mismatch");});
       if(hook)await hook();
       if(recheckRemote)recheckRemote();
-      if(await localSha(slug)!==expectedLocalSha){
-        throw Error("Synthetic note changed after backup but before replacement");
+      // Detect corruption of either the backup or staged replacement
+      // before touching the original synthetic note.
+      await requireHealthyBackupCatalog(false);
+      const currentStagedIdentity=await stableNoteIdentity(staged,stagedSha)
+        .catch(()=>{throw Error("Synthetic staged replacement integrity mismatch");});
+      if(!sameNoteIdentity(originalStagedIdentity,currentStagedIdentity)){
+        throw Error("Synthetic staged replacement identity changed");
+      }
+      const currentIdentity=await stableNoteIdentity(notePath(slug),expectedLocalSha);
+      if(!sameNoteIdentity(currentIdentity,expectedIdentity)){
+        throw Error("Synthetic note identity changed after backup but before replacement");
       }
       // Scratch-only, same-FS rename: real Obsidian needs mandatory Windows
       // file-lock / compare-and-swap integration before reuse.
@@ -407,17 +539,20 @@ export async function createDurableSyntheticObsidianWorkspace(){
           // Must never overwrite an existing user note accidentally.
           if(args.beforeCommitForSyntheticTest)await args.beforeCommitForSyntheticTest();
           checkSource();
+          await requireHealthyBackupCatalog(true);
           await writeSyncNew(notePath(slug),Buffer.from(bytes));
           await syncDirectoryBestEffort(notes);
         }else{
           const previous=await stableBytes(notePath(slug));
           if(!previous||sha(previous)!==l)throw Error("Synthetic local note altered before backup");
+          const expectedIdentity=await stableNoteIdentity(notePath(slug),l);
           backup=await saveBackup(slug,previous,sha(bytes));
           const fresh=remoteFp(slug);
           if(fresh?.sha256!==c.expectedRemoteSha||fresh?.revision!==c.expectedRemoteRevision){
             throw Error("Synthetic remote changed after backup");
           }
-          await replaceStaged(slug,bytes,l,args.beforeCommitForSyntheticTest,checkSource);
+          await replaceStaged(slug,bytes,l,expectedIdentity,
+            args.beforeCommitForSyntheticTest,checkSource);
         }
         baseline.set(slug,{slug,sha256:c.expectedRemoteSha});
         resetConsent();
@@ -488,7 +623,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
         }finally{
           if(!accepted)await rm(location,{force:true}).catch(()=>{});
         }
-      });
+      },false); // Incoming copy does not need two free backup slots.
     },
     async prepareRestore(id:string){
       await ensureActive();
@@ -524,10 +659,12 @@ export async function createDurableSyntheticObsidianWorkspace(){
         if(!existing||sha(existing)!==info.afterSha){
           throw Error("Restoration source content no longer matches post-write revision");
         }
+        const expectedIdentity=await stableNoteIdentity(notePath(info.slug),now);
         // Restore is also reversible: store a new, independent backup of
         // the current content before writing the previous content.
         const undo=await saveBackup(info.slug,existing,info.beforeSha);
-        await replaceStaged(info.slug,data,now,args.beforeCommitForSyntheticTest);
+        await replaceStaged(info.slug,data,now,expectedIdentity,
+          args.beforeCommitForSyntheticTest);
         const remoteNow=remoteFp(info.slug);
         if(remoteNow&&remoteNow.sha256===info.beforeSha){
           baseline.set(info.slug,{slug:info.slug,sha256:info.beforeSha});
@@ -540,6 +677,9 @@ export async function createDurableSyntheticObsidianWorkspace(){
           backupId:undo.id,syntheticOnly:true,automaticSyncEnabled:false,
         };
       });
+    },
+    async inspectSyntheticBackupRecovery(){
+      return await inspectSyntheticBackupRecovery();
     },
     async listDurableBackups():Promise<DurableBackupInfo[]>{
       await ensureActive();
