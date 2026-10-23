@@ -79,6 +79,18 @@ export type SyntheticBaselineCheckpoint={
   action:"approved-upload"|"approved-download"|"approved-restore";
   createdAt:string;syntheticOnly:true;deleteAllowed:false;
 };
+/** Read-only, bounded text comparison of two current SYNTHETIC conflict versions. */
+export type SyntheticConflictComparison={
+  slug:string;
+  localSha:string;remoteSha:string;remoteRevision:string;
+  localLineCount:number;remoteLineCount:number;
+  rows:Array<{
+    localLine:number|null;remoteLine:number|null;
+    localText:string|null;remoteText:string|null;identical:boolean;
+  }>;
+  hiddenRows:number;truncated:boolean;lineEndingOnlyDifference:boolean;
+  syntheticOnly:true;writeAllowed:false;deleteAllowed:false;autoMergeAllowed:false;
+};
 export type DurableSyntheticReceipt={
   slug:string;beforeSha:string|null;afterSha:string;
   backupId:string|null;syntheticOnly:true;automaticSyncEnabled:false;
@@ -408,6 +420,115 @@ export async function createDurableSyntheticObsidianWorkspace(){
         consents.push({...consent});
       }
       return {plan,consents,uploadConsents,incomingConsents};
+    },
+    /**
+     * M5 manual conflict comparison: pure observation of the current scratch
+     * pair. Requires fresh M1 fingerprints, never issues consent, resolves a
+     * winner, changes the baseline, or accesses a real Vault / Neon.
+     * Rows deliberately expose only short snippets; never log them to CI.
+     */
+    async compareSyntheticConflict(args:{
+      slug:string;expectedLocalSha:string;
+      expectedRemoteSha:string;expectedRemoteRevision:string;
+    }):Promise<SyntheticConflictComparison>{
+      if(!args||typeof args!=="object")throw Error("Synthetic conflict preview required");
+      const {slug,expectedLocalSha,expectedRemoteSha,expectedRemoteRevision}=args;
+      await ensureActive();
+      slugValid(slug);
+      if(!HASH.test(expectedLocalSha)||!HASH.test(expectedRemoteSha)||
+         !/^synthetic-r[1-9][0-9]*$/.test(expectedRemoteRevision)){
+        throw Error("Invalid reviewed synthetic conflict fingerprints");
+      }
+      const source=await stableBytes(notePath(slug));
+      const remoteNow=remoteFp(slug);
+      if(!source||sha(source)!==expectedLocalSha||
+         remoteNow?.sha256!==expectedRemoteSha||
+         remoteNow.revision!==expectedRemoteRevision){
+        throw Error("Synthetic conflict preview is stale");
+      }
+      const decision=planObsidianReconciliation({
+        local:[{slug,sha256:expectedLocalSha}],
+        remote:[remoteNow],
+        baseline:baseline.has(slug)?[baseline.get(slug)!]:[],
+      }).decisions[0];
+      if(decision.choice!=="conflict"){
+        throw Error("Only unresolved synthetic conflicts may be compared");
+      }
+      const remoteBytes=remote.get(slug)!.bytes;
+      if(sha(remoteBytes)!==expectedRemoteSha){
+        throw Error("Synthetic conflict source changed during inspection");
+      }
+      const localLines=source.toString("utf8").split(/\r\n|\n|\r/);
+      const remoteLines=remoteBytes.toString("utf8").split(/\r\n|\n|\r/);
+      let prefix=0;
+      while(prefix<localLines.length&&prefix<remoteLines.length&&
+            localLines[prefix]===remoteLines[prefix])prefix++;
+      let suffix=0;
+      while(suffix<localLines.length-prefix&&
+            suffix<remoteLines.length-prefix&&
+            localLines[localLines.length-1-suffix]===remoteLines[remoteLines.length-1-suffix]){
+        suffix++;
+      }
+      const middleLocal=localLines.length-prefix-suffix;
+      const middleRemote=remoteLines.length-prefix-suffix;
+      const middle=Math.max(middleLocal,middleRemote);
+      const total=prefix+middle+suffix;
+      // Show first/last context AND both edges of the changed span. A huge
+      // identical prefix must never hide the actual disagreement.
+      const chosen=new Set<number>();
+      const add=(start:number,end:number)=>{
+        for(let i=Math.max(0,start);i<Math.min(end,total);i++)chosen.add(i);
+      };
+      add(0,4);add(prefix-3,prefix+36);
+      add(prefix+middle-36,prefix+middle+3);
+      add(total-4,total);
+      const positions=[...chosen].sort((a,b)=>a-b);
+      let clipped=false;
+      const clip=(value:string|null):string|null=>{
+        if(value===null)return null;
+        const chars=Array.from(value);
+        if(chars.length<=160)return value;
+        clipped=true;
+        return chars.slice(0,160).join("");
+      };
+      const rows=positions.map(index=>{
+        let li:number|null=null,ri:number|null=null;
+        if(index<prefix){
+          li=index;ri=index;
+        }else if(index<prefix+middle){
+          const k=index-prefix;
+          if(k<middleLocal)li=prefix+k;
+          if(k<middleRemote)ri=prefix+k;
+        }else{
+          const k=index-prefix-middle;
+          li=localLines.length-suffix+k;
+          ri=remoteLines.length-suffix+k;
+        }
+        const left=li===null?null:localLines[li];
+        const right=ri===null?null:remoteLines[ri];
+        return {
+          localLine:li===null?null:li+1,
+          remoteLine:ri===null?null:ri+1,
+          localText:clip(left),remoteText:clip(right),
+          identical:left!==null&&right!==null&&left===right,
+        };
+      });
+      // Recheck both versions once more after building the comparison.
+      if(await localSha(slug)!==expectedLocalSha||
+         remoteFp(slug)?.sha256!==expectedRemoteSha||
+         remoteFp(slug)?.revision!==expectedRemoteRevision){
+        throw Error("Synthetic conflict changed while rendering preview");
+      }
+      return {
+        slug,localSha:expectedLocalSha,remoteSha:expectedRemoteSha,
+        remoteRevision:expectedRemoteRevision,
+        localLineCount:localLines.length,remoteLineCount:remoteLines.length,
+        rows,hiddenRows:total-positions.length,
+        truncated:clipped||positions.length<total,
+        lineEndingOnlyDifference:prefix===localLines.length&&
+          prefix===remoteLines.length&&expectedLocalSha!==expectedRemoteSha,
+        syntheticOnly:true,writeAllowed:false,deleteAllowed:false,autoMergeAllowed:false,
+      };
     },
     /**
      * M4 rehearsal: an explicit single-note decision can ONLY create a fresh
