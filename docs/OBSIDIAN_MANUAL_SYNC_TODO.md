@@ -10,19 +10,31 @@
 - **絕不自動刪除**：單邊缺少檔案、兩邊均缺少但基準仍存在，都不觸發實際刪除或清理基準。
 - 私人內容使用站長 Auth + Neon RLS，公開部落格的發布與私人筆記同步獨立。
 - 尚未經核准的真實 MSI Vault／Neon Production 寫入一律保持關閉。
+- **一般開發不再等待獨立 QA Agent**：由 Developer 實作並執行受影響的單元測試、型別檢查、Build、必要的 UI 測試與 GitHub CI；正式部署或真實資料寫入仍遵守既有安全／授權閘門。
+
+## 最新優先 TODO（2026-10-23）
+
+1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) 為 Ready、未合併；最新 HEAD `ebc46f992db4475ddeb34b9e6c55a998a4ac40ef`，CI #91 SUCCESS。確認分支未移動與實際差異後，獲准執行合併時合入 `main`；**合併不等於部署**。
+2. **P1｜真正的 M1 唯讀驗收**：以核准的 MSI Vault + 真正 Neon Sandbox Owner-RLS GET 取得完整指紋清單，認證失敗、超限或不完整時必須停止；此步不需一般開發 QA，但不能把合成 HTTP 測試當作真實驗收。
+3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。
+4. **P1｜M3 Sandbox 手動上傳**：按篇批准、每次重讀來源/遠端 SHA 與 revision，初次建立與更新分開測試；不得直接接到 Production。
+5. **P2｜M4/M5**：先建立不覆寫原稿的 Incoming 下載副本，再做衝突比較與持久 Baseline；任何刪除仍需另外的明確人工決定。
+6. **P2｜M6/M7**：完成 Sandbox 真實 E2E 與回復測試後，另取得 Owner 對正式資料範圍及發布的明確授權；不可為省略 QA 而省略資料安全／發布閘門。
+
+**暫緩**：PR #21–25 安全研究整合、TPM/DPAPI、企業級 AES 備份輪換、強制斷電實驗、Cron 自動同步及自動覆寫。這些不是 M2／M3 一般開發前置條件。
 
 ## 正式里程碑
 
 | 階段 | 具體內容 | 可驗收的完成標準 | 當前狀態 |
 | --- | --- | --- | --- |
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
-| **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 與獨立 QA 尚未驗收，不代表正式同步可用** |
-| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **M2 獨立分支合成互動版已開發，尚未合併或上線；詳見 [M2 功能規格](OBSIDIAN_M2_REVIEW_UI.md)** |
+| **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 尚未驗收，不代表正式同步可用；獨立 QA 不再是一般開發前置條件** |
+| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、CI #91 SUCCESS，最新 HEAD `ebc46f9`，仍未合併／部署；合成 M2 UI 與 MSI Chrome 驗證已通過，真實資料預覽尚未接線。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | 待開發 |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | 待開發 |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | 待開發 |
 | **M6** | 在獨立 Sandbox 做真實 Auth/RLS/API ＋ MSI 測試 | 上傳、下載、同名雙改、部分清單、網路失敗、回復與防刪案例通過，測試資料清理留證據 | 待開發 |
-| **M7** | 正式 Vault ↔ Production 受控啟用 | 獨立 QA、Owner 指定資料範圍/備份位置/逐篇授權、精確發布 SHA 與回復計畫全部通過 | 需另行授權 |
+| **M7** | 正式 Vault ↔ Production 受控啟用 | Owner 指定資料範圍／備份位置／逐篇授權、功能及安全驗收、精確發布 SHA 與回復計畫；遵守正式發布閘門，不以一般開發獨立 QA 作額外要求 | 需另行授權 |
 
 ## M1 唯讀整合（本次提供的原型程式碼）
 
@@ -49,7 +61,7 @@
 1. **已完成 MSI 原專案接線驗收的離線部分**：M1 的 19 項定向測試包含完整 Reader 鏈條（真實 FS 掃描＋真實 Neon GET Reader，使用合成 HTTP 回應），18 PASS、1 項非 Windows 專用拒絕測試依設計 SKIP。仍不代表已用真實 Owner JWT 呼叫 Neon Sandbox。
 2. **已在正常的 OpenChatX 專案權限下建立 `feat/obsidian-manual-sync-review-20261023`** 並套用 M1 原型與測試，與 PR #25 的加密研究分支隔離；前次 Git 建分支拒絕在重新核對後以同一工具正常執行成功。
 3. 固定 MSI 接線函式已加入正式產品分支並通過靜態保護測試；**真正 MSI GUI 註冊讀取和 Neon Owner JWT／GET 尚未直接以 M1 組合器執行**。下一步要以審查過的安全入口與經授權 Sandbox 身分執行唯讀驗收，不能使用 Production JWT。
-4. M1 已合併 `main`，但不得把 GitHub CI 或合併視為獨立 QA 或 Owner Sandbox GET 驗收。M2 可在獨立分支以合成預覽進行私人站長 UI 開發與鍵盤／手機驗收，仍不得連線真實 Vault/Production 或執行上下載。
+4. M1 已合併 `main`，但不得把 GitHub CI 或合併視為真正的 Owner Sandbox GET 驗收。使用者已確認一般開發不需要獨立 QA，不再因此阻擋 M2/M3；M2 合成 UI 及 MSI 瀏覽器驗收已完成於 PR #27，但真實 Vault/Production 操作及真正上下載仍屬後續受控工作。
 
 ## 暫停擴充項目
 
