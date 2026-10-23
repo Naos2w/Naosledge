@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {lstat,readFile,writeFile} from "node:fs/promises";
+import {lstat,mkdir,readFile,writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {createObsidianSandbox} from "../lib/obsidian-sync-sandbox.ts";
@@ -192,5 +192,19 @@ test("unmatched baseline leaves two missing copies inert, no auto deletion",asyn
     assert.equal(p.decisions[0].choice,"both-removed");
     await assert.rejects(s.apply(a("old-note","download")),/Conflicts/);
     await assert.rejects(s.apply(a("old-note","upload")),/Conflicts/);
+  });
+});
+
+
+test("scanner config exclusion does not expand sandbox's backup-only directory allowance",async()=>{
+  await withScratch(async s=>{
+    await mkdir(path.join(s.sandboxDirectory,".sandbox-backups"));
+    assert.deepEqual((await s.preview()).decisions,[]);
+    await mkdir(path.join(s.sandboxDirectory,".obsidian"));
+    await assert.rejects(s.preview(),/unexpected files or folders/);
+  });
+  await withScratch(async s=>{
+    await mkdir(path.join(s.sandboxDirectory,"actual-notes"));
+    await assert.rejects(s.preview(),/unexpected files or folders/);
   });
 });

@@ -46,7 +46,17 @@ export async function readObsidianLocalManifest(folder:string):Promise<ReadOnlyL
   let otherFiles=0;
   let directoriesNotScanned=0;
   for(const child of children.sort((a,b)=>a.name.localeCompare(b.name,"en"))){
-    // Only direct children; .obsidian and nested directories aren't traversed.
+    // Only the real standard config directory is excluded from note coverage.
+    // Never traverse it or exempt a same-named symlink/junction.
+    if(child.name===".obsidian"&&(child.isDirectory()||child.isSymbolicLink())){
+      const config=path.join(root,child.name);
+      const configStat=await lstat(config);
+      if(!configStat.isDirectory()||configStat.isSymbolicLink()||
+         path.normalize(await realpath(config))!==path.normalize(config)){
+        throw new Error("Obsidian config directory must not be a link or redirect");
+      }
+      continue;
+    }
     if(child.isDirectory()){
       directoriesNotScanned++;
       continue;

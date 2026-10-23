@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {mkdtemp,mkdir,readFile,rm,writeFile,readdir} from "node:fs/promises";
+import {mkdtemp,mkdir,readFile,rm,writeFile,readdir,symlink} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import {readObsidianLocalManifest} from "../lib/obsidian-local-manifest.ts";
@@ -78,7 +78,7 @@ test("unsupported Chinese filenames and real unscanned directories remain explic
     assert.equal(preview.previewStatus,"partial-local-coverage");
     assert.equal(preview.inventory.localSupportedNotes,1);
     assert.equal(preview.inventory.localUnsupportedMarkdown,1);
-    assert.equal(preview.inventory.localDirectoriesNotScanned,2);
+    assert.equal(preview.inventory.localDirectoriesNotScanned,1);
     assert.equal(preview.inventory.localCoverageNeedsReview,true);
     assert.equal(preview.decisions.find(x=>x.slug==="remote-note").choice,"review-missing-local");
     assert.ok(preview.decisions.every(x=>x.writeAllowed===false));
@@ -121,5 +121,57 @@ test("a read-only matching synthetic snapshot requires no review and leaves file
     assert.equal(preview.decisions[0].choice,"unchanged");
     assert.equal(preview.decisions[0].writeAllowed,false);
     assert.equal(await readFile(path.join(root,"matching-note.md"),"utf8"),body);
+  });
+});
+
+
+test("real config alone is ready; nested notes and Chinese root names independently warn",async()=>{
+  await withScratch(async root=>{
+    await mkdir(path.join(root,".obsidian"));
+    await writeFile(path.join(root,".obsidian","config.md"),"synthetic config, never scanned");
+    const preview=()=>previewManualObsidianSync({
+      readLocal:()=>readObsidianLocalManifest(root),
+      readRemote:async()=>remote([]),baseline:[],
+    });
+    const ready=await preview();
+    assert.equal(ready.previewStatus,"ready");
+    assert.equal(ready.inventory.localCoverageNeedsReview,false);
+    assert.equal(ready.inventory.localDirectoriesNotScanned,0);
+    assert.deepEqual(ready.decisions,[]);
+    await mkdir(path.join(root,"actual-notes"));
+    await writeFile(path.join(root,"actual-notes","nested-notes.md"),"synthetic nested note");
+    const nested=await preview();
+    assert.equal(nested.previewStatus,"partial-local-coverage");
+    assert.equal(nested.inventory.localDirectoriesNotScanned,1);
+    assert.equal(nested.inventory.localUnsupportedMarkdown,0);
+    assert.equal(nested.inventory.localSupportedNotes,0);
+    await rm(path.join(root,"actual-notes"),{recursive:true});
+    await writeFile(path.join(root,"中文筆記.md"),"synthetic unsupported root note");
+    const chinese=await preview();
+    assert.equal(chinese.previewStatus,"partial-local-coverage");
+    assert.equal(chinese.inventory.localDirectoriesNotScanned,0);
+    assert.equal(chinese.inventory.localUnsupportedMarkdown,1);
+    assert.equal(chinese.autoApplyAllowed,false);
+    assert.equal(chinese.baselinePersisted,false);
+    assert.equal(await readFile(path.join(root,"中文筆記.md"),"utf8"),"synthetic unsupported root note");
+  });
+});
+
+test("linked .obsidian fails closed before any mock remote inventory read",async t=>{
+  await withScratch(async root=>{
+    await withScratch(async target=>{
+      await writeFile(path.join(target,"nested-notes.md"),"synthetic linked note");
+      try{await symlink(target,path.join(root,".obsidian"),process.platform==="win32"?"junction":"dir");}
+      catch(error){
+        if(["EPERM","EACCES","ENOSYS"].includes(error?.code)){t.skip("OS disallows directory links");return;}
+        throw error;
+      }
+      let remoteCalls=0;
+      await assert.rejects(previewManualObsidianSync({
+        readLocal:()=>readObsidianLocalManifest(root),
+        readRemote:async()=>{remoteCalls++;return remote([]);},baseline:[],
+      }),/Local Obsidian inventory unavailable/);
+      assert.equal(remoteCalls,0);
+    });
   });
 });
