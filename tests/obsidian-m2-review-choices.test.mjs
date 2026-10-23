@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
+import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 import {
   chooseReviewIntent,reviewIntentOptions,summariseReviewIntents,
 } from "../lib/obsidian-m2-review-choices.ts";
@@ -117,4 +118,60 @@ test("M2 private route requires Vault owner and only passes fixture data, no rea
   assert.match(ui,/未支援的 Markdown 檔名/);
   assert.match(ui,/未掃描的資料夾/);
   assert.match(ui,/role="group" aria-label="差異類型篩選"/);
+  assert.match(ui,/Object\.hasOwn\(choices,row\.slug\)/);
+});
+
+test("M2 refuses misleading inventory, coverage and inconsistent M1 totals",async()=>{
+  const p=await makeSyntheticM2Preview();
+  const tampered=[
+    {...p,inventory:{...p.inventory,remoteFullInventory:false}},
+    {...p,inventory:{...p.inventory,remoteNotes:0}},
+    {...p,inventory:{...p.inventory,localSupportedNotes:0}},
+    {...p,inventory:{...p.inventory,localCoverageNeedsReview:true}},
+    {...p,previewStatus:"partial-local-coverage"},
+    {...p,summary:{...p.summary,conflict:0}},
+    {...p,manualReviewCount:0},
+    {...p,conflicts:0},
+    {...p,possibleDeletionsNeverApplied:0},
+    {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,manualReview:true}:r)},
+    {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,expectedLocalSha:"x".repeat(64)}:r)},
+    {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,expectedRemoteSha:null}:r)},
+    {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,slug:"../outside"}:r)},
+    {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,markdown:"private"}:r)},
+  ];
+  for(const bad of tampered){
+    assert.throws(()=>summariseReviewIntents(bad,{}),/M2|Unknown/);
+    assert.throws(()=>chooseReviewIntent(bad,{},"react-hooks","upload"),/M2|Unknown/);
+  }
+  const partial={
+    ...p,previewStatus:"partial-local-coverage",
+    inventory:{...p.inventory,localUnsupportedMarkdown:1,localCoverageNeedsReview:true},
+  };
+  assert.equal(summariseReviewIntents(partial,{}).pending,5,
+    "genuine incomplete local coverage remains visible, never mistaken as complete");
+});
+
+test("M2 only counts OWN choices for valid Object.prototype-like note slugs",async()=>{
+  const digest="a".repeat(64);
+  const preview=await previewManualObsidianSync({
+    baseline:[],
+    readLocal:async()=>({
+      fingerprints:[{slug:"constructor",sha256:digest}],
+      unsupportedMarkdownFiles:0,otherFiles:0,directoriesNotScanned:0,
+      autoApplyAllowed:false,
+    }),
+    readRemote:async()=>({
+      fingerprints:[],numberOfNotes:0,sandboxOnly:true,
+      rlsEnforcedByDataApi:true,writeEnabled:false,fullInventory:true,
+    }),
+  });
+  assert.equal(summariseReviewIntents(preview,{}).selected,0,
+    "inherited Object.prototype.constructor is not a human choice");
+  assert.equal(summariseReviewIntents(preview,{}).pending,1);
+  const own=chooseReviewIntent(preview,{},"constructor","upload");
+  assert.equal(Object.hasOwn(own,"constructor"),true);
+  assert.equal(summariseReviewIntents(preview,own).upload,1);
+  assert.equal(summariseReviewIntents(preview,own).pending,0);
+  assert.throws(()=>chooseReviewIntent(preview,{"not-in-preview":"skip"},
+    "constructor","upload"),/does not match/);
 });

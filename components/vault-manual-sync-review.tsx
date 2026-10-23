@@ -117,7 +117,7 @@ export default function VaultManualSyncReview({preview}:{preview:ManualReviewPre
       {visible.map(row=>{
         const status=STATUS[row.choice];
         const options=reviewIntentOptions(row.choice);
-        const selected=choices[row.slug];
+        const selected=Object.hasOwn(choices,row.slug)?choices[row.slug]:undefined;
         return <li key={row.slug} className="vault-sync-note">
           <div className="vault-sync-note-main">
             <div className="vault-sync-note-id">
@@ -183,7 +183,7 @@ export default function VaultManualSyncReview({preview}:{preview:ManualReviewPre
         <span>未選 <strong>{tally.pending}</strong></span>
       </div>
       <ul>
-        {preview.decisions.filter(row=>choices[row.slug]).map(row=><li key={row.slug}>
+        {preview.decisions.filter(row=>Object.hasOwn(choices,row.slug)).map(row=><li key={row.slug}>
           <span>{row.slug}.md</span><strong>{INTENT_LABEL[choices[row.slug]]}</strong>
         </li>)}
         {tally.selected===0&&<li>目前沒有任何審查選擇。</li>}

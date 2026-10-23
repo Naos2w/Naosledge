@@ -16,7 +16,7 @@
 
 1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) 仍為 Ready、未合併；2026-10-24 已確認前一版本 HEAD `6cd926f` 的 CI #98 SUCCESS。此後每次都應重新檢查 GitHub **最新** HEAD/CI（新 Commit 不沿用舊 SUCCESS）；確認差異及合併授權後才能合入 `main`；**合併不等於部署**。
 2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。認證失敗、超限或不完整時必須停止；不能把合成 HTTP 測試當作真實驗收。
-3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。
+3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。**2026-10-24 已加強 M2 合成／未來唯讀預覽的資料完整性驗證**：驗證完整 Inventory、7 類差異計數、SHA／Revision、缺漏警示與逐篇方向一致；錯誤／截斷／矛盾清單一律拒絕。修正合法 slug `constructor` 被 Object 原型屬性錯認為使用者選擇的問題；但實際 Owner JWT／Neon GET 仍未接線，不能稱真實資料審查已完成。
 4. **P1｜M3 Sandbox 手動上傳**：已新增**完全隔離的合成上傳預演**（單篇隨機一次性確認、重新讀取本機 SHA 與合成遠端 SHA/revision，建立與更新分開測試、失敗不更新 Baseline）。真實 Neon Sandbox 寫入介面、站長授權整合與 MSI 實際驗收仍**未實作／未授權**，不得直接接到 Production。
 5. **P2｜M4/M5**：M4 **合成 Incoming 副本預演已新增**（只在隨機 Scratch 的獨立 Incoming 建檔，支援衝突保留兩份，不修改原稿、不更新 Baseline）；M5 已新增**隨機 Scratch 專用 append-only 成功證據、限量雙版本行比較及唯讀日誌重新載入預檢**。恢復預檢遇到多筆同名歷史、版次變更、兩端差異或記憶體 Baseline 不一致會保守標示、絕不推斷勝者或自動匯入。正式 Vault／Neon 持久化、真正 MSI 下載適配器、跨程序重啟後可信載入及 UI 接線仍待開發／授權；任何刪除仍需另外的明確人工決定。
 6. **P2｜M6/M7**：完成 Sandbox 真實 E2E 與回復測試後，另取得 Owner 對正式資料範圍及發布的明確授權；不可為省略 QA 而省略資料安全／發布閘門。
