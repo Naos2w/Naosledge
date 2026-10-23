@@ -34,8 +34,17 @@ import VaultManualSyncReview from "@/components/vault-manual-sync-review";
 import {makeSyntheticM2Preview} from "@/lib/obsidian-m2-synthetic-fixture";
 export const dynamic="force-dynamic";
 export const metadata={robots:{index:false,follow:false}};
-export default async function M2LocalFixture(){
-  return <VaultManualSyncReview preview={await makeSyntheticM2Preview()}/>;
+export default async function M2LocalFixture({searchParams}){
+  const {coverage}=await searchParams;
+  const preview=await makeSyntheticM2Preview();
+  const shown=coverage==="partial"?{
+    ...preview,previewStatus:"partial-local-coverage" as const,
+    inventory:{
+      ...preview.inventory,localUnsupportedMarkdown:2,
+      localDirectoriesNotScanned:1,localCoverageNeedsReview:true,
+    },
+  }:preview;
+  return <VaultManualSyncReview preview={shown}/>;
 }
 `;
 
@@ -154,6 +163,14 @@ try{
   await page.screenshot({path:path.join(screenshots,"m2-desktop.png"),fullPage:true});
   await page.setViewportSize({width:375,height:812});
   await page.screenshot({path:path.join(screenshots,"m2-mobile.png"),fullPage:true});
+  await page.goto(origin+"/m2-sync-local-fixture?coverage=partial",{waitUntil:"networkidle"});
+  const coverageAlert=page.locator(".vault-sync-coverage[role=\"alert\"]");
+  assert.match(await coverageAlert.innerText(),/未支援的 Markdown 檔名：2/);
+  assert.match(await coverageAlert.innerText(),/未掃描的資料夾：1/);
+  assert.equal(await page.getByRole("group",{name:"差異類型篩選"}).count(),1);
+  assert.equal(await page.locator(".vault-sync-note").count(),7,
+    "Partial scan must not hide or implicitly delete the reviewed rows");
+  console.log("PASS M2 partial local coverage warning and accessible filter grouping");
   assert.deepEqual(jsErrors,[],"M2 unexpected JS errors");
   assert.deepEqual(remoteRequests,[],"M2 preview must remain entirely offline");
   console.log("M2_BROWSER_OFFLINE_SUCCESS no external requests or real sync");

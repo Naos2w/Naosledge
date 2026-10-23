@@ -113,4 +113,8 @@ test("M2 private route requires Vault owner and only passes fixture data, no rea
   assert.match(ui,/合成筆記/);
   assert.match(ui,/目前不會執行同步/);
   assert.match(ui,/這不是同步執行清單/);
+  assert.match(ui,/preview\.previewStatus==="partial-local-coverage"/);
+  assert.match(ui,/未支援的 Markdown 檔名/);
+  assert.match(ui,/未掃描的資料夾/);
+  assert.match(ui,/role="group" aria-label="差異類型篩選"/);
 });

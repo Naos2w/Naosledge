@@ -9,6 +9,10 @@
 .vault-sync-notice>svg{flex-shrink:0;margin-top:3px;color:var(--accent)}
 .vault-sync-notice strong{display:block;font-size:14px;color:var(--ink)}
 .vault-sync-notice span{display:block;font-size:12px;color:var(--ink-soft)}
+.vault-sync-coverage{display:flex;align-items:start;gap:14px;padding:17px 21px;border:1px solid var(--rule-strong);border-left:3px solid var(--warm);margin-top:14px;background:var(--sheet);color:var(--ink-soft)}
+.vault-sync-coverage>svg{color:var(--warm);flex-shrink:0;margin-top:3px}
+.vault-sync-coverage strong{display:block;color:var(--ink);font-size:13px}
+.vault-sync-coverage p{font-size:12px;line-height:1.8;margin:4px 0 0}
 .vault-sync-totals{display:flex;align-items:stretch;gap:0;border-bottom:1px solid var(--rule-strong);padding:25px 0 22px}
 .vault-sync-totals>div{display:flex;flex-direction:column;gap:1px;padding:0 23px;min-width:116px;border-right:1px solid var(--rule)}
 .vault-sync-totals>div:first-child{padding-left:0}

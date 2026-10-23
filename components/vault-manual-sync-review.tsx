@@ -72,8 +72,17 @@ export default function VaultManualSyncReview({preview}:{preview:ManualReviewPre
       </div>
     </div>
 
+    {preview.previewStatus==="partial-local-coverage"&&<div className="vault-sync-coverage" role="alert">
+      <ShieldAlert aria-hidden="true" size={20}/>
+      <div>
+        <strong>本機有尚未列入比對的內容。</strong>
+        <p>未支援的 Markdown 檔名：{preview.inventory.localUnsupportedMarkdown}；未掃描的資料夾：{preview.inventory.localDirectoriesNotScanned}。
+          這些內容不在下方審查清單內，不能視為已同步或可以刪除。</p>
+      </div>
+    </div>}
+
     <div className="vault-sync-totals" aria-label="同步差異摘要">
-      <div><strong>{preview.decisions.length}</strong><span>筆示例</span></div>
+      <div><strong>{preview.decisions.length}</strong><span>示例筆記</span></div>
       <div><strong>{tally.needsReview}</strong><span>待審查</span></div>
       <div><strong>{preview.conflicts}</strong><span>雙邊衝突</span></div>
       <div><strong>{tally.selected}</strong><span>已選擇</span></div>
@@ -88,7 +97,7 @@ export default function VaultManualSyncReview({preview}:{preview:ManualReviewPre
       <span aria-live="polite">已選 {tally.selected}／{tally.needsReview} 篇</span>
     </div>
     <div className="vault-sync-toolbar">
-      <div className="vault-sync-filters" aria-label="差異類型篩選">
+      <div className="vault-sync-filters" role="group" aria-label="差異類型篩選">
         {([
           ["all","全部"],["review","待審查"],["conflict","衝突"],["done","無須處理"],
         ] as const).map(([value,label])=>
