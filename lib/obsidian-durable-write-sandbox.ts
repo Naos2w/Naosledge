@@ -182,6 +182,11 @@ export async function createDurableSyntheticObsidianWorkspace(){
   await mkdir(backups,{mode:0o700});
   await mkdir(locks,{mode:0o700});
   await mkdir(incoming,{mode:0o700});
+  // A fixed non-secret marker permits a separate read-only test process to
+  // recognize this factory-generated TEMP workspace after its creator exits.
+  // It is not an authentication token or permission to reopen a real Vault.
+  await writeSyncNew(path.join(folder,".synthetic-recovery-marker"),
+    Buffer.from("NAOSLEDGE_GENERATED_SYNTHETIC_RECOVERY_V1","utf8"));
 
   const remote=new Map<string,Remote>();
   const baseline=new Map<string,SyncFingerprint>();

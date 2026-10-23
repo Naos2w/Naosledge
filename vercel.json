@@ -42,7 +42,8 @@
       "feat/obsidian-durable-backup-manual-20261019": false,
       "feat/obsidian-p0-backup-hardening-20261020": false,
       "feat/obsidian-backup-manifest-guard-20261022": false,
-      "feat/obsidian-pr21-pr22-integration-20261023": false
+      "feat/obsidian-pr21-pr22-integration-20261023": false,
+      "feat/obsidian-windows-native-recovery-20261023": false
     }
   }
 }
