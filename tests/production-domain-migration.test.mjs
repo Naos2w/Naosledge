@@ -30,6 +30,9 @@ test("merge to main must NOT auto-deploy before exact release SHA is approved",(
   assert.equal(config.git?.deploymentEnabled?.main,false);
   assert.equal(config.git?.deploymentEnabled?.["fix/private-route-cache-and-ci-20261018"],false);
   assert.equal(config.git?.deploymentEnabled?.["fix/legacy-home-redirect-20261018"],false);
+  assert.equal(config.git?.deploymentEnabled?.["feat/obsidian-p0-backup-hardening-20261020"],false);
+  assert.equal(config.git?.deploymentEnabled?.["feat/obsidian-backup-manifest-guard-20261022"],false);
+  assert.equal(config.git?.deploymentEnabled?.["feat/obsidian-pr21-pr22-integration-20261023"],false);
 });
 
 test("production release gate refuses the legacy hostname as its primary origin",()=>{
