@@ -28,6 +28,7 @@ test("legacy hostname redirects its root and all subpaths to the canonical host"
 
 test("merge to main must NOT auto-deploy before exact release SHA is approved",()=>{
   assert.equal(config.git?.deploymentEnabled?.main,false);
+  assert.equal(config.git?.deploymentEnabled?.["feat/obsidian-manual-sync-review-20261023"],false);
   assert.equal(config.git?.deploymentEnabled?.["fix/private-route-cache-and-ci-20261018"],false);
   assert.equal(config.git?.deploymentEnabled?.["fix/legacy-home-redirect-20261018"],false);
 });
