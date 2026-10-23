@@ -1,6 +1,6 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
-更新：2026-10-23；依 Owner 已確認的產品需求定稿。
+更新：2026-10-24；依 Owner 已確認的產品需求及最新隔離實作同步。
 
 ## 不得更改的產品契約
 
@@ -18,7 +18,7 @@
 2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。認證失敗、超限或不完整時必須停止；不能把合成 HTTP 測試當作真實驗收。
 3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。
 4. **P1｜M3 Sandbox 手動上傳**：已新增**完全隔離的合成上傳預演**（單篇隨機一次性確認、重新讀取本機 SHA 與合成遠端 SHA/revision，建立與更新分開測試、失敗不更新 Baseline）。真實 Neon Sandbox 寫入介面、站長授權整合與 MSI 實際驗收仍**未實作／未授權**，不得直接接到 Production。
-5. **P2｜M4/M5**：M4 **合成 Incoming 副本預演已新增**（只在隨機 Scratch 的獨立 Incoming 建檔，支援衝突保留兩份，不修改原稿、不更新 Baseline）；下一步是授權後的真正 MSI 下載適配器及 M5 衝突比較／持久 Baseline；任何刪除仍需另外的明確人工決定。
+5. **P2｜M4/M5**：M4 **合成 Incoming 副本預演已新增**（只在隨機 Scratch 的獨立 Incoming 建檔，支援衝突保留兩份，不修改原稿、不更新 Baseline）；M5 已新增**僅限同一個合成 Scratch 的 append-only Baseline 同步成功證據**，只在逐篇批准、兩端 SHA 再確認相同後記錄，Incoming 不記錄；Restore 後兩端不同時**保留舊 Baseline** 不清除。正式 Vault／Neon 持久化、真正 MSI 下載適配器和文字衝突比較仍待開發／授權；任何刪除仍需另外的明確人工決定。
 6. **P2｜M6/M7**：完成 Sandbox 真實 E2E 與回復測試後，另取得 Owner 對正式資料範圍及發布的明確授權；不可為省略 QA 而省略資料安全／發布閘門。
 
 **暫緩**：PR #21–25 安全研究整合、TPM/DPAPI、企業級 AES 備份輪換、強制斷電實驗、Cron 自動同步及自動覆寫。這些不是 M2／M3 一般開發前置條件。
@@ -32,7 +32,7 @@
 | **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認 HEAD `4048d4c` 的 CI #95 SUCCESS；未合併／部署，真實資料預覽尚未接線。後續提交需重新驗證 CI。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **合成 Scratch／記憶體遠端的逐篇上傳預演已完成；真正 Auth、Neon Sandbox API、真實內容傳輸待開發／授權，未正式啟用** |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | **合成 Scratch Incoming 副本預演已實作／測試；真人 Vault 或 Neon Sandbox API 尚未接線／授權** |
-| **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | 待開發 |
+| **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | **合成 Scratch 的逐篇成功 Baseline append-only 證據已實作；衝突保留與 restore 不清除 Baseline 已驗證。真實資料持久層／重新載入校驗／內容比較與整合仍待開發** |
 | **M6** | 在獨立 Sandbox 做真實 Auth/RLS/API ＋ MSI 測試 | 上傳、下載、同名雙改、部分清單、網路失敗、回復與防刪案例通過，測試資料清理留證據 | 待開發 |
 | **M7** | 正式 Vault ↔ Production 受控啟用 | Owner 指定資料範圍／備份位置／逐篇授權、功能及安全驗收、精確發布 SHA 與回復計畫；遵守正式發布閘門，不以一般開發獨立 QA 作額外要求 | 需另行授權 |
 
@@ -66,6 +66,13 @@ try {
 - `approvedIncomingDownload()` **只有合成 Remote Map** 作為來源，對本次工廠建立的 `incoming/` 以排他 `wx` 建立唯一名稱的新 Markdown，拒絕危險 slug、舊 SHA/Revision、局部不同、偽造／重放／過期確認碼、被替換的 Incoming 目錄，失敗時不留下已建立的未確認副本。
 - 成功下載僅表示「產生一份待人檢視的副本」：**不修改合成原稿、不修改或清理 Baseline、不自動刪除、不產生任何正式同步權限**。其他舊授權一律失效，下一篇需重新預覽。`tests/obsidian-m4-incoming-sandbox.test.mjs` 驗證新檔、衝突、過期版本、檔名、競態與預設拒絕。
 - **仍未接入真實 NaosLedge、Neon 或 MSI Obsidian Vault**；`syntheticWorkspacePath` 僅供測試，絕不可把本工廠當正式寫入適配器。真實下載前需完成 Owner／Sandbox 驗收與獨立 Inbox 路徑安全設計。
+
+## M5 Baseline 保留與合成成功證據（2026-10-24）
+
+- `lib/obsidian-durable-write-sandbox.ts` 在**當次隨機 Scratch** 新增 `baseline-journal/`：合成環境每次已批准的上傳、下載或復原，在再次確認兩端 SHA 相同、遠端 revision 未變後，才以新 UUID `.json` **追加**同步成功證據（無 Markdown 正文或憑證）；寫檔前先暫存、再次比對、提交並同步檔案與目錄（Windows 目錄同步僅 best-effort）。無任何正式 Obsidian／Neon 路徑參數，不能用於正式同步。
+- `listConfirmedSyntheticBaselines()` 僅供同一 Scratch 唯讀檢驗並嚴格拒絕遭改動或不合法的 checkpoint；**不會將檔案自動匯入 Baseline、重建現有記憶體狀態或觸發同步**。
+- 合成 Incoming 僅產生待檢視副本，**不記錄成功同步、不更新 Baseline**。若人工批准的 Restore 導致本機與遠端仍不相同，**保留既有 Baseline** 供重新比較，不得以 `baseline.delete()` 偷清除衝突依據；遠端也一致且重新驗證時才追加新證據。
+- `tests/obsidian-m5-baseline-journal-sandbox.test.mjs` 驗證成功附加、一次性授權、復原時衝突保留、不完整或偽造日誌拒絕、Incoming 不變動等。**仍不是正式 Baseline 資料庫**：Scratch 由工廠銷毀且沒有正式持久載入／遷移設計，真正 MSI／Neon Sandbox E2E、持續保留策略及內容差異比較仍待完成。
 
 ## M1 唯讀整合（本次提供的原型程式碼）
 

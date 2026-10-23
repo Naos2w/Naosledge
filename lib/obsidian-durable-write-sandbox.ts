@@ -73,6 +73,12 @@ export type SyntheticIncomingReceipt={
   automaticSyncEnabled:false;
   deleteAllowed:false;
 };
+/** M5: append-only evidence of approved, rechecked SYNTHETIC equality. */
+export type SyntheticBaselineCheckpoint={
+  id:string;slug:string;sha256:string;remoteRevision:string;
+  action:"approved-upload"|"approved-download"|"approved-restore";
+  createdAt:string;syntheticOnly:true;deleteAllowed:false;
+};
 export type DurableSyntheticReceipt={
   slug:string;beforeSha:string|null;afterSha:string;
   backupId:string|null;syntheticOnly:true;automaticSyncEnabled:false;
@@ -157,10 +163,12 @@ export async function createDurableSyntheticObsidianWorkspace(){
   const backups=path.join(folder,"backups");
   const locks=path.join(folder,"locks");
   const incoming=path.join(folder,"incoming");
+  const baselineJournal=path.join(folder,"baseline-journal");
   await mkdir(notes,{mode:0o700});
   await mkdir(backups,{mode:0o700});
   await mkdir(locks,{mode:0o700});
   await mkdir(incoming,{mode:0o700});
+  await mkdir(baselineJournal,{mode:0o700});
 
   const remote=new Map<string,Remote>();
   const baseline=new Map<string,SyncFingerprint>();
@@ -173,7 +181,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
 
   const ensureActive=async()=>{
     if(destroyed)throw Error("Synthetic workspace is closed");
-    await Promise.all([folder,notes,backups,locks,incoming].map(ensureRealDirectory));
+    await Promise.all([folder,notes,backups,locks,incoming,baselineJournal].map(ensureRealDirectory));
   };
   const notePath=(slug:string)=>{
     slugValid(slug);
@@ -206,6 +214,43 @@ export async function createDurableSyntheticObsidianWorkspace(){
         await unlink(location).catch(()=>{});
       }
       active.delete(slug);
+    }
+  }
+
+  /**
+   * Scratch-only, append-only M5 checkpoint. No caller-supplied paths, tokens,
+   * network writes, deletions or baseline import. An Incoming copy never calls
+   * this function: creating a copy is NOT a completed sync.
+   */
+  async function appendConfirmedBaseline(
+    slug:string,expectedSha:string,
+    action:SyntheticBaselineCheckpoint["action"],
+  ):Promise<void>{
+    const before=remoteFp(slug);
+    if(!HASH.test(expectedSha)||!before||before.sha256!==expectedSha||
+       await localSha(slug)!==expectedSha){
+      throw Error("M5 checkpoint refused: both synthetic sides must agree");
+    }
+    const item:SyntheticBaselineCheckpoint={
+      id:randomUUID(),slug,sha256:expectedSha,
+      remoteRevision:before.revision!,action,
+      createdAt:new Date().toISOString(),syntheticOnly:true,deleteAllowed:false,
+    };
+    const stage=path.join(baselineJournal,"."+item.id+".stage");
+    const final=path.join(baselineJournal,item.id+".json");
+    await ensureRealDirectory(baselineJournal);
+    try{
+      await writeSyncNew(stage,Buffer.from(JSON.stringify(item),"utf8"));
+      // After staging, confirm both sides STILL match, including remote revision.
+      const now=remoteFp(slug);
+      if(!now||now.sha256!==expectedSha||now.revision!==before.revision||
+         await localSha(slug)!==expectedSha){
+        throw Error("M5 checkpoint refused: source changed during verification");
+      }
+      await rename(stage,final);
+      await syncDirectoryBestEffort(baselineJournal);
+    }finally{
+      await rm(stage,{force:true}).catch(()=>{});
     }
   }
 
@@ -483,7 +528,9 @@ export async function createDurableSyntheticObsidianWorkspace(){
         if(after.sha256!==c.expectedLocalSha){
           throw Error("Synthetic upload did not reproduce the approved source");
         }
-        // Baseline advances only after an approved upload is confirmed equal.
+        // Both sides must still match before appending a durable scratch receipt.
+        // If evidence cannot be written, do not advance the in-memory baseline.
+        await appendConfirmedBaseline(slug,after.sha256,"approved-upload");
         baseline.set(slug,{slug,sha256:after.sha256});
         resetConsent();
         return {
@@ -541,6 +588,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
           }
           await replaceStaged(slug,bytes,l,args.beforeCommitForSyntheticTest,checkSource);
         }
+        await appendConfirmedBaseline(slug,c.expectedRemoteSha,"approved-download");
         baseline.set(slug,{slug,sha256:c.expectedRemoteSha});
         resetConsent();
         return {
@@ -588,16 +636,47 @@ export async function createDurableSyntheticObsidianWorkspace(){
         await replaceStaged(info.slug,data,now,args.beforeCommitForSyntheticTest);
         const remoteNow=remoteFp(info.slug);
         if(remoteNow&&remoteNow.sha256===info.beforeSha){
+          await appendConfirmedBaseline(info.slug,info.beforeSha,"approved-restore");
           baseline.set(info.slug,{slug:info.slug,sha256:info.beforeSha});
-        }else{
-          baseline.delete(info.slug);
         }
+        // M5: a local restore with a different/missing remote is NOT a
+        // synchronization. Preserve the previous baseline for manual review;
+        // never erase it because one side changed or disappeared.
         resetConsent();
         return {
           slug:info.slug,beforeSha:now,afterSha:info.beforeSha,
           backupId:undo.id,syntheticOnly:true,automaticSyncEnabled:false,
         };
       });
+    },
+    /** Read-only inspection of M5 scratch evidence (never imports/applies it). */
+    async listConfirmedSyntheticBaselines():Promise<SyntheticBaselineCheckpoint[]>{
+      await ensureActive();
+      const names=(await readdir(baselineJournal)).sort();
+      const events:SyntheticBaselineCheckpoint[]=[];
+      for(const name of names){
+        if(!/^[0-9a-f-]{36}\.json$/.test(name)){
+          throw Error("Unexpected M5 checkpoint file");
+        }
+        const bytes=await stableBytes(path.join(baselineJournal,name));
+        if(!bytes)throw Error("M5 checkpoint vanished");
+        let value:SyntheticBaselineCheckpoint;
+        try{value=JSON.parse(bytes.toString("utf8")) as SyntheticBaselineCheckpoint;}
+        catch{throw Error("Invalid M5 checkpoint JSON");}
+        if(!value||typeof value!=="object"||
+           value.id+".json"!==name||!SAFE.test(value.slug)||
+           !HASH.test(value.sha256)||
+           !/^synthetic-r[1-9][0-9]*$/.test(value.remoteRevision)||
+           !["approved-upload","approved-download","approved-restore"].includes(value.action)||
+           typeof value.createdAt!=="string"||!Number.isFinite(Date.parse(value.createdAt))||
+           value.syntheticOnly!==true||value.deleteAllowed!==false||
+           Object.keys(value).sort().join(",")!==
+             "action,createdAt,deleteAllowed,id,remoteRevision,sha256,slug,syntheticOnly"){
+          throw Error("Invalid M5 checkpoint evidence");
+        }
+        events.push({...value});
+      }
+      return events;
     },
     async listDurableBackups():Promise<DurableBackupInfo[]>{
       await ensureActive();
