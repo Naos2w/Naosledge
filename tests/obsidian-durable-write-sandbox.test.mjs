@@ -253,6 +253,58 @@ test("an independent lock file prevents competing sync jobs",async()=>{
   });
 });
 
+test("synthetic backup rejects untrusted manifest fields, identities and timestamps",async()=>{
+  const cases=[
+    {name:"unexpected path",change:x=>({...x,localPath:"../../outside"})},
+    {name:"missing required timestamp",change:x=>{const {createdAt,...rest}=x;return rest;}},
+    {name:"noncanonical timestamp",change:x=>({...x,createdAt:"2026-02-30T00:00:00.000Z"})},
+    {name:"invalid slug",change:x=>({...x,slug:"../../outside"})},
+    {name:"wrong transaction identity",change:x=>({...x,id:randomUUID()})},
+    {name:"unbounded metadata",change:x=>({...x,padding:"a".repeat(5000)}),
+      reason:/metadata exceeds safe limits/},
+  ];
+  for(const c of cases){
+    await withScratch(async box=>{
+      const approval=await sampleUpdate(box);
+      const receipt=await box.approvedDownload({
+        slug:"shared-note",confirmation:approval.confirmation,
+      });
+      const location=path.join(box.syntheticWorkspacePath,"backups",receipt.backupId+".json");
+      const original=JSON.parse(await readFile(location,"utf8"));
+      const corrupted=JSON.stringify(c.change(original));
+      await writeFile(location,corrupted);
+      await assert.rejects(box.listDurableBackups(),
+        c.reason??/integrity mismatch/,c.name);
+      await assert.rejects(box.prepareRestore(receipt.backupId),
+        c.reason??/integrity mismatch/,c.name);
+      assert.equal(await box.readLocalForSyntheticTest("shared-note"),
+        "new remote contents",c.name);
+      assert.equal(await readFile(location,"utf8"),corrupted,
+        "evidence remains for manual inspection");
+    });
+  }
+});
+
+test("changing a backup manifest after restore approval refuses restoration",async()=>{
+  await withScratch(async box=>{
+    const c=await sampleUpdate(box);
+    const receipt=await box.approvedDownload({
+      slug:"shared-note",confirmation:c.confirmation,
+    });
+    const approval=await box.prepareRestore(receipt.backupId);
+    const location=path.join(box.syntheticWorkspacePath,"backups",receipt.backupId+".json");
+    const meta=JSON.parse(await readFile(location,"utf8"));
+    await writeFile(location,JSON.stringify({...meta,createdAt:"invalid-date"}));
+    await assert.rejects(box.approvedRestore({
+      id:receipt.backupId,confirmation:approval.confirmation,
+    }),/integrity mismatch/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),
+      "new remote contents");
+    assert.equal((await readdir(path.join(box.syntheticWorkspacePath,"backups"))).length,2,
+      "no new restore backup should be generated");
+  });
+});
+
 test("corrupted persistent backup cannot be applied during restore",async()=>{
   await withScratch(async box=>{
     const c=await sampleUpdate(box);
@@ -407,6 +459,42 @@ test("late external edit after staging is detected; incoming copy is discarded",
     assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new user edit during staging");
     assert.deepEqual(await readdir(path.join(box.syntheticWorkspacePath,"incoming")),[]);
     assert.deepEqual(await box.listDurableBackups(),[]);
+  });
+});
+
+test("staging verifies persisted incoming bytes before returning a trusted SHA receipt",async()=>{
+  await withScratch(async box=>{
+    await sampleUpdate(box);
+    const stage=(await box.preview()).stageConsents[0];
+    const inbox=path.join(box.syntheticWorkspacePath,"incoming");
+    await assert.rejects(box.approvedStageIncoming({
+      slug:"shared-note",confirmation:stage.confirmation,
+      afterStageForSyntheticTest:async()=>{
+        const [filename]=await readdir(inbox);
+        assert.ok(filename,"the synthetic incoming file must exist");
+        await writeFile(path.join(inbox,filename),"corrupted incoming copy");
+      },
+    }),/incoming copy integrity mismatch/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.deepEqual(await readdir(inbox),[],"tampered copy is removed without modifying original");
+    assert.deepEqual(await box.listDurableBackups(),[]);
+  });
+});
+
+test("staging refuses an incoming file removed after fsync and leaves original unchanged",async()=>{
+  await withScratch(async box=>{
+    await sampleUpdate(box);
+    const stage=(await box.preview()).stageConsents[0];
+    const inbox=path.join(box.syntheticWorkspacePath,"incoming");
+    await assert.rejects(box.approvedStageIncoming({
+      slug:"shared-note",confirmation:stage.confirmation,
+      afterStageForSyntheticTest:async()=>{
+        const [filename]=await readdir(inbox);
+        await rm(path.join(inbox,filename));
+      },
+    }),/incoming copy integrity mismatch/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.deepEqual(await readdir(inbox),[]);
   });
 });
 
