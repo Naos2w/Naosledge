@@ -237,3 +237,94 @@ test("M5 rejects corrupt or redirected scratch journal instead of treating it as
     assert.equal(await readFile(journal(box),"utf8"),"journal replaced by file");
   });
 });
+
+test("M5 reload inspection is read-only even for a matching synthetic pair",async()=>{
+  await withScratch(async box=>{
+    assert.deepEqual((await box.inspectSyntheticBaselineReload()).notes,[],
+      "absence of evidence must never be treated as a deletion instruction");
+    await box.seedLocal("reload-note","reload source");
+    const approval=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:approval.slug,confirmation:approval.confirmation});
+    // Simulate loss of the in-memory baseline after a restart; the scratch
+    // journal remains. Inspecting it must NEVER silently import the baseline.
+    await box.setBaseline([]);
+    const report=await box.inspectSyntheticBaselineReload();
+    assert.equal(report.notes.length,1);
+    assert.equal(report.notes[0].slug,"reload-note");
+    assert.equal(report.notes[0].checkpointCount,1);
+    assert.equal(report.notes[0].status,"matches-current-pair");
+    assert.equal(report.syntheticOnly,true);
+    assert.equal(report.autoImportAllowed,false);
+    assert.equal(report.writeAllowed,false);
+    assert.equal(report.deleteAllowed,false);
+    assert.equal(report.manualReviewRequired,true);
+    await box.mutateRemote("reload-note","new independent remote edit");
+    assert.equal((await box.preview()).plan.decisions[0].choice,"conflict",
+      "inspection must not make a missing baseline look synchronized");
+  });
+});
+
+test("M5 reload inspection fails closed on stale, missing or conflicting synthetic evidence",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("stale-reload","original content");
+    const approval=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:approval.slug,confirmation:approval.confirmation});
+    assert.equal((await box.inspectSyntheticBaselineReload()).notes[0].status,
+      "matches-current-pair");
+    await box.mutateRemote("stale-reload","changed remote");
+    assert.equal((await box.inspectSyntheticBaselineReload()).notes[0].status,
+      "changed-remote","the journal revision cannot silently win");
+    const source=path.join(box.syntheticWorkspacePath,"notes","stale-reload.md");
+    await writeFile(source,"changed local");
+    assert.equal((await box.inspectSyntheticBaselineReload()).notes[0].status,
+      "changed-both");
+    await rm(source);
+    assert.equal((await box.inspectSyntheticBaselineReload()).notes[0].status,
+      "changed-both","missing notes cannot authorize deletion");
+    assert.deepEqual((await box.listConfirmedSyntheticBaselines()).map(x=>x.slug),
+      ["stale-reload"],"inspection never truncates journal evidence");
+  });
+  await withScratch(async box=>{
+    await box.seedLocal("mismatched-memory","current");
+    const approval=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:approval.slug,confirmation:approval.confirmation});
+    await box.setBaseline([{slug:"mismatched-memory",sha256:sha("prior")}]);
+    assert.equal((await box.inspectSyntheticBaselineReload()).notes[0].status,
+      "memory-baseline-disagrees");
+  });
+});
+
+test("M5 reload refuses to choose a winner among unordered historical checkpoints",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("history-note","first");
+    const approval=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:approval.slug,confirmation:approval.confirmation});
+    await box.mutateRemote("history-note","second");
+    const download=(await box.preview()).consents[0];
+    await box.approvedDownload({slug:download.slug,confirmation:download.confirmation});
+    const log=await box.listConfirmedSyntheticBaselines();
+    assert.equal(log.length,2);
+    assert.notEqual(log[0].sha256,log[1].sha256);
+    const report=await box.inspectSyntheticBaselineReload();
+    assert.equal(report.notes.length,1);
+    assert.equal(report.notes[0].status,"ambiguous-history");
+    assert.equal(report.notes[0].checkpointCount,2);
+    assert.equal(report.notes[0].checkpointId,null,
+      "UUID filenames and timestamps do not establish a trusted replay order");
+    assert.equal(report.autoImportAllowed,false);
+  });
+});
+
+test("M5 reload refuses corrupt journal and does not invent a new baseline",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("corrupt-reload","content");
+    const approval=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:approval.slug,confirmation:approval.confirmation});
+    const checkpoint=(await box.listConfirmedSyntheticBaselines())[0];
+    const checkpointPath=path.join(journal(box),checkpoint.id+".json");
+    await writeFile(checkpointPath,"{invalid");
+    await assert.rejects(box.inspectSyntheticBaselineReload(),
+      /Invalid M5 checkpoint JSON/);
+    assert.equal(await box.readLocalForSyntheticTest("corrupt-reload"),"content");
+  });
+});

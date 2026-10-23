@@ -79,6 +79,25 @@ export type SyntheticBaselineCheckpoint={
   action:"approved-upload"|"approved-download"|"approved-restore";
   createdAt:string;syntheticOnly:true;deleteAllowed:false;
 };
+/**
+ * M5 read-only recovery inspection. The random-UUID journal has no certified
+ * event order or authentication, so this is NEVER permission to restore,
+ * auto-import, synchronize, or choose a winner.
+ */
+export type SyntheticBaselineReloadPreview={
+  notes:Array<{
+    slug:string;
+    checkpointCount:number;
+    checkpointId:string|null;
+    status:"matches-current-pair"|"ambiguous-history"|
+      "memory-baseline-disagrees"|"changed-local"|"changed-remote"|"changed-both";
+  }>;
+  syntheticOnly:true;
+  autoImportAllowed:false;
+  writeAllowed:false;
+  deleteAllowed:false;
+  manualReviewRequired:true;
+};
 /** Read-only, bounded text comparison of two current SYNTHETIC conflict versions. */
 export type SyntheticConflictComparison={
   slug:string;
@@ -798,6 +817,74 @@ export async function createDurableSyntheticObsidianWorkspace(){
         events.push({...value});
       }
       return events;
+    },
+    /**
+     * M5 dry-run reload validation from persisted scratch journal evidence.
+     * Files are intentionally NOT ordered by UUID or timestamp to select a
+     * winning revision. Repeated evidence for one note is ambiguous until a
+     * future authenticated, ordered journal format is available.
+     *
+     * This never imports into baseline, creates approvals or modifies notes.
+     * A matching pair is merely a candidate for a human to recheck, NOT proof
+     * that the journal is authentic or a permit to synchronize.
+     */
+    async inspectSyntheticBaselineReload():Promise<SyntheticBaselineReloadPreview>{
+      const events=await this.listConfirmedSyntheticBaselines();
+      await ensureActive();
+      const grouped=new Map<string,SyntheticBaselineCheckpoint[]>();
+      for(const item of events){
+        const prior=grouped.get(item.slug)??[];
+        prior.push(item);
+        grouped.set(item.slug,prior);
+      }
+      const notes:SyntheticBaselineReloadPreview["notes"]=[];
+      for(const [slug,records] of [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0],"en"))){
+        if(records.length!==1){
+          notes.push({
+            slug,checkpointCount:records.length,checkpointId:null,
+            status:"ambiguous-history",
+          });
+          continue;
+        }
+        const checkpoint=records[0];
+        const initialMemory=baseline.get(slug)?.sha256??null;
+        const initialLocal=await localSha(slug);
+        const initialRemote=remoteFp(slug);
+        const localMatches=initialLocal===checkpoint.sha256;
+        const remoteMatches=initialRemote?.sha256===checkpoint.sha256&&
+          initialRemote.revision===checkpoint.remoteRevision;
+        let status:SyntheticBaselineReloadPreview["notes"][number]["status"];
+        if(initialMemory!==null&&initialMemory!==checkpoint.sha256){
+          status="memory-baseline-disagrees";
+        }else if(!localMatches&&!remoteMatches){
+          status="changed-both";
+        }else if(!localMatches){
+          status="changed-local";
+        }else if(!remoteMatches){
+          status="changed-remote";
+        }else{
+          status="matches-current-pair";
+        }
+        const nowRemote=remoteFp(slug);
+        if(await localSha(slug)!==initialLocal||
+           nowRemote?.sha256!==initialRemote?.sha256||
+           nowRemote?.revision!==initialRemote?.revision||
+           (baseline.get(slug)?.sha256??null)!==initialMemory){
+          throw Error("M5 reload source changed during inspection");
+        }
+        notes.push({slug,checkpointCount:1,checkpointId:checkpoint.id,status});
+      }
+      // A late journal append cannot be silently overlooked during a reload
+      // inspection. Refuse the preview and require a fresh complete scan.
+      const names=await readdir(baselineJournal);
+      if(names.length!==events.length||
+         !events.every(event=>names.includes(event.id+".json"))){
+        throw Error("M5 reload journal changed during inspection");
+      }
+      return {
+        notes,syntheticOnly:true,autoImportAllowed:false,
+        writeAllowed:false,deleteAllowed:false,manualReviewRequired:true,
+      };
     },
     async listDurableBackups():Promise<DurableBackupInfo[]>{
       await ensureActive();
