@@ -349,10 +349,21 @@ export async function createDurableSyntheticObsidianWorkspace(){
     const staged=path.join(notes,".staged-"+randomUUID());
     await writeSyncNew(staged,body);
     try{
+      // Keep a fingerprint of the exact fsynced scratch file, not only
+      // the bytes supplied to writeSyncNew. This is NOT native Windows CAS.
+      const stagedSha=sha(body);
+      const originalStagedIdentity=await stableNoteIdentity(staged,stagedSha)
+        .catch(()=>{throw Error("Synthetic staged replacement integrity mismatch");});
       if(hook)await hook();
       if(recheckRemote)recheckRemote();
-      // Detect corruption introduced after backup fsync but before rename.
+      // Detect corruption of either the backup or staged replacement
+      // before touching the original synthetic note.
       await requireHealthyBackupCatalog(false);
+      const currentStagedIdentity=await stableNoteIdentity(staged,stagedSha)
+        .catch(()=>{throw Error("Synthetic staged replacement integrity mismatch");});
+      if(!sameNoteIdentity(originalStagedIdentity,currentStagedIdentity)){
+        throw Error("Synthetic staged replacement identity changed");
+      }
       const currentIdentity=await stableNoteIdentity(notePath(slug),expectedLocalSha);
       if(!sameNoteIdentity(currentIdentity,expectedIdentity)){
         throw Error("Synthetic note identity changed after backup but before replacement");

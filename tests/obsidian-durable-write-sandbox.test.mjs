@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {createHash,randomUUID} from "node:crypto";
 import {execFile} from "node:child_process";
 import {promisify} from "node:util";
-import {lstat,readFile,writeFile,rm,open,access,symlink,link,readdir} from "node:fs/promises";
+import {lstat,readFile,writeFile,rm,open,access,symlink,link,readdir,rename} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import {createDurableSyntheticObsidianWorkspace} from "../lib/obsidian-durable-write-sandbox.ts";
@@ -70,6 +70,13 @@ async function sampleUpdate(box){
   const preview=await box.preview();
   assert.equal(preview.plan.decisions[0].choice,"review-download");
   return find(preview,"shared-note");
+}
+
+async function loneSyntheticStagedPath(box){
+  const notes=path.join(box.syntheticWorkspacePath,"notes");
+  const staged=(await readdir(notes)).filter(name=>/^\.staged-[0-9a-f-]+$/.test(name));
+  assert.equal(staged.length,1,"exactly one staged copy must exist inside the synthetic scratch folder");
+  return path.join(notes,staged[0]);
 }
 
 test("inert scratch preview never writes any note or backup",async()=>{
@@ -331,6 +338,63 @@ test("external child swapping identical-content inode also cancels approved rest
     assert.equal(await readFile(moved,"utf8"),"new remote contents");
     assert.equal((await box.listDurableBackups()).length,2,
       "restore abort keeps undo backup without changing original");
+  });
+});
+
+test("synthetic staged overwrite tampering refuses replacement after fsync",async()=>{
+  await withScratch(async box=>{
+    const approval=await sampleUpdate(box);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:approval.confirmation,
+      beforeCommitForSyntheticTest:async()=>{
+        await writeFile(await loneSyntheticStagedPath(box),"unexpected staged bytes");
+      },
+    }),/Synthetic staged replacement integrity mismatch/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    const backups=await box.listDurableBackups();
+    assert.equal(backups.length,1,"original backup survives refused overwrite");
+    assert.equal(await box.readBackupForSyntheticTest(backups[0].id),"old contents");
+    assert.equal((await readdir(path.join(box.syntheticWorkspacePath,"notes")))
+      .some(name=>name.startsWith(".staged-")),false,"rejected staged file is cleaned");
+  });
+});
+
+test("a deleted staged synthetic file refuses overwrite without touching the original",async()=>{
+  await withScratch(async box=>{
+    const approval=await sampleUpdate(box);
+    await assert.rejects(box.approvedDownload({
+      slug:"shared-note",confirmation:approval.confirmation,
+      beforeCommitForSyntheticTest:async()=>{
+        await rm(await loneSyntheticStagedPath(box));
+      },
+    }),/Synthetic staged replacement integrity mismatch/);
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"old contents");
+    assert.equal((await box.listDurableBackups()).length,1);
+  });
+});
+
+test("same-SHA staged inode replacement refuses synthetic restore",async()=>{
+  await withScratch(async box=>{
+    const approval=await sampleUpdate(box);
+    const written=await box.approvedDownload({
+      slug:"shared-note",confirmation:approval.confirmation,
+    });
+    const restore=await box.prepareRestore(written.backupId);
+    let preserved;
+    await assert.rejects(box.approvedRestore({
+      id:written.backupId,confirmation:restore.confirmation,
+      beforeCommitForSyntheticTest:async()=>{
+        const stage=await loneSyntheticStagedPath(box);
+        preserved=path.join(path.dirname(stage),
+          ".synthetic-staged-preserved-"+randomUUID()+".bak");
+        await rename(stage,preserved);
+        await writeFile(stage,"old contents",{flag:"wx"});
+      },
+    }),/Synthetic staged replacement identity changed/);
+    assert.equal(await readFile(preserved,"utf8"),"old contents");
+    assert.equal(await box.readLocalForSyntheticTest("shared-note"),"new remote contents");
+    assert.equal((await box.listDurableBackups()).length,2,
+      "undo backup survives refused restore without changing original");
   });
 });
 

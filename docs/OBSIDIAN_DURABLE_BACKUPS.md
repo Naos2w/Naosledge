@@ -61,6 +61,12 @@ npm run verify:obsidian:backup:sandbox -- --approve-download=shared-note --appro
 
 **界線：** 這是工具自己的合成 TEMP 沙盒保護；非合作的外部程序仍可能修改目錄／檔案，盤點與寫入不是跨程序原子快照；也沒有正式加密備份／磁碟持久化或 Windows native CAS。舊版的 `listDurableBackups()` 不應取代本安全關卡，且這次**沒有接通真正的 MSI Vault 或 Neon Production**。
 
+### 2026-10-23：合成暫存替換檔的提交前完整性檢查
+
+`replaceStaged()` 在暫存檔 fsync 後保存其 SHA-256 與 `dev`／`ino`／`size`／`mtimeMs`／`ctimeMs` 身分，執行合成測試的提交前檢查後、`rename` 之前再次開啟並核對暫存檔。內容被改寫、檔案被移除、或 SHA 相同但檔案身分已替換時，均拒絕**合成**覆寫／還原，保留原始筆記與已產生的可逆備份；失敗的 `.staged-*` 由現有 `finally` 清理。
+
+新增 3 項定向回歸涵蓋內容竄改、暫存檔消失、及同 SHA 不同檔案身分的還原拒絕；這些測試在修正前 3/3 失敗、修正後 3/3 通過；完整單元測試、TypeScript、Next.js build、10 路由關閉版安全測試及 3 種合成備份／還原示範亦全部通過。**這不是數位簽章、持久化加密備份或 Windows 原生條件式原子替換**：核對與 `rename` 之間仍有 TOCTOU，非合作外部編輯器仍可能介入，所以禁止用於正式 MSI Vault 或 Neon Production 寫入。
+
 ## 2026-10-22：Windows 跨程序競爭演練（仍僅合成沙盒）
 
 在 MSI 的 Windows 環境，測試新增以 `execFile(process.execPath)` 啟動**另一個作業系統程序**模擬外部編輯器。子程序的寫入目標由測試從工廠產生的隨機 TEMP 沙盒 `notes/` 組成，不能指定真實 Obsidian Vault、任意磁碟路徑或 Neon；所有檔案在合成測試結束時清除。
