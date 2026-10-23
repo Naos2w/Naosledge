@@ -20,6 +20,7 @@
     "verify:obsidian:vault:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-msi-vault-readonly.ts",
     "verify:obsidian:sync:sandbox": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-sync-sandbox-demo.ts",
     "verify:obsidian:manual-review:offline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/obsidian-manual-sync-*.test.mjs",
+    "verify:obsidian:m1:sandbox:first-look:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-msi-manual-preview.ts",
     "verify:obsidian:backup:sandbox": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-durable-backup-demo.ts",
     "verify:obsidian:neon:sandbox:anonymous": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-sandbox-anonymous-access.ts",
     "verify:obsidian:neon:sandbox:owner:e2e": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/smoke-obsidian-neon-owner-sandbox.ts",

@@ -12,10 +12,10 @@
 - 尚未經核准的真實 MSI Vault／Neon Production 寫入一律保持關閉。
 - **一般開發不再等待獨立 QA Agent**：由 Developer 實作並執行受影響的單元測試、型別檢查、Build、必要的 UI 測試與 GitHub CI；正式部署或真實資料寫入仍遵守既有安全／授權閘門。
 
-## 最新優先 TODO（2026-10-23）
+## 最新優先 TODO（2026-10-24）
 
-1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) 為 Ready、未合併；最新 HEAD `ebc46f992db4475ddeb34b9e6c55a998a4ac40ef`，CI #91 SUCCESS。確認分支未移動與實際差異後，獲准執行合併時合入 `main`；**合併不等於部署**。
-2. **P1｜真正的 M1 唯讀驗收**：以核准的 MSI Vault + 真正 Neon Sandbox Owner-RLS GET 取得完整指紋清單，認證失敗、超限或不完整時必須停止；此步不需一般開發 QA，但不能把合成 HTTP 測試當作真實驗收。
+1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) 仍為 Ready、未合併；截至 2026-10-24，HEAD `0a3242e` 的 CI #93 SUCCESS。以 GitHub **最新** HEAD/CI 為準，確認差異及合併授權後才能合入 `main`；**合併不等於部署**。
+2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。認證失敗、超限或不完整時必須停止；不能把合成 HTTP 測試當作真實驗收。
 3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。
 4. **P1｜M3 Sandbox 手動上傳**：按篇批准、每次重讀來源/遠端 SHA 與 revision，初次建立與更新分開測試；不得直接接到 Production。
 5. **P2｜M4/M5**：先建立不覆寫原稿的 Incoming 下載副本，再做衝突比較與持久 Baseline；任何刪除仍需另外的明確人工決定。
@@ -29,12 +29,29 @@
 | --- | --- | --- | --- |
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
 | **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 尚未驗收，不代表正式同步可用；獨立 QA 不再是一般開發前置條件** |
-| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、CI #91 SUCCESS，最新 HEAD `ebc46f9`，仍未合併／部署；合成 M2 UI 與 MSI Chrome 驗證已通過，真實資料預覽尚未接線。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
+| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、CI #93 SUCCESS（對應 HEAD `0a3242e`），仍未合併／部署；合成 M2 UI 與 MSI Chrome 驗證已通過，真實資料預覽尚未接線。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | 待開發 |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | 待開發 |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | 待開發 |
 | **M6** | 在獨立 Sandbox 做真實 Auth/RLS/API ＋ MSI 測試 | 上傳、下載、同名雙改、部分清單、網路失敗、回復與防刪案例通過，測試資料清理留證據 | 待開發 |
 | **M7** | 正式 Vault ↔ Production 受控啟用 | Owner 指定資料範圍／備份位置／逐篇授權、功能及安全驗收、精確發布 SHA 與回復計畫；遵守正式發布閘門，不以一般開發獨立 QA 作額外要求 | 需另行授權 |
+
+## M1 MSI 真人唯讀驗收入口（2026-10-24）
+
+- 已於正式 MSI 機器執行現有的 `npm run verify:obsidian:msi` 和 `npm run verify:obsidian:vault:msi`：Obsidian 已安裝，指定 Vault 的 GUI 註冊驗證通過；支援 Markdown 為 0、未掃描資料夾為 0。這**不是** Neon Owner-RLS GET。
+- `npm run verify:obsidian:m1:sandbox:first-look:msi` 是**手動**、僅限 MSI 的首次無 Baseline 唯讀入口；必須另外加 `--sandbox-first-look-readonly` 旗標，並從 stdin 管線傳入**短效、僅供 Neon Sandbox 的 Owner JWT**。它只呼叫既有固定路徑 Vault 掃描和固定 Neon Sandbox GET，沒有參數式 Vault 路徑、Production URL、寫入、刪除、下載、部署、背景輪詢、Baseline 保存或可執行的審查批准。
+- 符合條件的 MSI PowerShell 人工操作方式如下。這個示例僅供經授權真人手動操作，**不可貼上 JWT 到聊天、命令列參數、GitHub 或任何記錄檔，也絕不能改用 Production JWT**：
+
+```powershell
+$secret = Read-Host 'Short-lived Sandbox OWNER JWT' -AsSecureString
+try {
+  [System.Net.NetworkCredential]::new('', $secret).Password | node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-msi-manual-preview.ts --sandbox-first-look-readonly
+} finally {
+  Remove-Variable secret -ErrorAction SilentlyContinue
+}
+```
+
+- 終端只輸出筆數、衝突數、未涵蓋數與不允許操作旗標，不會列出 Markdown、slug、SHA 或 JWT。首次 Baseline 為 `[]`，代表「沒有既定同步基準」，**不是同步成功或任何覆寫授權**。沒有有效 Sandbox Owner JWT 時，此項仍列為待驗收，不能宣稱成功。
 
 ## M1 唯讀整合（本次提供的原型程式碼）
 

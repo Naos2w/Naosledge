@@ -1,0 +1,71 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
+import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
+import {
+  MANUAL_FIRST_LOOK_FLAG,assertManualM1Invocation,
+  readOwnerJwtFromPipe,describeManualM1Acceptance,
+} from "../scripts/obsidian-msi-manual-preview.ts";
+
+async function* pipe(...values){for(const value of values)yield value;}
+
+test("manual M1 acceptance requires MSI plus explicit first-look flag and piped JWT",()=>{
+  assert.doesNotThrow(()=>assertManualM1Invocation(
+    "win32","MSI",[MANUAL_FIRST_LOOK_FLAG],false,
+  ));
+  for(const args of [[],["--help"],[MANUAL_FIRST_LOOK_FLAG,"other"]]){
+    assert.throws(()=>assertManualM1Invocation("win32","MSI",args,false),/flag/);
+  }
+  assert.throws(()=>assertManualM1Invocation(
+    "linux","MSI",[MANUAL_FIRST_LOOK_FLAG],false,
+  ),/restricted/);
+  assert.throws(()=>assertManualM1Invocation(
+    "win32","NAOS-PC",[MANUAL_FIRST_LOOK_FLAG],false,
+  ),/restricted/);
+  assert.throws(()=>assertManualM1Invocation(
+    "win32","MSI",[MANUAL_FIRST_LOOK_FLAG],true,
+  ),/Pipe/);
+});
+
+test("M1 acceptance pipe accepts bounded 3-part token and never parses argv",async()=>{
+  const token=await readOwnerJwtFromPipe(pipe(
+    Buffer.from("short-lived."),Buffer.from("sandbox."),"signature\r\n",
+  ));
+  assert.equal(token,"short-lived.sandbox.signature");
+  for(const value of [""," \\n","token","a.b.c.d","a b.c.d","a.b.🎯"]){
+    await assert.rejects(readOwnerJwtFromPipe(pipe(value)),/JWT/);
+  }
+  await assert.rejects(
+    readOwnerJwtFromPipe(pipe("a.".padEnd(8191,"a"),"b.c")),
+    /too large/,
+  );
+});
+
+test("successful acceptance output never includes private slugs, hashes or a transfer permission",async()=>{
+  const preview=await makeSyntheticM2Preview();
+  const report=describeManualM1Acceptance(preview);
+  assert.equal(report.mode,"M1_SANDBOX_READONLY_FIRST_LOOK");
+  assert.equal(report.explicitlyNoBaseline,true);
+  assert.equal(report.conflicts,1);
+  assert.equal(report.manualReviewCount,5);
+  assert.equal(report.remoteNotes,5);
+  assert.equal(report.ownerApprovalGranted,false);
+  assert.equal(report.dataTransferred,false);
+  assert.equal(report.deleteAllowed,false);
+  assert.equal(report.baselineSaved,false);
+  const json=JSON.stringify(report);
+  for(const privateField of ["react-hooks","nextjs-routing","typescript-notes","expectedLocalSha","expectedRemoteSha","fingerprints","decisions","jwt"]){
+    assert.equal(json.includes(privateField),false);
+  }
+  assert.throws(()=>describeManualM1Acceptance({...preview,readOnly:false}),/read-only/);
+});
+
+test("manual M1 CLI is detached from the website and has no write or arbitrary-target API",async()=>{
+  const file=await readFile(new URL("../scripts/obsidian-msi-manual-preview.ts",import.meta.url),"utf8");
+  const route=await readFile(new URL("../app/vault/sync/page.tsx",import.meta.url),"utf8");
+  assert.match(file,/previewApprovedMsiSandboxSync/);
+  assert.match(file,/baseline:\[\]/);
+  assert.match(file,/process\.stdin/);
+  assert.doesNotMatch(file,/\bwriteFile\(|\brm\(|\brename\(|localStorage|sessionStorage|\.env|--jwt|process\.env|fetch\(|https?:\/\//);
+  assert.doesNotMatch(route,/obsidian-msi-manual-preview|previewApprovedMsiSandboxSync/);
+});

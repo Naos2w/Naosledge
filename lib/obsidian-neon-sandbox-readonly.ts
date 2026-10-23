@@ -84,6 +84,66 @@ async function limitedResponseText(response:Response):Promise<string>{
   return new TextDecoder("utf-8",{fatal:true}).decode(Buffer.concat(parts));
 }
 
+/**
+ * The note-list GET alone cannot prove the JWT belongs to an Owner: RLS
+ * could legitimately return 200 + [] for a non-owner. Verify the same JWT
+ * can SELECT its own blog_admins row before treating a live scan as an
+ * Owner-scoped acceptance. This is still GET-only on the pinned Sandbox.
+ */
+export async function verifyNeonSandboxOwnerRls(args:{
+  branchId:string;
+  jwt:string;
+  fetcher?:Fetcher;
+}):Promise<void>{
+  if(!args||args.branchId!==NEON_SYNC_SANDBOX_BRANCH||
+     typeof args.jwt!=="string"||args.jwt.length>8192||!JWT.test(args.jwt)){
+    throw new Error("Approved Sandbox Owner JWT is required");
+  }
+  let subject:unknown;
+  try{
+    const data=JSON.parse(Buffer.from(args.jwt.split(".")[1],"base64url").toString("utf8")) as unknown;
+    subject=data!==null&&typeof data==="object"&&!Array.isArray(data)?
+      (data as Record<string,unknown>).sub:undefined;
+  }catch{
+    throw new Error("Sandbox JWT subject unavailable");
+  }
+  if(typeof subject!=="string"||subject.length<10||subject.length>256||
+     !/^[A-Za-z0-9_-]+$/.test(subject)){
+    throw new Error("Sandbox JWT subject unavailable");
+  }
+  const endpoint=new URL(NEON_SYNC_SANDBOX_DATA_API);
+  if(endpoint.protocol!=="https:"||endpoint.hostname!==
+     "ep-square-cloud-b45d18zl.apirest.c-6.us-east-2.aws.neon.tech"||
+     endpoint.pathname!=="/neondb/rest/v1"){
+    throw new Error("Sandbox Owner RLS endpoint is not pinned");
+  }
+  const url=new URL(endpoint.href.replace(/\/$/,"")+"/blog_admins");
+  url.searchParams.set("select","user_id");
+  url.searchParams.set("user_id","eq."+subject);
+  url.searchParams.set("limit","2");
+  const response=await (args.fetcher??fetch)(url.href,{
+    method:"GET",redirect:"manual",credentials:"omit",
+    headers:{Authorization:"Bearer "+args.jwt,Accept:"application/json"},
+    signal:AbortSignal.timeout(16000),
+  });
+  if(response.status!==200||
+     !/application\/json/i.test(response.headers.get("content-type")||"")){
+    throw new Error("Sandbox Owner RLS proof was not accepted");
+  }
+  let rows:unknown;
+  try{
+    const raw=await limitedResponseText(response);
+    if(raw.length>8192)throw new Error("Oversized grant result");
+    rows=JSON.parse(raw) as unknown;
+  }catch{throw new Error("Sandbox Owner RLS proof unavailable");}
+  if(!Array.isArray(rows)||rows.length!==1||
+     !rows[0]||typeof rows[0]!=="object"||Array.isArray(rows[0])||
+     Object.keys(rows[0]).length!==1||
+     (rows[0] as Record<string,unknown>).user_id!==subject){
+    throw new Error("Sandbox JWT lacks the Owner RLS grant");
+  }
+}
+
 export async function fetchNeonSandboxFingerprints(args:{
   branchId:string;
   jwt:string;

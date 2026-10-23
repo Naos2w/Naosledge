@@ -23,6 +23,8 @@ test("approved MSI adapter pins the exact Vault, registration and Neon Sandbox r
   assert.match(src,/inspectObsidianRegistration/);
   assert.match(src,/readObsidianLocalManifest\(APPROVED_MSI_VAULT\)/);
   assert.match(src,/fetchNeonSandboxFingerprints/);
+  assert.match(src,/verifyNeonSandboxOwnerRls/);
+  assert.ok(src.indexOf("verifyNeonSandboxOwnerRls({")<src.indexOf("return fetchNeonSandboxFingerprints({"));
   assert.match(src,/branchId:NEON_SYNC_SANDBOX_BRANCH/);
   assert.match(src,/previewManualObsidianSync/);
   assert.doesNotMatch(src,/\bPOST\b|\bPATCH\b|\bDELETE\b|writeFile\(|rename\(|rm\(|setInterval\(|setTimeout\(/);

@@ -13,6 +13,7 @@ import {readObsidianLocalManifest} from "./obsidian-local-manifest.ts";
 import {inspectObsidianRegistration} from "./obsidian-vault-registration.ts";
 import {
   fetchNeonSandboxFingerprints,
+  verifyNeonSandboxOwnerRls,
   NEON_SYNC_SANDBOX_BRANCH,
 } from "./obsidian-neon-sandbox-readonly.ts";
 import {previewManualObsidianSync} from "./obsidian-manual-sync-review.ts";
@@ -48,9 +49,16 @@ export async function previewApprovedMsiSandboxSync(args:{
   // performs GET with Owner JWT through RLS only. Any failure halts preview.
   return await previewManualObsidianSync({
     readLocal:()=>readObsidianLocalManifest(APPROVED_MSI_VAULT),
-    readRemote:()=>fetchNeonSandboxFingerprints({
-      branchId:NEON_SYNC_SANDBOX_BRANCH,jwt:args.sandboxOwnerJwt,
-    }),
+    readRemote:async()=>{
+      // A 200 + [] note list could be a non-owner filtered by RLS.
+      // Require an independently RLS-visible admin grant for this JWT first.
+      await verifyNeonSandboxOwnerRls({
+        branchId:NEON_SYNC_SANDBOX_BRANCH,jwt:args.sandboxOwnerJwt,
+      });
+      return fetchNeonSandboxFingerprints({
+        branchId:NEON_SYNC_SANDBOX_BRANCH,jwt:args.sandboxOwnerJwt,
+      });
+    },
     baseline:args.baseline,
   });
 }
