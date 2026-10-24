@@ -840,6 +840,10 @@ export async function createDurableSyntheticObsidianWorkspace(){
         grouped.set(item.slug,prior);
       }
       const notes:SyntheticBaselineReloadPreview["notes"]=[];
+      const inspectedSources:Array<{
+        slug:string;localSha:string|null;remoteSha:string|null;
+        remoteRevision:string|null;baselineSha:string|null;
+      }>=[];
       for(const [slug,records] of [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0],"en"))){
         if(records.length!==1){
           notes.push({
@@ -852,6 +856,10 @@ export async function createDurableSyntheticObsidianWorkspace(){
         const initialMemory=baseline.get(slug)?.sha256??null;
         const initialLocal=await localSha(slug);
         const initialRemote=remoteFp(slug);
+        inspectedSources.push({
+          slug,localSha:initialLocal,remoteSha:initialRemote?.sha256??null,
+          remoteRevision:initialRemote?.revision??null,baselineSha:initialMemory,
+        });
         const localMatches=initialLocal===checkpoint.sha256;
         const remoteMatches=initialRemote?.sha256===checkpoint.sha256&&
           initialRemote.revision===checkpoint.remoteRevision;
@@ -884,6 +892,17 @@ export async function createDurableSyntheticObsidianWorkspace(){
       if(latest.length!==events.length||
          latest.some((item,index)=>JSON.stringify(item)!==JSON.stringify(events[index]))){
         throw Error("M5 reload journal changed during inspection");
+      }
+      // The journal may remain stable while a previously inspected note or
+      // in-memory baseline changes during the final journal check.
+      for(const seen of inspectedSources){
+        const currentRemote=remoteFp(seen.slug);
+        if(await localSha(seen.slug)!==seen.localSha||
+           (currentRemote?.sha256??null)!==seen.remoteSha||
+           (currentRemote?.revision??null)!==seen.remoteRevision||
+           (baseline.get(seen.slug)?.sha256??null)!==seen.baselineSha){
+          throw Error("M5 reload source changed during inspection");
+        }
       }
       return {
         notes,syntheticOnly:true,autoImportAllowed:false,

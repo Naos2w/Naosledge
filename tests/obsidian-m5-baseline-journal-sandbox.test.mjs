@@ -329,6 +329,30 @@ test("M5 reload refuses corrupt journal and does not invent a new baseline",asyn
   });
 });
 
+test("M5 reload rejects changes to an inspected source during final journal verification",async()=>{
+  for(const changed of ["local","remote","baseline"]){
+    await withScratch(async box=>{
+      await box.seedLocal("late-reload","approved");
+      const consent=(await box.preview()).uploadConsents[0];
+      await box.approvedUpload({slug:consent.slug,confirmation:consent.confirmation});
+      const evidence=await box.listConfirmedSyntheticBaselines();
+      await assert.rejects(box.inspectSyntheticBaselineReload({
+        beforeFinalJournalRecheckForSyntheticTest:async()=>{
+          if(changed==="local"){
+            await writeFile(path.join(box.syntheticWorkspacePath,"notes","late-reload.md"),"late local edit");
+          }else if(changed==="remote"){
+            await box.mutateRemote("late-reload","late remote edit");
+          }else{
+            await box.setBaseline([{slug:"late-reload",sha256:sha("older baseline")}]);
+          }
+        },
+      }),/M5 reload source changed during inspection/,changed);
+      assert.deepEqual(await box.listConfirmedSyntheticBaselines(),evidence,
+        "read-only inspection must preserve journal evidence");
+    });
+  }
+});
+
 test("M5 reload rejects a valid same-name checkpoint rewrite during inspection",async()=>{
   await withScratch(async box=>{
     await box.seedLocal("tamper-reload","approved");
