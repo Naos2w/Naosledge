@@ -828,7 +828,9 @@ export async function createDurableSyntheticObsidianWorkspace(){
      * A matching pair is merely a candidate for a human to recheck, NOT proof
      * that the journal is authentic or a permit to synchronize.
      */
-    async inspectSyntheticBaselineReload():Promise<SyntheticBaselineReloadPreview>{
+    async inspectSyntheticBaselineReload(args:{
+      beforeFinalJournalRecheckForSyntheticTest?:()=>Promise<void>;
+    }={}):Promise<SyntheticBaselineReloadPreview>{
       const events=await this.listConfirmedSyntheticBaselines();
       await ensureActive();
       const grouped=new Map<string,SyntheticBaselineCheckpoint[]>();
@@ -874,11 +876,13 @@ export async function createDurableSyntheticObsidianWorkspace(){
         }
         notes.push({slug,checkpointCount:1,checkpointId:checkpoint.id,status});
       }
-      // A late journal append cannot be silently overlooked during a reload
-      // inspection. Refuse the preview and require a fresh complete scan.
-      const names=await readdir(baselineJournal);
-      if(names.length!==events.length||
-         !events.every(event=>names.includes(event.id+".json"))){
+      // Re-read every validated checkpoint, not only its filename: an
+      // existing .json can be replaced without changing the directory listing.
+      // Any mid-inspection change invalidates the entire read-only preview.
+      await args.beforeFinalJournalRecheckForSyntheticTest?.();
+      const latest=await this.listConfirmedSyntheticBaselines();
+      if(latest.length!==events.length||
+         latest.some((item,index)=>JSON.stringify(item)!==JSON.stringify(events[index]))){
         throw Error("M5 reload journal changed during inspection");
       }
       return {

@@ -14,7 +14,7 @@
 
 ## 最新優先 TODO（2026-10-24）
 
-1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) Ready、尚未合併；2026-10-24 已核對 HEAD `de98e14` 的 GitHub CI #103 SUCCESS（offline unit、TypeScript、Build、release-closed 全部 success，非 skipped），且 `main` 為 `eb3023b`。**任何後續 Commit 均須重新驗證其精確 HEAD 的 CI，不得繼承 #103**；確認差異、分支保護及 Project 明確授權後才能 Merge。當前 Project 權限不包含 Merge／部署；**合併不等於部署**。
+1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) Ready、尚未合併；2026-10-24 已核對前版 HEAD `e1d0026` 的 GitHub CI #104 SUCCESS（offline unit、TypeScript、Build、release-closed 各步驟 success，非 skipped），`main` 為 `eb3023b`。**本次 M5 新 Commit 必須重新驗證其精確 HEAD 的 CI，不得沿用 #104**；確認差異、分支保護及 Project 明確授權後才能 Merge。當前 Project 權限不包含 Merge／部署；**合併不等於部署**。
 2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。新增 PostgREST `Prefer: count=exact`＋嚴格 `Content-Range`/回傳筆數一致性檢查，避免即使 Owner 驗證成功，伺服器限制筆數或未回傳完整清單時仍誤將空清單／局部清單視為 `fullInventory=true`；缺少精確總數也拒絕預覽。認證失敗、超限或不完整時必須停止；目前僅已通過離線模擬驗證，不能當成真實 Sandbox GET 成功。
 3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。**2026-10-24 已加強 M2 合成／未來唯讀預覽的資料完整性驗證**：驗證完整 Inventory、7 類差異計數、SHA／Revision、缺漏警示與逐篇方向一致；錯誤／截斷／矛盾清單一律拒絕。修正合法 slug `constructor` 被 Object 原型屬性錯認為使用者選擇的問題；但實際 Owner JWT／Neon GET 仍未接線，不能稱真實資料審查已完成。
 4. **P1｜M3 Sandbox 手動上傳**：已新增**完全隔離的合成上傳預演**（單篇隨機一次性確認、重新讀取本機 SHA 與合成遠端 SHA/revision，建立與更新分開測試、失敗不更新 Baseline）。真實 Neon Sandbox 寫入介面、站長授權整合與 MSI 實際驗收仍**未實作／未授權**，不得直接接到 Production。
@@ -29,7 +29,7 @@
 | --- | --- | --- | --- |
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
 | **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 尚未驗收，不代表正式同步可用；獨立 QA 不再是一般開發前置條件** |
-| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認前版 HEAD `497b256` 的 CI #102 SUCCESS；本輪新變更仍須新 CI 驗收；未合併／部署，真實資料預覽尚未接線。新 Commit 不繼承舊版 CI 結果。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
+| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認前版 HEAD `e1d0026` 的 CI #104 SUCCESS；本次 M5 變更仍須新 CI 驗收；未合併／部署，真實資料預覽尚未接線。新 Commit 不繼承舊版 CI 結果。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **合成 Scratch／記憶體遠端的逐篇上傳預演已完成；真正 Auth、Neon Sandbox API、真實內容傳輸待開發／授權，未正式啟用** |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | **合成 Scratch Incoming 副本預演已實作／測試；真人 Vault 或 Neon Sandbox API 尚未接線／授權** |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | **合成 Scratch 的逐篇 Baseline append-only 證據、唯讀雙版本行比較及唯讀日誌重新載入預檢已實作；衝突保留、還原不清除 Baseline 已驗證。真正可跨程序重啟並驗證來源的持久載入、正式資料層／UI 接線仍待開發** |
@@ -75,7 +75,7 @@ try {
 - 合成 Incoming 僅產生待檢視副本，**不記錄成功同步、不更新 Baseline**。若人工批准的 Restore 導致本機與遠端仍不相同，**保留既有 Baseline** 供重新比較，不得以 `baseline.delete()` 偷清除衝突依據；遠端也一致且重新驗證時才追加新證據。
 - `tests/obsidian-m5-baseline-journal-sandbox.test.mjs` 驗證成功附加、一次性授權、復原時衝突保留、不完整或偽造日誌拒絕、Incoming 不變動等。**仍不是正式 Baseline 資料庫**：Scratch 由工廠銷毀且沒有正式持久載入／遷移設計，真正 MSI／Neon Sandbox E2E 與持續保留策略仍待完成。
 - **2026-10-24 本輪 M5 唯讀內容比較**：`compareSyntheticConflict()` 僅讀同一隨機 Scratch 中的合成雙邊版本，先確認 M1 決策為 `conflict`、SHA + revision 未過期，並在輸出前再次驗證；行比較保留變更前後脈絡，最多約 86 行、每行最多 160 個 Unicode 字元，額外標註省略行與僅換行格式差異。比較不會發出授權碼、合併、寫入、刪除或更動 Baseline，也不將 Markdown 放入 CI。測試涵蓋一般衝突、版本過期、非衝突、長文節流及 CRLF/LF。**此為合成比較原型，不是實際私人 Vault UI 或 Neon 資料傳輸。**
-- **2026-10-24 M5 重載預檢**：`inspectSyntheticBaselineReload()` 僅在同一隨機 Scratch 重新讀取格式合格的 checkpoint，並與當下合成 Local SHA、Remote SHA/revision 及既有記憶體 Baseline 交叉核對；可標記雙邊吻合、版本過期、Baseline 不同與多筆歷史歧義。UUID 檔名及時間戳**不能作為可信寫入順序**；多筆同名紀錄不選最新，檔案損壞或讀取中變動就拒絕。即使雙邊吻合，日誌也沒有可跨程序認證的簽章／交易順序，因此**只是人工驗證候選、不能自動匯入 Baseline、授權寫入、覆寫、刪除或同步**。14 項 M5 專項測試全數通過；仍需另設可信交易格式與真正跨程序重啟 E2E，才能設計正式持久載入。
+- **2026-10-24 M5 重載預檢**：`inspectSyntheticBaselineReload()` 僅在同一隨機 Scratch 重新讀取格式合格的 checkpoint，並與當下合成 Local SHA、Remote SHA/revision 及既有記憶體 Baseline 交叉核對；可標記雙邊吻合、版本過期、Baseline 不同與多筆歷史歧義。UUID 檔名及時間戳**不能作為可信寫入順序**；多筆同名紀錄不選最新，檔案損壞或讀取中變動就拒絕。即使雙邊吻合，日誌也沒有可跨程序認證的簽章／交易順序，因此**只是人工驗證候選、不能自動匯入 Baseline、授權寫入、覆寫、刪除或同步**。2026-10-24 再補上**重載結尾重新讀取每份 checkpoint**，不僅比對檔名清單，還拒絕檢查期間同名 JSON 被替換成另一份格式合法但內容不同的紀錄；新增確定性競態測試。M5 專項測試目前 15 項通過（本機）；仍需另設可信交易格式與真正跨程序重啟 E2E，才能設計正式持久載入。
 
 ## M6 合成跨階段安全回歸（2026-10-24，非真實 E2E）
 

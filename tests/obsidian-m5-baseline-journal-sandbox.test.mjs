@@ -328,3 +328,26 @@ test("M5 reload refuses corrupt journal and does not invent a new baseline",asyn
     assert.equal(await box.readLocalForSyntheticTest("corrupt-reload"),"content");
   });
 });
+
+test("M5 reload rejects a valid same-name checkpoint rewrite during inspection",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("tamper-reload","approved");
+    const consent=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:consent.slug,confirmation:consent.confirmation});
+    const original=(await box.listConfirmedSyntheticBaselines())[0];
+    const location=path.join(journal(box),original.id+".json");
+    await assert.rejects(box.inspectSyntheticBaselineReload({
+      beforeFinalJournalRecheckForSyntheticTest:async()=>{
+        // File names and count stay unchanged, but the checkpoint contents
+        // have been replaced with another well-formed (untrusted) record.
+        await writeFile(location,JSON.stringify({
+          ...original,sha256:"0".repeat(64),
+        }));
+      },
+    }),/M5 reload journal changed during inspection/);
+    assert.equal(await box.readLocalForSyntheticTest("tamper-reload"),"approved");
+    assert.equal((await readdir(journal(box))).length,1);
+    assert.equal((await box.preview()).plan.decisions[0].choice,"unchanged",
+      "a rejected reload must never change the in-memory baseline");
+  });
+});
