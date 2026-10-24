@@ -109,9 +109,20 @@ export async function previewManualObsidianSync(args:{
   // Validate the untrusted previous baseline BEFORE making any filesystem or
   // remote read. Invalid/oversized baselines cannot trigger unnecessary I/O.
   planObsidianReconciliation({local:[],remote:[],baseline:args.baseline});
+  // Capture the initially approved baseline before yielding to either reader.
+  // An in-memory caller must not be able to change a valid baseline while an
+  // awaited Owner-RLS GET is running and quietly change conflict directions.
+  const initialBaseline=JSON.stringify(args.baseline);
   let local:ReadOnlyLocalManifest;
-  try{local=localSnapshot(await args.readLocal());}
-  catch{throw Error("Local Obsidian inventory unavailable; no preview");}
+  try{
+    local=localSnapshot(await args.readLocal());
+    // Invalid local fingerprints must stop BEFORE any remote Owner GET.
+    planObsidianReconciliation({local:local.fingerprints,remote:[],baseline:args.baseline});
+  }catch{throw Error("Local Obsidian inventory unavailable; no preview");}
+  if(JSON.stringify(args.baseline)!==initialBaseline){
+    throw Error("Sync baseline changed during preview; no preview");
+  }
+  const initialLocal=JSON.stringify(local);
 
   let remote:RemoteSandboxSnapshot;
   try{remote=remoteSnapshot(await args.readRemote());}
@@ -124,8 +135,11 @@ export async function previewManualObsidianSync(args:{
   let localAfterRemote:ReadOnlyLocalManifest;
   try{localAfterRemote=localSnapshot(await args.readLocal());}
   catch{throw Error("Local Obsidian inventory unavailable after remote read; no preview");}
-  if(JSON.stringify(localAfterRemote)!==JSON.stringify(local)){
+  if(JSON.stringify(localAfterRemote)!==initialLocal){
     throw Error("Local Obsidian inventory changed during remote read; no preview");
+  }
+  if(JSON.stringify(args.baseline)!==initialBaseline){
+    throw Error("Sync baseline changed during preview; no preview");
   }
 
   // The mature pure planner validates sha256, safe slug, duplicate notes,
