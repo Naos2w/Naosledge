@@ -57,6 +57,11 @@ export async function readObsidianLocalManifest(folder:string):Promise<ReadOnlyL
       }
       continue;
     }
+    // A linked folder may hide Markdown outside this root. Treating it as an
+    // ordinary "other file" would falsely mark local note coverage complete.
+    if(child.isSymbolicLink()){
+      throw new Error("Obsidian root symlinks or junctions cannot be scanned safely");
+    }
     if(child.isDirectory()){
       directoriesNotScanned++;
       continue;
@@ -64,9 +69,6 @@ export async function readObsidianLocalManifest(folder:string):Promise<ReadOnlyL
     if(!/\.md$/i.test(child.name)){
       otherFiles++;
       continue;
-    }
-    if(child.isSymbolicLink()){
-      throw new Error("Obsidian Markdown symlinks are not eligible for fingerprinting");
     }
     const slug=child.name.slice(0,-3);
     if(!SLUG.test(slug)||slug.length<3||slug.length>120){

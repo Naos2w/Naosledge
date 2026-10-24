@@ -157,6 +157,25 @@ test("real config alone is ready; nested notes and Chinese root names independen
   });
 });
 
+test("linked note folder fails closed before any mock remote inventory read",async t=>{
+  await withScratch(async root=>{
+    await withScratch(async target=>{
+      await writeFile(path.join(target,"hidden-note.md"),"synthetic linked note");
+      try{await symlink(target,path.join(root,"nested-notes"),process.platform==="win32"?"junction":"dir");}
+      catch(error){
+        if(["EPERM","EACCES","ENOSYS"].includes(error?.code)){t.skip("OS disallows directory links");return;}
+        throw error;
+      }
+      let remoteCalls=0;
+      await assert.rejects(previewManualObsidianSync({
+        readLocal:()=>readObsidianLocalManifest(root),
+        readRemote:async()=>{remoteCalls++;return remote([]);},baseline:[],
+      }),/Local Obsidian inventory unavailable/);
+      assert.equal(remoteCalls,0);
+    });
+  });
+});
+
 test("linked .obsidian fails closed before any mock remote inventory read",async t=>{
   await withScratch(async root=>{
     await withScratch(async target=>{

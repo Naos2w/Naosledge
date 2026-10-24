@@ -188,9 +188,9 @@ for(const name of [".obsidian","nested-notes"]){
         if(name===".obsidian"){
           await assert.rejects(readObsidianLocalManifest(root),/link or redirect/);
         }else{
-          const result=await readObsidianLocalManifest(root);
-          assert.deepEqual(result.fingerprints,[]);
-          assert.equal(result.otherFiles+result.directoriesNotScanned,1);
+          // A junction to Markdown outside the Vault must not make coverage
+          // look complete merely by counting it as an unrelated file.
+          await assert.rejects(readObsidianLocalManifest(root),/symlinks or junctions/);
         }
       });
     });
