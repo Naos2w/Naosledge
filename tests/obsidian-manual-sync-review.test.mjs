@@ -245,6 +245,34 @@ test("shared mutable local manifest cannot hide an edit during Owner-RLS GET",as
   assert.equal(reads,2);
 });
 
+test("shared mutable remote snapshots cannot change while local fingerprints are rechecked",async()=>{
+  for(const mutation of ["fingerprint","completeness","count"]){
+    const fromNeon=remote([fp("shared-note","cloud-before","rev-1")]);
+    let localReads=0,remoteReads=0;
+    await assert.rejects(previewManualObsidianSync({
+      baseline:[],
+      readLocal:async()=>{
+        localReads++;
+        if(localReads===2){
+          // A local provider must not be able to alter a cached remote
+          // snapshot that was already accepted by the Owner-RLS reader.
+          if(mutation==="fingerprint")fromNeon.fingerprints[0].sha256=sha("cloud-after");
+          if(mutation==="completeness")fromNeon.fullInventory=false;
+          if(mutation==="count")fromNeon.numberOfNotes=0;
+        }
+        return local([fp("shared-note","local-version")]);
+      },
+      readRemote:async()=>{remoteReads++;return fromNeon;},
+    }),err=>{
+      assert.match(err.message,/Remote Sandbox inventory changed during local recheck/);
+      assert.doesNotMatch(err.message,/cloud-before|cloud-after|Bearer|JWT/);
+      return true;
+    });
+    assert.equal(localReads,2);
+    assert.equal(remoteReads,1);
+  }
+});
+
 test("malformed local fingerprints never trigger a remote Owner-RLS GET",async()=>{
   let remoteCalls=0;
   await assert.rejects(previewManualObsidianSync({

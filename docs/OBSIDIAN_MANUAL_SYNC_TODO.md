@@ -14,7 +14,7 @@
 
 ## 最新優先 TODO（2026-10-24）
 
-1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) Ready、尚未合併；2026-10-24 已核對 HEAD `0a2237d` 的 [GitHub CI #108](https://github.com/Naos2w/Naosledge/actions/runs/40070181884) SUCCESS（offline unit、TypeScript、Build、release-closed 各步驟 success，非 skipped），`main` 為 `eb3023b`。**本輪新增 M1 mutable-baseline／cached-manifest 競態保護後仍須核對新 Commit 的精確 HEAD CI，不得沿用 #108**；確認差異、分支保護及 Project 明確授權後才能 Merge。當前 Project 權限不包含 Merge／部署；**合併不等於部署**。
+1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) Ready、尚未合併；2026-10-24 已核對前一版 HEAD `2e4955f` 的 [GitHub CI #109](https://github.com/Naos2w/Naosledge/actions/runs/40074657374) SUCCESS（offline unit、TypeScript、Build、release-closed 各步驟 success，非 skipped），`main` 為 `eb3023b`。**本輪新增 M1 遠端共享快照完整性保護後仍須核對新 Commit 的精確 HEAD CI，不得沿用 #109**；確認差異、分支保護及 Project 明確授權後才能 Merge。當前 Project 權限不包含 Merge／部署；**合併不等於部署**。
 2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。新增 PostgREST `Prefer: count=exact`＋嚴格 `Content-Range`/回傳筆數一致性檢查，避免即使 Owner 驗證成功，伺服器限制筆數或未回傳完整清單時仍誤將空清單／局部清單視為 `fullInventory=true`；缺少精確總數也拒絕預覽。認證失敗、超限或不完整時必須停止；目前僅已通過離線模擬驗證，不能當成真實 Sandbox GET 成功。
 3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。**2026-10-24 已加強 M2 合成／未來唯讀預覽的資料完整性驗證**：驗證完整 Inventory、7 類差異計數、SHA／Revision、缺漏警示與逐篇方向一致；錯誤／截斷／矛盾清單一律拒絕。修正合法 slug `constructor` 被 Object 原型屬性錯認為使用者選擇的問題；但實際 Owner JWT／Neon GET 仍未接線，不能稱真實資料審查已完成。
 4. **P1｜M3 Sandbox 手動上傳**：已新增**完全隔離的合成上傳預演**（單篇隨機一次性確認、重新讀取本機 SHA 與合成遠端 SHA/revision，建立與更新分開測試、失敗不更新 Baseline）。真實 Neon Sandbox 寫入介面、站長授權整合與 MSI 實際驗收仍**未實作／未授權**，不得直接接到 Production。
@@ -29,7 +29,7 @@
 | --- | --- | --- | --- |
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
 | **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 尚未驗收，不代表正式同步可用；獨立 QA 不再是一般開發前置條件** |
-| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認上一版 HEAD `0a2237d` 的 CI #108 SUCCESS；本輪 M1 預覽競態保護 Commit 須重新驗證精確 HEAD CI；未合併／部署，真實資料預覽尚未接線。新 Commit 不繼承舊版 CI 結果。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
+| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認上一版 HEAD `2e4955f` 的 CI #109 SUCCESS；本輪 M1 遠端快照競態保護 Commit 須重新驗證精確 HEAD CI；未合併／部署，真實資料預覽尚未接線。新 Commit 不繼承舊版 CI 結果。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **合成 Scratch／記憶體遠端的逐篇上傳預演已完成；真正 Auth、Neon Sandbox API、真實內容傳輸待開發／授權，未正式啟用** |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | **合成 Scratch Incoming 副本預演已實作／測試；真人 Vault 或 Neon Sandbox API 尚未接線／授權** |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | **合成 Scratch 的逐篇 Baseline append-only 證據、唯讀雙版本行比較及唯讀日誌重新載入預檢已實作；衝突保留、還原不清除 Baseline 已驗證。真正可跨程序重啟並驗證來源的持久載入、正式資料層／UI 接線仍待開發** |
@@ -38,6 +38,7 @@
 
 ## M1 MSI 真人唯讀驗收入口（2026-10-24）
 
+- **2026-10-24 M1 遠端唯讀快照一致性**：`previewManualObsidianSync()` 在 Owner-RLS Reader 取得遠端完整清單後，先記錄當次遠端指紋與完整性旗標的不可共用序列化快照；第二次本機唯讀掃描完成後，再確認遠端 Reader 提供的物件沒有被其他 callback 更動。若 SHA、`fullInventory` 或 `numberOfNotes` 被改動，拒絕預覽，不能把已驗證過的清單誤當成目前清單。新增三種確定性模擬測試；**僅是離線邏輯保護，不等於再次讀取真正 Neon，也不授權任何傳輸**。
 - **2026-10-24 本輪唯讀預覽參考競態保護**：`previewManualObsidianSync()` 在執行非同步本機與遠端 Reader 前記住 Baseline 的原始指紋，於首次本機讀取後及最終規劃前檢查 Baseline 未變；並對首次本機 Manifest 留下獨立序列化快照，防止 Reader 重用同一可變物件時掩蓋遠端 GET 期間的筆記變更。首次本機指紋不合法即拒絕且不啟動遠端 Owner GET。新增三種離線確定性回歸測試，**不涉及任何真實 Vault／Neon 寫入，也不能替代真正的 Sandbox Owner-RLS 驗收或傳輸前版本重驗**。
 - **2026-10-24 M1 Owner-RLS 清單禁止快取**：對固定 Neon Sandbox 的 `blog_admins` Owner 身分 GET 和 `knowledge_notes` 清單 GET 都明確設定 `cache: "no-store"` 及 `Cache-Control: no-store`，防止未來在支援 fetch 快取的執行環境誤用舊的 Owner 授權或筆記清單；合成 HTTP 測試確認兩個請求都使用相同禁快取契約。這只是唯讀請求防護，不等於已取得真正 Sandbox JWT／遠端驗收，也不授權寫入或同步。
 - **2026-10-24 M1 遠端 GET 期間本機變更防護**：`previewManualObsidianSync()` 在取得完整 Owner-RLS 遠端清單後，會再次唯讀掃描本機，並比較所有已掃描指紋與未涵蓋內容計數；若遠端請求期間發生本機內容變更、新增未掃描資料夾，或第二次掃描失敗，一律拒絕過期預覽。新增真實合成 FS + 模擬遠端的確定性回歸測試。這不能取代真正傳輸前的雙邊版本重驗，也不是鎖定檔案、Sandbox 真實 GET 或正式同步啟用。

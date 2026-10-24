@@ -127,6 +127,11 @@ export async function previewManualObsidianSync(args:{
   let remote:RemoteSandboxSnapshot;
   try{remote=remoteSnapshot(await args.readRemote());}
   catch{throw Error("Full owner-RLS Neon Sandbox inventory unavailable; no preview");}
+  // A provider may hand back a shared mutable snapshot. Capture what the
+  // Owner-RLS GET actually returned before awaiting the second local scan.
+  // Otherwise that scan could change the remote list or its completeness
+  // flags, and the planner would consume an unverified version.
+  const initialRemote=JSON.stringify(remote);
 
   // The Owner-RLS GET can outlast a local edit. Never return a supposedly
   // current review if the on-disk fingerprints or scan coverage changed while
@@ -137,6 +142,9 @@ export async function previewManualObsidianSync(args:{
   catch{throw Error("Local Obsidian inventory unavailable after remote read; no preview");}
   if(JSON.stringify(localAfterRemote)!==initialLocal){
     throw Error("Local Obsidian inventory changed during remote read; no preview");
+  }
+  if(JSON.stringify(remote)!==initialRemote){
+    throw Error("Remote Sandbox inventory changed during local recheck; no preview");
   }
   if(JSON.stringify(args.baseline)!==initialBaseline){
     throw Error("Sync baseline changed during preview; no preview");
