@@ -20,6 +20,7 @@ import {readObsidianLocalManifest} from "./obsidian-local-manifest.ts";
 const PREFIX="naosledge-durable-synthetic-only-";
 const SAFE=/^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HASH=/^[0-9a-f]{64}$/;
+const CHECKPOINT_UUID_V4=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const MAX_BYTES=250_000;
 const MAX_MINUTES=10;
 
@@ -795,7 +796,8 @@ export async function createDurableSyntheticObsidianWorkspace(){
       const names=(await readdir(baselineJournal)).sort();
       const events:SyntheticBaselineCheckpoint[]=[];
       for(const name of names){
-        if(!/^[0-9a-f-]{36}\.json$/.test(name)){
+        if(!name.endsWith(".json")||
+           !CHECKPOINT_UUID_V4.test(name.slice(0,-5))){
           throw Error("Unexpected M5 checkpoint file");
         }
         const bytes=await stableBytes(path.join(baselineJournal,name));
@@ -804,7 +806,8 @@ export async function createDurableSyntheticObsidianWorkspace(){
         try{value=JSON.parse(bytes.toString("utf8")) as SyntheticBaselineCheckpoint;}
         catch{throw Error("Invalid M5 checkpoint JSON");}
         if(!value||typeof value!=="object"||
-           value.id+".json"!==name||!SAFE.test(value.slug)||
+           value.id+".json"!==name||typeof value.slug!=="string"||
+           value.slug.length<3||value.slug.length>120||!SAFE.test(value.slug)||
            !HASH.test(value.sha256)||
            !/^synthetic-r[1-9][0-9]*$/.test(value.remoteRevision)||
            !["approved-upload","approved-download","approved-restore"].includes(value.action)||

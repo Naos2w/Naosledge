@@ -315,6 +315,29 @@ test("M5 reload refuses to choose a winner among unordered historical checkpoint
   });
 });
 
+test("M5 read-only journal rejects forged checkpoint IDs and oversized slugs",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("format-guard","approved");
+    const consent=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:consent.slug,confirmation:consent.confirmation});
+    const good=(await box.listConfirmedSyntheticBaselines())[0];
+    const forgedId="00000000-0000-0000-0000-000000000000";
+    const forgedPath=path.join(journal(box),forgedId+".json");
+    await writeFile(forgedPath,JSON.stringify({...good,id:forgedId}));
+    await assert.rejects(box.listConfirmedSyntheticBaselines(),
+      /Unexpected M5 checkpoint file/,
+      "an arbitrary 36-character hex/dash name is not a generated UUID v4");
+    await rm(forgedPath);
+
+    const goodPath=path.join(journal(box),good.id+".json");
+    await writeFile(goodPath,JSON.stringify({...good,slug:"a".repeat(121)}));
+    await assert.rejects(box.listConfirmedSyntheticBaselines(),
+      /Invalid M5 checkpoint evidence/,
+      "a structurally valid JSON record may still exceed the slug contract");
+    assert.equal(await box.readLocalForSyntheticTest("format-guard"),"approved");
+  });
+});
+
 test("M5 reload refuses corrupt journal and does not invent a new baseline",async()=>{
   await withScratch(async box=>{
     await box.seedLocal("corrupt-reload","content");
