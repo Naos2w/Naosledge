@@ -5,6 +5,7 @@ import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
 import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 import {
   chooseReviewIntent,reviewIntentOptions,summariseReviewIntents,
+  serializeManualM2Handoff,parseManualM2Handoff,
 } from "../lib/obsidian-m2-review-choices.ts";
 
 test("M2 fixture uses M1's actual reconciliation engine with all necessary statuses",async()=>{
@@ -176,4 +177,26 @@ test("M2 only counts OWN choices for valid Object.prototype-like note slugs",asy
   assert.equal(summariseReviewIntents(preview,own).pending,0);
   assert.throws(()=>chooseReviewIntent(preview,{"not-in-preview":"skip"},
     "constructor","upload"),/does not match/);
+});
+
+test("M2 manual JSON handoff carries only validated, non-executable metadata",async()=>{
+  const preview=await makeSyntheticM2Preview();
+  const json=serializeManualM2Handoff(preview);
+  assert.deepEqual(parseManualM2Handoff(json),preview);
+  assert.equal(json.includes("content_md"),false);
+  assert.equal(json.includes("sandboxOwnerJwt"),false);
+  const envelope=JSON.parse(json);
+  for(const bad of [
+    "not json",
+    "x".repeat(512_001),
+    JSON.stringify({...envelope,format:"unexpected"}),
+    JSON.stringify({...envelope,jwt:"never allow private credentials"}),
+    JSON.stringify({...envelope,preview:{...preview,content_md:"private"}}),
+    JSON.stringify({...envelope,preview:{...preview,readOnly:false}}),
+    JSON.stringify({...envelope,preview:{...preview,
+      decisions:preview.decisions.map(d=>d.expectedRemoteSha?
+        {...d,expectedRemoteRevision:null}:d)}}),
+  ]){
+    assert.throws(()=>parseManualM2Handoff(bad),/M2|JSON/);
+  }
 });
