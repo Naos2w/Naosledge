@@ -23,6 +23,8 @@ test("M1 live owner proof uses GET-only exact Sandbox RLS admin self-grant",asyn
     assert.equal(request.method,"GET");
     assert.equal(request.redirect,"manual");
     assert.equal(request.credentials,"omit");
+    assert.equal(request.cache,"no-store");
+    assert.equal(request.headers["Cache-Control"],"no-store");
     assert.equal(request.headers.Authorization,"Bearer "+jwt);
     assert.equal(request.body,undefined);
     return json([{user_id:sub}]);

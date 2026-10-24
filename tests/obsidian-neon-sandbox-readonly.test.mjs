@@ -39,6 +39,8 @@ test("RLS-only GET goes exclusively to the approved Neon integration sandbox",as
     assert.equal(opts.method,"GET");
     assert.equal(opts.redirect,"manual");
     assert.equal(opts.credentials,"omit");
+    assert.equal(opts.cache,"no-store");
+    assert.equal(opts.headers["Cache-Control"],"no-store");
     assert.equal(opts.headers.Authorization,"Bearer "+jwt);
     assert.equal(opts.headers.Accept,"application/json");
     assert.equal(opts.headers.Prefer,"count=exact");

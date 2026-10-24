@@ -122,8 +122,9 @@ export async function verifyNeonSandboxOwnerRls(args:{
   url.searchParams.set("user_id","eq."+subject);
   url.searchParams.set("limit","2");
   const response=await (args.fetcher??fetch)(url.href,{
-    method:"GET",redirect:"manual",credentials:"omit",
-    headers:{Authorization:"Bearer "+args.jwt,Accept:"application/json"},
+    method:"GET",redirect:"manual",credentials:"omit",cache:"no-store",
+    headers:{Authorization:"Bearer "+args.jwt,Accept:"application/json",
+      "Cache-Control":"no-store"},
     signal:AbortSignal.timeout(16000),
   });
   if(response.status!==200||
@@ -170,9 +171,10 @@ export async function fetchNeonSandboxFingerprints(args:{
 
   const fetcher=args.fetcher??fetch;
   const response=await fetcher(query.href,{
-    method:"GET",redirect:"manual",credentials:"omit",
+    method:"GET",redirect:"manual",credentials:"omit",cache:"no-store",
     headers:{
       Authorization:"Bearer "+args.jwt,Accept:"application/json",
+      "Cache-Control":"no-store",
       // A row limit alone cannot prove the server returned a COMPLETE RLS
       // inventory: PostgREST can impose a smaller server-side max_rows.
       Prefer:"count=exact",
