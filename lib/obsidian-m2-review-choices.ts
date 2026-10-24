@@ -163,6 +163,43 @@ export function chooseReviewIntent(
   return {...current,[slug]:intent};
 }
 
+export const MANUAL_M2_HANDOFF_FORMAT="naosledge.m2.sandbox-readonly.v1";
+export const MANUAL_M2_HANDOFF_MAX_BYTES=512_000;
+
+/** Explicit MSI -> browser handoff; never a server request or write approval. */
+export function serializeManualM2Handoff(preview:ManualReviewPreview):string{
+  summariseReviewIntents(preview,{});
+  const text=JSON.stringify({format:MANUAL_M2_HANDOFF_FORMAT,preview});
+  if(new TextEncoder().encode(text).length>MANUAL_M2_HANDOFF_MAX_BYTES){
+    throw Error("M2 read-only handoff exceeds size limit");
+  }
+  return text;
+}
+
+/** File content is treated as untrusted even after a manual Owner import. */
+export function parseManualM2Handoff(text:string):ManualReviewPreview{
+  if(typeof text!=="string"||new TextEncoder().encode(text).length>MANUAL_M2_HANDOFF_MAX_BYTES){
+    throw Error("M2 read-only handoff is missing or oversized");
+  }
+  let document:unknown;
+  try{document=JSON.parse(text) as unknown;}
+  catch{throw Error("M2 read-only handoff is not valid JSON");}
+  if(!exactFields(document,["format","preview"])||
+     (document as Record<string,unknown>).format!==MANUAL_M2_HANDOFF_FORMAT){
+    throw Error("M2 read-only handoff format is invalid");
+  }
+  const preview=(document as Record<string,unknown>).preview;
+  if(!exactFields(preview,[
+    "sandboxOnly","readOnly","manualTriggerOnly","autoApplyAllowed",
+    "automaticSyncEnabled","automaticDeleteEnabled","baselinePersisted",
+    "previewStatus","inventory","decisions","summary","manualReviewCount",
+    "conflicts","possibleDeletionsNeverApplied",
+  ]))throw Error("M2 read-only handoff contains unexpected fields");
+  // This also checks every note's direction, fingerprints and inventory totals.
+  summariseReviewIntents(preview as ManualReviewPreview,{});
+  return preview as ManualReviewPreview;
+}
+
 export function summariseReviewIntents(
   preview:ManualReviewPreview,
   selected:ReviewIntentSelections,
