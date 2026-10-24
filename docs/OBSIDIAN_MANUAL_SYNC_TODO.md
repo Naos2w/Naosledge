@@ -14,7 +14,7 @@
 
 ## 最新優先 TODO（2026-10-24）
 
-1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) Ready、尚未合併；2026-10-24 已核對前版 HEAD `b946d81` 的 GitHub CI #105 SUCCESS（offline unit、TypeScript、Build、release-closed 各步驟 success，非 skipped），`main` 為 `eb3023b`。**本次 M5 末段來源再驗證的新 Commit 必須重新驗證其精確 HEAD 的 CI，不得沿用 #105**；確認差異、分支保護及 Project 明確授權後才能 Merge。當前 Project 權限不包含 Merge／部署；**合併不等於部署**。
+1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) Ready、尚未合併；2026-10-24 已核對前版 HEAD `46ee1b4` 的 GitHub CI #106 SUCCESS（offline unit、TypeScript、Build、release-closed 各步驟 success，非 skipped），`main` 為 `eb3023b`。**本次新增 M1 遠端讀取期間本機變更偵測的 Commit 仍須核對其精確 HEAD CI，不得沿用 #106**；確認差異、分支保護及 Project 明確授權後才能 Merge。當前 Project 權限不包含 Merge／部署；**合併不等於部署**。
 2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。新增 PostgREST `Prefer: count=exact`＋嚴格 `Content-Range`/回傳筆數一致性檢查，避免即使 Owner 驗證成功，伺服器限制筆數或未回傳完整清單時仍誤將空清單／局部清單視為 `fullInventory=true`；缺少精確總數也拒絕預覽。認證失敗、超限或不完整時必須停止；目前僅已通過離線模擬驗證，不能當成真實 Sandbox GET 成功。
 3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。**2026-10-24 已加強 M2 合成／未來唯讀預覽的資料完整性驗證**：驗證完整 Inventory、7 類差異計數、SHA／Revision、缺漏警示與逐篇方向一致；錯誤／截斷／矛盾清單一律拒絕。修正合法 slug `constructor` 被 Object 原型屬性錯認為使用者選擇的問題；但實際 Owner JWT／Neon GET 仍未接線，不能稱真實資料審查已完成。
 4. **P1｜M3 Sandbox 手動上傳**：已新增**完全隔離的合成上傳預演**（單篇隨機一次性確認、重新讀取本機 SHA 與合成遠端 SHA/revision，建立與更新分開測試、失敗不更新 Baseline）。真實 Neon Sandbox 寫入介面、站長授權整合與 MSI 實際驗收仍**未實作／未授權**，不得直接接到 Production。
@@ -29,7 +29,7 @@
 | --- | --- | --- | --- |
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
 | **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 尚未驗收，不代表正式同步可用；獨立 QA 不再是一般開發前置條件** |
-| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認前版 HEAD `b946d81` 的 CI #105 SUCCESS；本次 M5 末段競態變更仍須新 CI 驗收；未合併／部署，真實資料預覽尚未接線。新 Commit 不繼承舊版 CI 結果。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
+| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認前版 HEAD `46ee1b4` 的 CI #106 SUCCESS；本次 M1 本機重讀保護仍須新 CI 驗收；未合併／部署，真實資料預覽尚未接線。新 Commit 不繼承舊版 CI 結果。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **合成 Scratch／記憶體遠端的逐篇上傳預演已完成；真正 Auth、Neon Sandbox API、真實內容傳輸待開發／授權，未正式啟用** |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | **合成 Scratch Incoming 副本預演已實作／測試；真人 Vault 或 Neon Sandbox API 尚未接線／授權** |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | **合成 Scratch 的逐篇 Baseline append-only 證據、唯讀雙版本行比較及唯讀日誌重新載入預檢已實作；衝突保留、還原不清除 Baseline 已驗證。真正可跨程序重啟並驗證來源的持久載入、正式資料層／UI 接線仍待開發** |
@@ -38,6 +38,7 @@
 
 ## M1 MSI 真人唯讀驗收入口（2026-10-24）
 
+- **2026-10-24 M1 遠端 GET 期間本機變更防護**：`previewManualObsidianSync()` 在取得完整 Owner-RLS 遠端清單後，會再次唯讀掃描本機，並比較所有已掃描指紋與未涵蓋內容計數；若遠端請求期間發生本機內容變更、新增未掃描資料夾，或第二次掃描失敗，一律拒絕過期預覽。新增真實合成 FS + 模擬遠端的確定性回歸測試。這不能取代真正傳輸前的雙邊版本重驗，也不是鎖定檔案、Sandbox 真實 GET 或正式同步啟用。
 - **本輪本機覆蓋率安全修正**：`lib/obsidian-local-manifest.ts` 不再把 Vault 根目錄的符號連結／Windows junction（例如連到外部 `nested-notes/`）當成一般非筆記檔而錯報 `ready`；若出現任何根目錄連結，直接拒絕唯讀 Inventory，且 M1 不呼叫遠端 Reader。唯讀合成測試覆蓋連結資料夾與預覽 fail-closed；沒有掃描連結目標、寫入或觸發同步。
 - 已於正式 MSI 機器執行現有的 `npm run verify:obsidian:msi` 和 `npm run verify:obsidian:vault:msi`：Obsidian 已安裝，指定 Vault 的 GUI 註冊驗證通過；支援 Markdown 為 0、未掃描資料夾為 0。這**不是** Neon Owner-RLS GET。
 - `npm run verify:obsidian:m1:sandbox:first-look:msi` 是**手動**、僅限 MSI 的首次無 Baseline 唯讀入口；必須另外加 `--sandbox-first-look-readonly` 旗標，並從 stdin 管線傳入**短效、僅供 Neon Sandbox 的 Owner JWT**。它只呼叫既有固定路徑 Vault 掃描和固定 Neon Sandbox GET，沒有參數式 Vault 路徑、Production URL、寫入、刪除、下載、部署、背景輪詢、Baseline 保存或可執行的審查批准。

@@ -117,6 +117,17 @@ export async function previewManualObsidianSync(args:{
   try{remote=remoteSnapshot(await args.readRemote());}
   catch{throw Error("Full owner-RLS Neon Sandbox inventory unavailable; no preview");}
 
+  // The Owner-RLS GET can outlast a local edit. Never return a supposedly
+  // current review if the on-disk fingerprints or scan coverage changed while
+  // the remote reader was in flight. This remains read-only; a later approved
+  // transfer must still recheck both versions under its own authorization.
+  let localAfterRemote:ReadOnlyLocalManifest;
+  try{localAfterRemote=localSnapshot(await args.readLocal());}
+  catch{throw Error("Local Obsidian inventory unavailable after remote read; no preview");}
+  if(JSON.stringify(localAfterRemote)!==JSON.stringify(local)){
+    throw Error("Local Obsidian inventory changed during remote read; no preview");
+  }
+
   // The mature pure planner validates sha256, safe slug, duplicate notes,
   // revision grammar, unexpected fields and max 500 entries on ALL 3 sides.
   // A bad baseline must not be replaced by an assumed empty baseline.

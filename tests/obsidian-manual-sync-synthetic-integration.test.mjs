@@ -42,7 +42,7 @@ test("real local scanner + mocked authorized Neon inventory produce a manual-onl
       ]);},
       baseline:[fp("local-edited","v1"),fp("remote-edited","v1"),fp("conflicted","v1")],
     });
-    assert.equal(localCalls,1);
+    assert.equal(localCalls,2,"local inventory is rechecked after the remote GET");
     assert.equal(remoteCalls,1);
     assert.deepEqual(preview.decisions.map(x=>[x.slug,x.choice]),[
       ["conflicted","conflict"],

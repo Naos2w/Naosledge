@@ -22,7 +22,7 @@ async function review(l,r,baseline=[]){
     readRemote:async()=>{remoteCalls++;return r;},
     baseline,
   });
-  assert.equal(localCalls,1);
+  assert.equal(localCalls,2,"remote inventory must be bracketed by local scans");
   assert.equal(remoteCalls,1);
   return output;
 }

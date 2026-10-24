@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {mkdtemp,writeFile,readFile,rm} from "node:fs/promises";
+import {mkdtemp,mkdir,writeFile,readFile,rm} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import {serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
@@ -128,5 +128,62 @@ test("401 or incomplete real reader cannot become a missing-remote deletion plan
     });
     assert.equal(failedCalls,1);
     assert.equal(await readFile(filename,"utf8"),portable);
+  });
+});
+
+test("M1 refuses stale local fingerprints if a note changes during the remote GET",async()=>{
+  await withScratch(async root=>{
+    const filename=path.join(root,"portable-note.md");
+    await writeFile(filename,portable);
+    let localReads=0,remoteReads=0;
+    await assert.rejects(previewManualObsidianSync({
+      baseline:[],
+      readLocal:async()=>{localReads++;return readObsidianLocalManifest(root);},
+      readRemote:async()=>{
+        remoteReads++;
+        await writeFile(filename,portable+"\nlocal edit during remote read");
+        return fetchNeonSandboxFingerprints({
+          branchId:NEON_SYNC_SANDBOX_BRANCH,jwt,
+          fetcher:async()=>result([note]),
+        });
+      },
+    }),/Local Obsidian inventory changed during remote read/);
+    assert.equal(localReads,2);
+    assert.equal(remoteReads,1);
+    assert.equal(await readFile(filename,"utf8"),portable+"\nlocal edit during remote read");
+  });
+});
+
+test("M1 refuses newly uncovered folders and second-pass local reader failures",async()=>{
+  await withScratch(async root=>{
+    await writeFile(path.join(root,"portable-note.md"),portable);
+    await assert.rejects(previewManualObsidianSync({
+      baseline:[],readLocal:()=>readObsidianLocalManifest(root),
+      readRemote:async()=>{
+        await mkdir(path.join(root,"new-nested-notes"));
+        return fetchNeonSandboxFingerprints({
+          branchId:NEON_SYNC_SANDBOX_BRANCH,jwt,
+          fetcher:async()=>result([note]),
+        });
+      },
+    }),/Local Obsidian inventory changed during remote read/);
+    await rm(path.join(root,"new-nested-notes"),{recursive:true});
+    let calls=0;
+    await assert.rejects(previewManualObsidianSync({
+      baseline:[],
+      readLocal:async()=>{
+        if(++calls===2)throw Error("PRIVATE_LOCAL_READER_DETAILS");
+        return readObsidianLocalManifest(root);
+      },
+      readRemote:async()=>({
+        fingerprints:[],numberOfNotes:0,sandboxOnly:true,
+        rlsEnforcedByDataApi:true,writeEnabled:false,fullInventory:true,
+      }),
+    }),error=>{
+      assert.match(error.message,/Local Obsidian inventory unavailable after remote read/);
+      assert.doesNotMatch(error.message,/PRIVATE_LOCAL_READER_DETAILS/);
+      return true;
+    });
+    assert.equal(calls,2);
   });
 });
