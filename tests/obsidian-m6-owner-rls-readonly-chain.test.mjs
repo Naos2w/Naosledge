@@ -19,7 +19,11 @@ import {
 const owner="synthetic-owner-m6";
 const pretendJwt="header."+Buffer.from(JSON.stringify({sub:owner})).toString("base64url")+".signature";
 const asJson=(value,status=200)=>new Response(JSON.stringify(value),{
-  status,headers:{"content-type":"application/json"},
+  status,headers:{
+    "content-type":"application/json",
+    ...(Array.isArray(value)?{"content-range":value.length?
+      `0-${value.length-1}/${value.length}`:"*/0"}:{}),
+  },
 });
 async function withScratch(run){
   const box=await createDurableSyntheticObsidianWorkspace();
@@ -47,6 +51,7 @@ function mockedOwnerHttp({adminRows=[{user_id:owner}],noteResponse=()=>asJson([]
     if(endpoint.pathname==="/neondb/rest/v1/knowledge_notes"){
       calls.push("note-inventory");
       assert.equal(endpoint.searchParams.get("limit"),"21");
+      assert.equal(request.headers.Prefer,"count=exact");
       return noteResponse();
     }
     throw Error("Unexpected synthetic URL");
@@ -77,6 +82,26 @@ test("M6 offline Owner-RLS proof is required before an empty GET can drive non-e
     assert.equal(await box.readLocalForSyntheticTest("local-draft"),"local author's content");
     assert.equal(await box.readRemoteForSyntheticTest("local-draft"),null);
     assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[]);
+  });
+});
+
+test("M6 refuses a 200 empty page without proof of the entire Sandbox inventory",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("cannot-infer-delete","still here");
+    for(const contentRange of [null,"*/*","*/3"]){
+      const calls=[];
+      const noteResponse=()=>new Response("[]",{
+        status:200,headers:{
+          "content-type":"application/json",
+          ...(contentRange===null?{}:{"content-range":contentRange}),
+        },
+      });
+      await assert.rejects(reviewWithHttp(box,mockedOwnerHttp({calls,noteResponse})),
+        /Full owner-RLS Neon Sandbox inventory unavailable/);
+      assert.deepEqual(calls,["owner-grant","note-inventory"]);
+      assert.equal(await box.readLocalForSyntheticTest("cannot-infer-delete"),"still here");
+      assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[]);
+    }
   });
 });
 

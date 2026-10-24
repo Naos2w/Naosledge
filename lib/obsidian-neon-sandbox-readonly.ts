@@ -171,7 +171,12 @@ export async function fetchNeonSandboxFingerprints(args:{
   const fetcher=args.fetcher??fetch;
   const response=await fetcher(query.href,{
     method:"GET",redirect:"manual",credentials:"omit",
-    headers:{Authorization:"Bearer "+args.jwt,Accept:"application/json"},
+    headers:{
+      Authorization:"Bearer "+args.jwt,Accept:"application/json",
+      // A row limit alone cannot prove the server returned a COMPLETE RLS
+      // inventory: PostgREST can impose a smaller server-side max_rows.
+      Prefer:"count=exact",
+    },
     signal:AbortSignal.timeout(16000),
   });
   // No error body or URL echoed, because it could include private details.
@@ -191,6 +196,14 @@ export async function fetchNeonSandboxFingerprints(args:{
   }
   if(!Array.isArray(payload)||payload.length>LIMIT){
     throw new Error("Neon Sandbox inventory is too large or invalid; no partial sync allowed");
+  }
+  // Verify the server-reported exact RLS-visible total AND returned range.
+  // Reject absent/unknown totals or silently clamped pages: even a 200 + []
+  // is not a verified empty library without */0 from PostgREST.
+  const expectedRange=payload.length===0?"*/0":
+    `0-${payload.length-1}/${payload.length}`;
+  if(response.headers.get("content-range")?.trim()!==expectedRange){
+    throw new Error("Neon Sandbox inventory range incomplete or unverified");
   }
   const seen=new Set<string>();
   const fingerprints:SyncFingerprint[]=[];

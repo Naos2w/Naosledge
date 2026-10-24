@@ -42,7 +42,10 @@ async function withScratch(callback){
   finally{await rm(root,{recursive:true,force:true});}
 }
 const result=data=>new Response(JSON.stringify(data),{
-  status:200,headers:{"content-type":"application/json"},
+  status:200,headers:{
+    "content-type":"application/json",
+    "content-range":data.length?`0-${data.length-1}/${data.length}`:"*/0",
+  },
 });
 
 test("real GET reader plus real local scanner detect unchanged and locally edited portable Markdown without writes",async()=>{
@@ -59,6 +62,7 @@ test("real GET reader plus real local scanner detect unchanged and locally edite
         assert.equal(request.credentials,"omit");
         assert.equal(request.body,undefined);
         assert.equal(request.headers.Authorization,"Bearer "+jwt);
+        assert.equal(request.headers.Prefer,"count=exact");
         assert.equal(new URL(url).origin,new URL(NEON_SYNC_SANDBOX_DATA_API).origin);
         assert.equal(new URL(url).pathname,"/neondb/rest/v1/knowledge_notes");
         return result([note]);
