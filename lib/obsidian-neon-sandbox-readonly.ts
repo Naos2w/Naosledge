@@ -217,3 +217,18 @@ export async function fetchNeonSandboxFingerprints(args:{
   return {fingerprints,numberOfNotes:fingerprints.length,
     sandboxOnly:true,rlsEnforcedByDataApi:true,writeEnabled:false,fullInventory:true};
 }
+
+/**
+ * Single read-only Owner-scoped entry point for MSI acceptance and future
+ * approved adapters. A 200 + [] inventory alone cannot establish ownership:
+ * the same Sandbox-only JWT must first pass the independent blog_admins RLS
+ * self-grant check. Both requests remain GET-only and pinned to the Sandbox.
+ */
+export async function fetchVerifiedNeonSandboxOwnerFingerprints(args:{
+  branchId:string;
+  jwt:string;
+  fetcher?:Fetcher;
+}):Promise<RemoteSandboxSnapshot>{
+  await verifyNeonSandboxOwnerRls(args);
+  return fetchNeonSandboxFingerprints(args);
+}

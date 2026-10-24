@@ -14,7 +14,7 @@
 
 ## 最新優先 TODO（2026-10-24）
 
-1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) 仍為 Ready、未合併；2026-10-24 已確認**本次修改前** HEAD `d77708b` 的 CI #100 SUCCESS；新增 M6 合成測試後必須重新確認對應 HEAD 的 GitHub CI。此後每次都應重新檢查 GitHub **最新** HEAD/CI（新 Commit 不沿用舊 SUCCESS）；確認差異及合併授權後才能合入 `main`；**合併不等於部署**。
+1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) 仍為 Ready、未合併；2026-10-24 已確認**本輪變更前** HEAD `e2d67f4` 的 CI #101 SUCCESS（包含 offline unit、TypeScript、Build、release-closed，非 skipped）；新增 Owner-RLS GET 原子唯讀封裝與離線驗收後，仍必須重新確認**新 HEAD** 的 GitHub CI。此後每次都應重新檢查 GitHub **最新** HEAD/CI（新 Commit 不沿用舊 SUCCESS）；確認差異及合併授權後才能合入 `main`；**合併不等於部署**。
 2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。認證失敗、超限或不完整時必須停止；不能把合成 HTTP 測試當作真實驗收。
 3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。**2026-10-24 已加強 M2 合成／未來唯讀預覽的資料完整性驗證**：驗證完整 Inventory、7 類差異計數、SHA／Revision、缺漏警示與逐篇方向一致；錯誤／截斷／矛盾清單一律拒絕。修正合法 slug `constructor` 被 Object 原型屬性錯認為使用者選擇的問題；但實際 Owner JWT／Neon GET 仍未接線，不能稱真實資料審查已完成。
 4. **P1｜M3 Sandbox 手動上傳**：已新增**完全隔離的合成上傳預演**（單篇隨機一次性確認、重新讀取本機 SHA 與合成遠端 SHA/revision，建立與更新分開測試、失敗不更新 Baseline）。真實 Neon Sandbox 寫入介面、站長授權整合與 MSI 實際驗收仍**未實作／未授權**，不得直接接到 Production。
@@ -29,7 +29,7 @@
 | --- | --- | --- | --- |
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
 | **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 尚未驗收，不代表正式同步可用；獨立 QA 不再是一般開發前置條件** |
-| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認本次修改前 HEAD `d77708b` 的 CI #100 SUCCESS；未合併／部署，真實資料預覽尚未接線。新 Commit 不繼承舊版 CI 結果。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
+| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認前版 HEAD `e2d67f4` 的 CI #101 SUCCESS；未合併／部署，真實資料預覽尚未接線。新 Commit 不繼承舊版 CI 結果。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **合成 Scratch／記憶體遠端的逐篇上傳預演已完成；真正 Auth、Neon Sandbox API、真實內容傳輸待開發／授權，未正式啟用** |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | **合成 Scratch Incoming 副本預演已實作／測試；真人 Vault 或 Neon Sandbox API 尚未接線／授權** |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | **合成 Scratch 的逐篇 Baseline append-only 證據、唯讀雙版本行比較及唯讀日誌重新載入預檢已實作；衝突保留、還原不清除 Baseline 已驗證。真正可跨程序重啟並驗證來源的持久載入、正式資料層／UI 接線仍待開發** |
@@ -80,7 +80,9 @@ try {
 
 - `tests/obsidian-m6-synthetic-cross-stage.test.mjs` 把既有 M1 唯讀組合器、M2 審查意圖、M3 合成上傳、M4 Incoming 副本與 M5 唯讀證據檢查串成**單一 Scratch 隔離測試**；模擬 Remote 只存在記憶體，沒有真正 Neon HTTP、Owner JWT、Production、真實 Obsidian Vault 或傳輸授權。
 - 整合回歸檢查：M2 選擇不產生寫入；逐篇批准後僅上傳單篇合成筆記；遠端筆記及雙改衝突只在 Incoming 新建副本，不覆寫原稿；Incoming 不更新 Baseline；只有已重新確認兩端內容一致的上傳才留下合成 Checkpoint。
-- 另外覆蓋上傳前遠端競態、Incoming 前本機競態、未掃描的巢狀 Markdown、不完整的遠端清單，並確認全部 fail-closed、無刪除或不當成功證據。新測試 **4 PASS、0 FAIL**；真正 M6 Sandbox Auth／RLS／API＋MSI E2E、網路失敗復原及資料清理證據仍待完成。
+- 另外覆蓋上傳前遠端競態、Incoming 前本機競態、未掃描的巢狀 Markdown、不完整的遠端清單，並確認全部 fail-closed、無刪除或不當成功證據。原有跨階段測試 **4 PASS、0 FAIL**。
+- **2026-10-24 本輪追加 M1／M6 離線 HTTP 鏈條**：`fetchVerifiedNeonSandboxOwnerFingerprints()` 強制同一 Sandbox JWT 先通過 `blog_admins` Owner-RLS 自身授權 GET，再取得 `knowledge_notes` 完整唯讀清單；MSI 手動入口改用該不可分割封裝。新增 `tests/obsidian-m6-owner-rls-readonly-chain.test.mjs`（3 項）以假 JWT、模擬 HTTP 與隨機 Scratch 驗證：Owner 成功才產生 M2 非執行選擇；非 Owner 的 `200 + []` 在資料 GET 前拒絕；401／503／截斷 JSON／網路斷線均 fail-closed，無實際傳輸、Baseline 或筆記寫入。**沒有真實 Sandbox Owner JWT、沒有 Neon 網路連線、沒有真實 MSI Vault 操作**，不可宣稱 M1 真實 Owner-RLS 或 M6 E2E 已完成。
+- 真正 M6 Sandbox Auth／RLS／API＋MSI E2E、網路失敗復原及資料清理證據仍待完成。
 
 ## M1 唯讀整合（本次提供的原型程式碼）
 

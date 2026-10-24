@@ -22,9 +22,13 @@ test("approved MSI adapter pins the exact Vault, registration and Neon Sandbox r
   assert.match(src,/hostname\(\).*toUpperCase\(\)!=="MSI"/);
   assert.match(src,/inspectObsidianRegistration/);
   assert.match(src,/readObsidianLocalManifest\(APPROVED_MSI_VAULT\)/);
-  assert.match(src,/fetchNeonSandboxFingerprints/);
-  assert.match(src,/verifyNeonSandboxOwnerRls/);
-  assert.ok(src.indexOf("verifyNeonSandboxOwnerRls({")<src.indexOf("return fetchNeonSandboxFingerprints({"));
+  assert.match(src,/fetchVerifiedNeonSandboxOwnerFingerprints/);
+  const remoteSource=await readFile(new URL("../lib/obsidian-neon-sandbox-readonly.ts",import.meta.url),"utf8");
+  const verified=remoteSource.slice(remoteSource.indexOf("export async function fetchVerifiedNeonSandboxOwnerFingerprints"));
+  assert.match(verified,/await verifyNeonSandboxOwnerRls\(args\)/);
+  assert.match(verified,/return fetchNeonSandboxFingerprints\(args\)/);
+  assert.ok(verified.indexOf("await verifyNeonSandboxOwnerRls(args)")<
+    verified.indexOf("return fetchNeonSandboxFingerprints(args)"));
   assert.match(src,/branchId:NEON_SYNC_SANDBOX_BRANCH/);
   assert.match(src,/previewManualObsidianSync/);
   assert.doesNotMatch(src,/\bPOST\b|\bPATCH\b|\bDELETE\b|writeFile\(|rename\(|rm\(|setInterval\(|setTimeout\(/);
