@@ -14,7 +14,7 @@
 
 ## 最新優先 TODO（2026-10-24）
 
-1. **P0｜M2 合併前檢查**：PR [#27](https://github.com/Naos2w/Naosledge/pull/27) Ready、尚未合併；2026-10-24 已核對 HEAD `6b64769` 的 [GitHub CI #110](https://github.com/Naos2w/Naosledge/actions/runs/40078487401) SUCCESS（offline unit、TypeScript、Build、release-closed 各必要步驟 success，非 skipped），`main` 為 `eb3023b`。**本輪修正 M2 缺失遠端 Revision 仍可呈現審查選項的缺口；新 Commit 必須另行驗證精確 HEAD CI，不能沿用 #110**；確認差異、分支保護及 Project 明確授權後才能 Merge。當前 Project 權限不包含 Merge／部署；**合併不等於部署**。
+1. **P0｜已合併與待整合 PR**：PR #26（M1）與 [#27](https://github.com/Naos2w/Naosledge/pull/27)（M2）已合併，`origin/main` 是 `a192aa3e7af04b5c7bb0df34bc108799ddd7fb83`，勿再對已關閉 #27 提交。PR [#28](https://github.com/Naos2w/Naosledge/pull/28)（M2 本機 JSON 手動匯入，HEAD `a5f583e`／CI #115 SUCCESS）、[#29](https://github.com/Naos2w/Naosledge/pull/29)（M3 create-only，HEAD `c442546`／CI #117 SUCCESS）、[#30](https://github.com/Naos2w/Naosledge/pull/30)（M4 Incoming，HEAD `edaacd1`／CI #118 SUCCESS）皆 OPEN 且未合併。新功能從最新 `origin/main` 各自分支，合併需對各 PR **當次 HEAD** 明確授權及必需 CI success；skipped 不算通過。
 2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。新增 PostgREST `Prefer: count=exact`＋嚴格 `Content-Range`/回傳筆數一致性檢查，避免即使 Owner 驗證成功，伺服器限制筆數或未回傳完整清單時仍誤將空清單／局部清單視為 `fullInventory=true`；缺少精確總數也拒絕預覽。認證失敗、超限或不完整時必須停止；目前僅已通過離線模擬驗證，不能當成真實 Sandbox GET 成功。
 3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。**2026-10-24 已加強 M2 合成／未來唯讀預覽的資料完整性驗證**：驗證完整 Inventory、7 類差異計數、SHA／Revision、缺漏警示與逐篇方向一致；遠端指紋與 Revision 必須成對存在，不能有 SHA 卻缺少 Revision 就讓使用者選擇操作（已新增先失敗後通過的回歸測試）。錯誤／截斷／矛盾清單一律拒絕。修正合法 slug `constructor` 被 Object 原型屬性錯認為使用者選擇的問題；但實際 Owner JWT／Neon GET 仍未接線，不能稱真實資料審查已完成。
 4. **P1｜M3 Sandbox 手動上傳**：已新增**完全隔離的合成上傳預演**（單篇隨機一次性確認、重新讀取本機 SHA 與合成遠端 SHA/revision，建立與更新分開測試、失敗不更新 Baseline）。真實 Neon Sandbox 寫入介面、站長授權整合與 MSI 實際驗收仍**未實作／未授權**，不得直接接到 Production。
@@ -29,7 +29,7 @@
 | --- | --- | --- | --- |
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
 | **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 尚未驗收，不代表正式同步可用；獨立 QA 不再是一般開發前置條件** |
-| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 Ready、已確認 HEAD `6b64769` 的 CI #110 SUCCESS；本輪 M2 遠端 Revision 互相依賴修正須重新驗證精確 HEAD CI；未合併／部署，真實資料預覽尚未接線。新 Commit 不繼承舊版 CI 結果.詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
+| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 已合併 `main`，尚未部署；PR #28 的本機唯讀 JSON 手動匯入待整合。本分支提供 M1 真實 Sandbox 唯讀快照的 MSI 手動 JSON 匯出；沒有 Sandbox JWT，尚未執行真實 GET 或端到端匯入。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **合成 Scratch／記憶體遠端的逐篇上傳預演已完成；真正 Auth、Neon Sandbox API、真實內容傳輸待開發／授權，未正式啟用** |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | **合成 Scratch Incoming 副本預演已實作／測試；真人 Vault 或 Neon Sandbox API 尚未接線／授權** |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | **合成 Scratch 的逐篇 Baseline append-only 證據、唯讀雙版本行比較及唯讀日誌重新載入預檢已實作；衝突保留、還原不清除 Baseline 已驗證。真正可跨程序重啟並驗證來源的持久載入、正式資料層／UI 接線仍待開發** |
@@ -57,6 +57,7 @@ try {
 ```
 
 - 終端只輸出筆數、衝突數、未涵蓋數與不允許操作旗標，不會列出 Markdown、slug、SHA 或 JWT。首次 Baseline 為 `[]`，代表「沒有既定同步基準」，**不是同步成功或任何覆寫授權**。沒有有效 Sandbox Owner JWT 時，此項仍列為待驗收，不能宣稱成功。
+- **M2 手動檔案交接（本分支，尚未真人驗收）**：同一 MSI 手動腳本可改用 `--sandbox-m2-readonly-handoff`（仍必須從 stdin 傳入短效 Sandbox Owner JWT），取得經驗證的 M1 唯讀差異後，先執行既有 M2 逐篇與總數驗證，再於 MSI 當前使用者的 OS 暫存目錄以排他新檔建立 JSON；終端**僅顯示本機檔案路徑**。檔案格式為 `naosledge.m2.sandbox-readonly.v1`，預定搭配未合併 PR #28 的站長瀏覽器本機匯入功能，不進行任何同步動作；檔案**包含私人 slug、SHA、Revision 與分類**，雖然不含 Markdown 正文或 JWT，仍應視為敏感資料，手動匯入後刪除。離線合成測試通過，**並未實際使用 Sandbox JWT／遠端 GET／真實 Vault**；PR #28 尚未合併前，不宣稱 UI 可用。
 
 ## M3 上傳隔離預演（2026-10-24）
 

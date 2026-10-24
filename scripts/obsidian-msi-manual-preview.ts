@@ -1,18 +1,23 @@
 /**
  * Explicit MSI-only first-look M1 acceptance against the fixed Neon Sandbox.
  *
- * Invoke MANUALLY with --sandbox-first-look-readonly and pipe a short-lived
- * SANDBOX OWNER JWT via stdin. Never via CLI arguments, files, or env vars.
- * This is NOT an M2 website endpoint or a scheduled job. It never writes,
- * persists a baseline, logs note identifiers, or approves synchronization.
+ * Invoke MANUALLY with one explicit Sandbox read-only flag and pipe a
+ * short-lived SANDBOX OWNER JWT via stdin, never argv, files or environment.
+ * First-look mode prints counts only. M2-handoff mode creates one local JSON
+ * containing private note identifiers/fingerprints for manual browser import.
+ * Neither mode writes the Vault, Neon, a Baseline, or a transfer approval.
  */
-import {hostname} from "node:os";
+import {randomUUID} from "node:crypto";
+import {writeFile} from "node:fs/promises";
+import {hostname,tmpdir} from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
+import {summariseReviewIntents} from "../lib/obsidian-m2-review-choices.ts";
 import {previewApprovedMsiSandboxSync} from "../lib/obsidian-manual-sync-approved-msi.ts";
 import type {ManualReviewPreview} from "../lib/obsidian-manual-sync-review.ts";
 
 export const MANUAL_FIRST_LOOK_FLAG="--sandbox-first-look-readonly";
+export const MANUAL_M2_HANDOFF_FLAG="--sandbox-m2-readonly-handoff";
 
 export function assertManualM1Invocation(
   platform:string,computerName:string,args:readonly string[],isTerminal:boolean,
@@ -20,8 +25,8 @@ export function assertManualM1Invocation(
   if(platform!=="win32"||computerName.trim().toUpperCase()!=="MSI"){
     throw new Error("Manual M1 first-look is restricted to the approved MSI device");
   }
-  if(args.length!==1||args[0]!==MANUAL_FIRST_LOOK_FLAG){
-    throw new Error("Explicit --sandbox-first-look-readonly flag is required");
+  if(args.length!==1||![MANUAL_FIRST_LOOK_FLAG,MANUAL_M2_HANDOFF_FLAG].includes(args[0])){
+    throw new Error("Explicit manual Sandbox read-only flag is required");
   }
   if(isTerminal){
     throw new Error("Pipe a short-lived Sandbox owner JWT on stdin; never type it as an argument");
@@ -82,6 +87,21 @@ export function describeManualM1Acceptance(preview:ManualReviewPreview){
   };
 }
 
+/** For the manually imported M2 UI in PR #28; never an executable approval. */
+export async function saveManualM2Handoff(preview:ManualReviewPreview):Promise<string>{
+  // Reuse M2's full row/inventory validation before persisting private metadata.
+  summariseReviewIntents(preview,{});
+  const payload=JSON.stringify({format:"naosledge.m2.sandbox-readonly.v1",preview});
+  if(Buffer.byteLength(payload,"utf8")>512_000){
+    throw new Error("M2 read-only handoff is too large");
+  }
+  // OS per-user temporary directory, random filename, exclusive creation.
+  // Only note identifiers/fingerprints, never Markdown or JWT. Delete after review.
+  const file=path.join(tmpdir(),`naosledge-m2-sandbox-readonly-${randomUUID()}.json`);
+  await writeFile(file,payload,{flag:"wx",mode:0o600});
+  return file;
+}
+
 const invoked=process.argv[1]?
   path.resolve(process.argv[1])===fileURLToPath(import.meta.url):false;
 if(invoked){
@@ -97,9 +117,15 @@ if(invoked){
     const preview=await previewApprovedMsiSandboxSync({
       sandboxOwnerJwt:jwt,baseline:[],
     });
-    console.log("M1_SANDBOX_READONLY_RESULT "+JSON.stringify(
-      describeManualM1Acceptance(preview),
-    ));
+    if(process.argv[2]===MANUAL_M2_HANDOFF_FLAG){
+      const file=await saveManualM2Handoff(preview);
+      // Output the file path only. M2 imports it locally via the Owner's browser.
+      console.log("M2_SANDBOX_READONLY_HANDOFF_SAVED "+file);
+    }else{
+      console.log("M1_SANDBOX_READONLY_RESULT "+JSON.stringify(
+        describeManualM1Acceptance(preview),
+      ));
+    }
   }catch{
     // Fail closed without serializing server responses, filenames, or JWTs.
     console.error("M1_SANDBOX_READONLY_NOT_COMPLETED (check MSI registration, explicit flag, Sandbox-only Owner JWT and network)");
