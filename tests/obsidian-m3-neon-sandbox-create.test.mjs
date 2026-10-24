@@ -6,6 +6,10 @@ import {createNeonSandboxNoteOnly} from "../lib/obsidian-neon-sandbox-create.ts"
 import {
   NEON_SYNC_SANDBOX_BRANCH,NEON_SYNC_SANDBOX_DATA_API,
 } from "../lib/obsidian-neon-sandbox-readonly.ts";
+import {
+  assertManualM3Invocation,readScratchCreateRequest,createOneReviewedScratchNote,
+  M3_SCRATCH_ONLY_FLAG,
+} from "../scripts/obsidian-m3-sandbox-manual-create.ts";
 
 const owner="m3-sandbox-offline-owner";
 const jwt="header."+Buffer.from(JSON.stringify({sub:owner})).toString("base64url")+".signature";
@@ -138,4 +142,42 @@ test("M3 remote concurrent duplicate produces 409; never updates, deletes or ret
     "GET /neondb/rest/v1/blog_admins","GET /neondb/rest/v1/knowledge_notes",
     "POST /neondb/rest/v1/knowledge_notes",
   ]);
+});
+
+test("M3 manual scratch entry requires MSI, explicit flag, and secret pipe",async()=>{
+  assertManualM3Invocation("win32","MSI",[M3_SCRATCH_ONLY_FLAG],false);
+  for(const args of [
+    ["linux","MSI",[M3_SCRATCH_ONLY_FLAG],false],
+    ["win32","OTHER",[M3_SCRATCH_ONLY_FLAG],false],
+    ["win32","MSI",[],false],
+    ["win32","MSI",[M3_SCRATCH_ONLY_FLAG],true],
+  ]){
+    assert.throws(()=>assertManualM3Invocation(...args),/explicit piped scratch-only/);
+  }
+  await assert.rejects(readScratchCreateRequest(["not JSON"]),/must be JSON/);
+  await assert.rejects(readScratchCreateRequest([JSON.stringify({
+    sandboxOwnerJwt:jwt,markdown,typedConfirmation:"CREATE SANDBOX "+draft.slug,
+    extra:"not allowed",
+  })]),/exactly one note/);
+});
+
+test("M3 scratch-only stdin carries one human-approved note to live-shaped Sandbox transport",async()=>{
+  const request=await readScratchCreateRequest([JSON.stringify({
+    sandboxOwnerJwt:jwt,markdown,typedConfirmation:"CREATE SANDBOX "+draft.slug,
+  })]);
+  const n=fakeNetwork();
+  assert.deepEqual(await createOneReviewedScratchNote(request,n.fetcher),
+    {baselineSaved:false});
+  assert.equal(n.calls.filter(c=>c.startsWith("POST ")).length,1);
+
+  const blocked=fakeNetwork();
+  await assert.rejects(createOneReviewedScratchNote({
+    ...request,typedConfirmation:"",
+  },blocked.fetcher),/typed per-note confirmation/);
+  assert.deepEqual(blocked.calls,[],"invalid consent never reaches Neon");
+
+  await assert.rejects(createOneReviewedScratchNote({
+    ...request,markdown:"non-portable prefix\n"+markdown,
+  },blocked.fetcher),/canonical portable/);
+  assert.deepEqual(blocked.calls,[],"noncanonical text never reaches Neon");
 });
