@@ -66,7 +66,7 @@ try{
   }
   if(!up)throw Error("Fail-closed production startup timed out");
   for(const pathname of [
-    "/","/login","/studio","/vault","/vault/graph",
+    "/","/login","/studio","/vault","/vault/graph","/vault/sync",
     "/notes/synthetic-post","/robots.txt","/sitemap.xml",
     "/forgot-password","/owner-activation",
   ]){
@@ -78,7 +78,7 @@ try{
     assert.match(response.headers.get("x-robots-tag")||"",/noindex/);
     assert.equal(response.headers.get("referrer-policy"),"no-referrer");
   }
-  console.log("PASS: 10 public/private/auth/SEO routes return HTTP 503, no-store and noindex");
+  console.log("PASS: 11 public/private/auth/SEO routes return HTTP 503, no-store and noindex");
   console.log("PRODUCTION_RELEASE_GATE_CLOSED_SUCCESS: no live database credentials or calls");
 }catch(error){
   throw Error(String(error?.message||error)+"; diagnostic="+logs.replace(/[^\x20-\x7e]/g," ").slice(-800));

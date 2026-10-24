@@ -84,6 +84,67 @@ async function limitedResponseText(response:Response):Promise<string>{
   return new TextDecoder("utf-8",{fatal:true}).decode(Buffer.concat(parts));
 }
 
+/**
+ * The note-list GET alone cannot prove the JWT belongs to an Owner: RLS
+ * could legitimately return 200 + [] for a non-owner. Verify the same JWT
+ * can SELECT its own blog_admins row before treating a live scan as an
+ * Owner-scoped acceptance. This is still GET-only on the pinned Sandbox.
+ */
+export async function verifyNeonSandboxOwnerRls(args:{
+  branchId:string;
+  jwt:string;
+  fetcher?:Fetcher;
+}):Promise<void>{
+  if(!args||args.branchId!==NEON_SYNC_SANDBOX_BRANCH||
+     typeof args.jwt!=="string"||args.jwt.length>8192||!JWT.test(args.jwt)){
+    throw new Error("Approved Sandbox Owner JWT is required");
+  }
+  let subject:unknown;
+  try{
+    const data=JSON.parse(Buffer.from(args.jwt.split(".")[1],"base64url").toString("utf8")) as unknown;
+    subject=data!==null&&typeof data==="object"&&!Array.isArray(data)?
+      (data as Record<string,unknown>).sub:undefined;
+  }catch{
+    throw new Error("Sandbox JWT subject unavailable");
+  }
+  if(typeof subject!=="string"||subject.length<10||subject.length>256||
+     !/^[A-Za-z0-9_-]+$/.test(subject)){
+    throw new Error("Sandbox JWT subject unavailable");
+  }
+  const endpoint=new URL(NEON_SYNC_SANDBOX_DATA_API);
+  if(endpoint.protocol!=="https:"||endpoint.hostname!==
+     "ep-square-cloud-b45d18zl.apirest.c-6.us-east-2.aws.neon.tech"||
+     endpoint.pathname!=="/neondb/rest/v1"){
+    throw new Error("Sandbox Owner RLS endpoint is not pinned");
+  }
+  const url=new URL(endpoint.href.replace(/\/$/,"")+"/blog_admins");
+  url.searchParams.set("select","user_id");
+  url.searchParams.set("user_id","eq."+subject);
+  url.searchParams.set("limit","2");
+  const response=await (args.fetcher??fetch)(url.href,{
+    method:"GET",redirect:"manual",credentials:"omit",cache:"no-store",
+    headers:{Authorization:"Bearer "+args.jwt,Accept:"application/json",
+      "Cache-Control":"no-store"},
+    signal:AbortSignal.timeout(16000),
+  });
+  if(response.status!==200||
+     !/application\/json/i.test(response.headers.get("content-type")||"")){
+    throw new Error("Sandbox Owner RLS proof was not accepted");
+  }
+  let rows:unknown;
+  try{
+    const raw=await limitedResponseText(response);
+    if(raw.length>8192)throw new Error("Oversized grant result");
+    rows=JSON.parse(raw) as unknown;
+  }catch{throw new Error("Sandbox Owner RLS proof unavailable");}
+  if(!Array.isArray(rows)||rows.length!==1||
+     !rows[0]||typeof rows[0]!=="object"||Array.isArray(rows[0])||
+     Object.keys(rows[0]).length!==1||
+     (rows[0] as Record<string,unknown>).user_id!==subject){
+    throw new Error("Sandbox JWT lacks the Owner RLS grant");
+  }
+}
+
 export async function fetchNeonSandboxFingerprints(args:{
   branchId:string;
   jwt:string;
@@ -110,8 +171,14 @@ export async function fetchNeonSandboxFingerprints(args:{
 
   const fetcher=args.fetcher??fetch;
   const response=await fetcher(query.href,{
-    method:"GET",redirect:"manual",credentials:"omit",
-    headers:{Authorization:"Bearer "+args.jwt,Accept:"application/json"},
+    method:"GET",redirect:"manual",credentials:"omit",cache:"no-store",
+    headers:{
+      Authorization:"Bearer "+args.jwt,Accept:"application/json",
+      "Cache-Control":"no-store",
+      // A row limit alone cannot prove the server returned a COMPLETE RLS
+      // inventory: PostgREST can impose a smaller server-side max_rows.
+      Prefer:"count=exact",
+    },
     signal:AbortSignal.timeout(16000),
   });
   // No error body or URL echoed, because it could include private details.
@@ -131,6 +198,14 @@ export async function fetchNeonSandboxFingerprints(args:{
   }
   if(!Array.isArray(payload)||payload.length>LIMIT){
     throw new Error("Neon Sandbox inventory is too large or invalid; no partial sync allowed");
+  }
+  // Verify the server-reported exact RLS-visible total AND returned range.
+  // Reject absent/unknown totals or silently clamped pages: even a 200 + []
+  // is not a verified empty library without */0 from PostgREST.
+  const expectedRange=payload.length===0?"*/0":
+    `0-${payload.length-1}/${payload.length}`;
+  if(response.headers.get("content-range")?.trim()!==expectedRange){
+    throw new Error("Neon Sandbox inventory range incomplete or unverified");
   }
   const seen=new Set<string>();
   const fingerprints:SyncFingerprint[]=[];
@@ -156,4 +231,19 @@ export async function fetchNeonSandboxFingerprints(args:{
   fingerprints.sort((a,b)=>a.slug<b.slug?-1:a.slug>b.slug?1:0);
   return {fingerprints,numberOfNotes:fingerprints.length,
     sandboxOnly:true,rlsEnforcedByDataApi:true,writeEnabled:false,fullInventory:true};
+}
+
+/**
+ * Single read-only Owner-scoped entry point for MSI acceptance and future
+ * approved adapters. A 200 + [] inventory alone cannot establish ownership:
+ * the same Sandbox-only JWT must first pass the independent blog_admins RLS
+ * self-grant check. Both requests remain GET-only and pinned to the Sandbox.
+ */
+export async function fetchVerifiedNeonSandboxOwnerFingerprints(args:{
+  branchId:string;
+  jwt:string;
+  fetcher?:Fetcher;
+}):Promise<RemoteSandboxSnapshot>{
+  await verifyNeonSandboxOwnerRls(args);
+  return fetchNeonSandboxFingerprints(args);
 }

@@ -40,7 +40,8 @@
       "feat/obsidian-neon-sandbox-readonly-20261019": false,
       "feat/obsidian-neon-sandbox-owner-e2e-20261019": false,
       "feat/obsidian-durable-backup-manual-20261019": false,
-      "feat/obsidian-manual-sync-review-20261023": false
+      "feat/obsidian-manual-sync-review-20261023": false,
+      "feat/obsidian-m2-manual-review-ui-20261023": false
     }
   }
 }

@@ -1,8 +1,14 @@
 # Naosledge v3 · Minimal Dark Liquid Glass
 
-一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。目前正式網站使用 **Neon Free Production（Better Auth + Data API + PostgreSQL RLS）**；本機程式仍保留 Supabase 相容回退路徑，但正式環境需通過精確 SHA 與資料庫設定的發布閘門。P4 AI 語意搜尋／問答及 Obsidian **自動雙向同步**尚未實作；私人編輯器已新增可手動使用的 Obsidian 格式匯出／匯入互通。
+一個以 **Next.js** 開發的繁體中文公開學習部落格，採用現代極簡、預設深色的 Liquid Glass 介面，同時維持以閱讀與寫作為中心的資訊架構。文章對訪客公開，**只有站長可以登入、編輯、發布或刪除內容**。目前正式網站使用 **Neon Free Production（Better Auth + Data API + PostgreSQL RLS）**；本機程式仍保留 Supabase 相容回退路徑，但正式環境需通過精確 SHA 與資料庫設定的發布閘門。P4 AI 語意搜尋／問答及 Obsidian ↔ NaosLedge 的**真正雙向同步**尚未啟用；雙向同步以手動啟動、逐篇確認、衝突不覆寫、不自動刪除為預設，私人編輯器已可手動匯入／匯出 Obsidian 格式。
 
 > v3 在先前版本的基礎上加入 Dark Liquid Glass 與流暢動畫，保留文章資料結構、Supabase RLS、登入及資料存取邏輯。v1、v2 保留為歷史版本。
+
+## M1/M2 最新開發狀態（2026-10-23）
+
+- **M1 已合併 `main`**：[PR #26](https://github.com/Naos2w/Naosledge/pull/26)，Merge SHA `eb3023b1`，離線唯讀同步預覽與 CI 已通過，正式 Owner-JWT Neon Sandbox GET、獨立 QA 仍待驗收。
+- **M2 於獨立分支開發**：站長限定 `/vault/sync` 審查預演 UI，依 M1 差異顯示逐篇「預定上傳／預定下載／保留兩份／略過」，在合成資料下測試操作與 RWD；**所有選擇只在頁面記憶體，沒有執行器、真實同步或資料刪除**。詳見 [M2 說明](docs/OBSIDIAN_M2_REVIEW_UI.md) 與 [同步正式 TODO](docs/OBSIDIAN_MANUAL_SYNC_TODO.md)。
+- 本節屬原始碼開發狀態，**不代表** M1/M2 已部署到正式網站。PR #21–25 保留為未合併的獨立合成安全研究分支，不列入 M2 前置依賴。
 
 ## 正式環境狀態（2026-10-18）
 

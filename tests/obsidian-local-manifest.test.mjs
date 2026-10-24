@@ -53,7 +53,7 @@ test("scanner never recurses into .obsidian or any unapproved directory",async()
     await writeFile(path.join(root,"other-folder","hidden.md"),"synthetic out of scope");
     const result=await readObsidianLocalManifest(root);
     assert.deepEqual(result.fingerprints,[]);
-    assert.equal(result.directoriesNotScanned,2);
+    assert.equal(result.directoriesNotScanned,1);
     assert.equal(result.otherFiles,0);
   });
 });
@@ -148,5 +148,59 @@ test("more than 500 Markdown entries fail closed",async()=>{
     await Promise.all(Array.from({length:501},(_,i)=>
       writeFile(path.join(root,`note-${String(i).padStart(3,"0")}.md`),"test")));
     await assert.rejects(readObsidianLocalManifest(root),/500 Markdown/);
+  });
+});
+
+
+test("only exact real .obsidian config is excluded, without reading its Markdown",async()=>{
+  await withScratch(async root=>{
+    await mkdir(path.join(root,".obsidian"));
+    await writeFile(path.join(root,".obsidian","config-note.md"),"x".repeat(250001));
+    assert.deepEqual(await readObsidianLocalManifest(root),{
+      fingerprints:[],unsupportedMarkdownFiles:0,otherFiles:0,
+      directoriesNotScanned:0,autoApplyAllowed:false,
+    });
+    for(const name of [".obsidian-extra","nested-notes"]){
+      await mkdir(path.join(root,name));
+      await writeFile(path.join(root,name,"nested-notes.md"),"synthetic unscanned note");
+    }
+    assert.equal((await readObsidianLocalManifest(root)).directoriesNotScanned,2);
+  });
+});
+
+test("a regular file called .obsidian is not exempted as config",async()=>{
+  await withScratch(async root=>{
+    await writeFile(path.join(root,".obsidian"),"synthetic file");
+    assert.equal((await readObsidianLocalManifest(root)).otherFiles,1);
+  });
+});
+
+for(const name of [".obsidian","nested-notes"]){
+  test(`directory link ${name} is never ignored as safe config`,async t=>{
+    await withScratch(async root=>{
+      await withScratch(async target=>{
+        await writeFile(path.join(target,"nested-notes.md"),"synthetic link target");
+        try{await symlink(target,path.join(root,name),process.platform==="win32"?"junction":"dir");}
+        catch(error){
+          if(["EPERM","EACCES","ENOSYS"].includes(error?.code)){t.skip("OS disallows directory links");return;}
+          throw error;
+        }
+        if(name===".obsidian"){
+          await assert.rejects(readObsidianLocalManifest(root),/link or redirect/);
+        }else{
+          // A junction to Markdown outside the Vault must not make coverage
+          // look complete merely by counting it as an unrelated file.
+          await assert.rejects(readObsidianLocalManifest(root),/symlinks or junctions/);
+        }
+      });
+    });
+  });
+}
+
+
+test("differently cased config name is not the exact standard directory",async()=>{
+  await withScratch(async root=>{
+    await mkdir(path.join(root,".Obsidian"));
+    assert.equal((await readObsidianLocalManifest(root)).directoriesNotScanned,1);
   });
 });

@@ -22,7 +22,7 @@ async function review(l,r,baseline=[]){
     readRemote:async()=>{remoteCalls++;return r;},
     baseline,
   });
-  assert.equal(localCalls,1);
+  assert.equal(localCalls,2,"remote inventory must be bracketed by local scans");
   assert.equal(remoteCalls,1);
   return output;
 }
@@ -183,7 +183,7 @@ test("duplicate, malformed or untrusted fingerprints and baseline refuse preview
   for(const c of cases){
     await assert.rejects(previewManualObsidianSync({
       readLocal:async()=>c.l,readRemote:async()=>c.r,baseline:c.b,
-    }),/unsafe|malformed/);
+    }),/unsafe|malformed|Local Obsidian inventory unavailable/);
   }
 });
 
@@ -206,6 +206,81 @@ test("no reader, implicit baseline, or unexpected input shape can start M1",asyn
   await assert.rejects(previewManualObsidianSync({
     readLocal:null,readRemote:async()=>remote([]),baseline:[],
   }),/Explicit readers/);
+});
+
+test("baseline changed during either asynchronous reader cannot redirect a review",async()=>{
+  for(const stage of ["local","remote"]){
+    const baseline=[fp("shared-note","original")];
+    let remoteCalls=0;
+    const options={
+      baseline,
+      readLocal:async()=>{
+        if(stage==="local")baseline[0].sha256=sha("secretly-changed");
+        return local([fp("shared-note","local-edit")]);
+      },
+      readRemote:async()=>{
+        remoteCalls++;
+        if(stage==="remote")baseline[0].sha256=sha("secretly-changed");
+        return remote([fp("shared-note","original","r1")]);
+      },
+    };
+    await assert.rejects(previewManualObsidianSync(options),
+      /Sync baseline changed during preview/);
+    assert.equal(remoteCalls,stage==="local"?0:1);
+  }
+});
+
+test("shared mutable local manifest cannot hide an edit during Owner-RLS GET",async()=>{
+  const manifest=local([fp("shared-note","before")]);
+  let reads=0;
+  await assert.rejects(previewManualObsidianSync({
+    baseline:[],
+    readLocal:async()=>{reads++;return manifest;},
+    readRemote:async()=>{
+      // A cached provider returns the same reference at both read points.
+      manifest.fingerprints[0].sha256=sha("after");
+      return remote([fp("shared-note","remote","r1")]);
+    },
+  }),/Local Obsidian inventory changed during remote read/);
+  assert.equal(reads,2);
+});
+
+test("shared mutable remote snapshots cannot change while local fingerprints are rechecked",async()=>{
+  for(const mutation of ["fingerprint","completeness","count"]){
+    const fromNeon=remote([fp("shared-note","cloud-before","rev-1")]);
+    let localReads=0,remoteReads=0;
+    await assert.rejects(previewManualObsidianSync({
+      baseline:[],
+      readLocal:async()=>{
+        localReads++;
+        if(localReads===2){
+          // A local provider must not be able to alter a cached remote
+          // snapshot that was already accepted by the Owner-RLS reader.
+          if(mutation==="fingerprint")fromNeon.fingerprints[0].sha256=sha("cloud-after");
+          if(mutation==="completeness")fromNeon.fullInventory=false;
+          if(mutation==="count")fromNeon.numberOfNotes=0;
+        }
+        return local([fp("shared-note","local-version")]);
+      },
+      readRemote:async()=>{remoteReads++;return fromNeon;},
+    }),err=>{
+      assert.match(err.message,/Remote Sandbox inventory changed during local recheck/);
+      assert.doesNotMatch(err.message,/cloud-before|cloud-after|Bearer|JWT/);
+      return true;
+    });
+    assert.equal(localReads,2);
+    assert.equal(remoteReads,1);
+  }
+});
+
+test("malformed local fingerprints never trigger a remote Owner-RLS GET",async()=>{
+  let remoteCalls=0;
+  await assert.rejects(previewManualObsidianSync({
+    baseline:[],
+    readLocal:async()=>local([{...fp("safe-note","data"),content_md:"PRIVATE"}]),
+    readRemote:async()=>{remoteCalls++;return remote([]);},
+  }),/Local Obsidian inventory unavailable/);
+  assert.equal(remoteCalls,0);
 });
 
 test("preview never mutates baseline, local or remote inputs and returns no raw Markdown / credentials",async()=>{

@@ -115,7 +115,10 @@ export async function createObsidianSandbox():Promise<{
   }
   async function checkAvailable():Promise<void>{
     const m=await readObsidianLocalManifest(root);
-    if(m.unsupportedMarkdownFiles||m.otherFiles||m.directoriesNotScanned>1){
+    // Do not let the scanner's config exclusion expand the scratch allowlist.
+    const children=await readdir(root,{withFileTypes:true});
+    if(m.unsupportedMarkdownFiles||m.otherFiles||m.directoriesNotScanned>1||
+       children.some(x=>x.isSymbolicLink()||(x.isDirectory()&&x.name!==".sandbox-backups"))){
       throw new Error("Synthetic sandbox contains unexpected files or folders");
     }
   }

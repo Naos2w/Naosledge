@@ -46,7 +46,22 @@ export async function readObsidianLocalManifest(folder:string):Promise<ReadOnlyL
   let otherFiles=0;
   let directoriesNotScanned=0;
   for(const child of children.sort((a,b)=>a.name.localeCompare(b.name,"en"))){
-    // Only direct children; .obsidian and nested directories aren't traversed.
+    // Only the real standard config directory is excluded from note coverage.
+    // Never traverse it or exempt a same-named symlink/junction.
+    if(child.name===".obsidian"&&(child.isDirectory()||child.isSymbolicLink())){
+      const config=path.join(root,child.name);
+      const configStat=await lstat(config);
+      if(!configStat.isDirectory()||configStat.isSymbolicLink()||
+         path.normalize(await realpath(config))!==path.normalize(config)){
+        throw new Error("Obsidian config directory must not be a link or redirect");
+      }
+      continue;
+    }
+    // A linked folder may hide Markdown outside this root. Treating it as an
+    // ordinary "other file" would falsely mark local note coverage complete.
+    if(child.isSymbolicLink()){
+      throw new Error("Obsidian root symlinks or junctions cannot be scanned safely");
+    }
     if(child.isDirectory()){
       directoriesNotScanned++;
       continue;
@@ -54,9 +69,6 @@ export async function readObsidianLocalManifest(folder:string):Promise<ReadOnlyL
     if(!/\.md$/i.test(child.name)){
       otherFiles++;
       continue;
-    }
-    if(child.isSymbolicLink()){
-      throw new Error("Obsidian Markdown symlinks are not eligible for fingerprinting");
     }
     const slug=child.name.slice(0,-3);
     if(!SLUG.test(slug)||slug.length<3||slug.length>120){
