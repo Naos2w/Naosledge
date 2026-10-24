@@ -136,6 +136,8 @@ test("M2 refuses misleading inventory, coverage and inconsistent M1 totals",asyn
     {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,manualReview:true}:r)},
     {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,expectedLocalSha:"x".repeat(64)}:r)},
     {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,expectedRemoteSha:null}:r)},
+    {...p,decisions:p.decisions.map(r=>r.expectedRemoteSha!==null?
+      {...r,expectedRemoteRevision:null}:r)},
     {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,slug:"../outside"}:r)},
     {...p,decisions:p.decisions.map((r,i)=>i===0?{...r,markdown:"private"}:r)},
   ];

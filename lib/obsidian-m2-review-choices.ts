@@ -105,7 +105,7 @@ function assertReviewOnly(preview:ManualReviewPreview):void{
          (typeof row.expectedRemoteSha!=="string"||!SHA.test(row.expectedRemoteSha)))||
        (row.expectedRemoteRevision!==null&&
          (typeof row.expectedRemoteRevision!=="string"||!REVISION.test(row.expectedRemoteRevision)))||
-       (row.expectedRemoteSha===null&&row.expectedRemoteRevision!==null)||
+       ((row.expectedRemoteSha===null)!==(row.expectedRemoteRevision===null))||
        row.writeAllowed!==false||row.deleteAllowed!==false||
        row.manualReview!==(row.choice!=="unchanged"&&row.choice!=="both-removed")||
        row.perNoteConfirmationRequired!==row.manualReview){
