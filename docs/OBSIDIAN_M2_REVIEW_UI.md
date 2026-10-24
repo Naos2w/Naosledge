@@ -41,21 +41,21 @@ Chrome 瀏覽器測試檢查 375、768、1024、1440px 不溢出、操作至少 
 
 ## MSI → M2 唯讀 JSON 手動交接（尚未真實驗收）
 
-只有在 **MSI** 上持有短效、**Neon Sandbox-only Owner JWT** 時，Owner 才能自願執行下列指令。JWT 由 SecureString 轉為本進程標準輸入，**不放 argv、環境變數、Git 或聊天**。本機導出的 JSON 含**私人 slug、兩端 SHA/revision 與審查分類**，但沒有 JWT 或 Markdown 正文；請只儲存在 Owner 可控本機位置，勿公開或提交版本控制。
+本 PR #28 **只負責瀏覽器本機 JSON 匯入與非執行審查**。MSI 端唯一建議的手動匯出入口由獨立 PR #31 `--sandbox-m2-readonly-handoff` 提供；**兩個 PR 都必須分別通過當次 HEAD 的 CI、取得 Owner 明確合併核准並完成整合，下面才是可用的操作流程**。不要使用舊的 `--sandbox-m2-review-json`／管線 `Set-Content` 方式輸出含私人資訊的 JSON。
+
+只有在 **MSI** 上持有短效、**Neon Sandbox-only Owner JWT** 時，Owner 才能自願執行下列指令。JWT 由 SecureString 轉為本進程標準輸入，**不放 argv、環境變數、Git 或聊天**。PR #31 會在作業系統使用者暫存目錄**排他建立隨機檔名**，終端只顯示檔案路徑；JSON 含私人 slug、兩端 SHA/revision 與審查分類，**不含 JWT 或 Markdown 正文**。
 
 ```powershell
 $secret = Read-Host 'Short-lived SANDBOX Owner JWT' -AsSecureString
-$handoff = Join-Path $env:TEMP 'naosledge-m2-private-review.json'
 try {
   [System.Net.NetworkCredential]::new('', $secret).Password |
-    node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-msi-manual-preview.ts --sandbox-m2-review-json |
-    Set-Content -LiteralPath $handoff -Encoding utf8
+    node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-msi-manual-preview.ts --sandbox-m2-readonly-handoff
 } finally {
   Remove-Variable secret -ErrorAction SilentlyContinue
 }
 ```
 
-指令只允許 MSI 及這個顯式模式；JSON 會先經過既有固定 Neon Sandbox 的 `blog_admins` Owner-RLS 驗證、完整 `knowledge_notes` GET 與 M1 二次本機掃描。若出錯，不能匯入空檔並宣稱成功。登入站長私人 `/vault/sync`，用「選擇 MSI Sandbox JSON 檔案」**在瀏覽器本機**讀入；程式不 POST、不同步、不保存選擇，無 Markdown 傳輸。JSON 內容只是某一時點的快照，任何未來寫入仍必須重新驗證雙邊版本並由本人另行逐篇核准。使用完畢請在本機安全清理該暫存 JSON，不得誤認為備份或 Baseline。
+匯出前仍需固定 Neon Sandbox 的 `blog_admins` Owner-RLS 驗證、完整 `knowledge_notes` GET 與 M1 二次本機掃描；任何錯誤都不得視為空清單成功。使用回報的檔案路徑，在已授權的私人 `/vault/sync` 用「選擇 MSI Sandbox JSON 檔案」於**瀏覽器本機**讀入；不會 POST、執行同步或保存審查選擇。JSON 只是某一時間點的差異快照，未來任何寫入仍須重新驗證兩邊版本並由本人逐篇核准。匯入後請手動安全清理暫存 JSON，不得把它當成備份或 Baseline。
 
 **尚缺**：真人私人帳號在受控 Preview 使用 UI 的驗收、真正 MSI+Neon Sandbox Owner-RLS 唯讀 M1 端到端、歷史 Baseline、內容差異比較、真實寫入操作、正式部署。M2 即使合併，以上全部仍須另行核准。M3/M4 需要重讀兩端版本，逐篇取得本人當次授權，確保不覆寫／不自動刪除。
 

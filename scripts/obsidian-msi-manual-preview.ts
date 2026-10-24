@@ -1,36 +1,27 @@
 /**
  * Explicit MSI-only first-look M1 acceptance against the fixed Neon Sandbox.
  *
- * Invoke MANUALLY with --sandbox-first-look-readonly (counts only) or the
- * explicitly redirected --sandbox-m2-review-json (private metadata), piping
- * a short-lived SANDBOX OWNER JWT via stdin; never argv, files or env vars.
- * This is NOT a website endpoint or scheduled job. It never writes a Vault,
- * persists a baseline or approves synchronization. The JSON mode outputs
- * private slugs/hashes ONLY to redirected stdout; never JWT or Markdown.
+ * Invoke MANUALLY with --sandbox-first-look-readonly and pipe a short-lived
+ * SANDBOX OWNER JWT via stdin. Never via CLI arguments, files, or env vars.
+ * This is NOT an M2 website endpoint or a scheduled job. It never writes,
+ * persists a baseline, logs note identifiers, or approves synchronization.
  */
 import {hostname} from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {previewApprovedMsiSandboxSync} from "../lib/obsidian-manual-sync-approved-msi.ts";
 import type {ManualReviewPreview} from "../lib/obsidian-manual-sync-review.ts";
-import {serializeManualM2Handoff} from "../lib/obsidian-m2-review-choices.ts";
 
 export const MANUAL_FIRST_LOOK_FLAG="--sandbox-first-look-readonly";
-export const MANUAL_M2_HANDOFF_FLAG="--sandbox-m2-review-json";
 
 export function assertManualM1Invocation(
   platform:string,computerName:string,args:readonly string[],isTerminal:boolean,
-  stdoutIsTerminal=false,
 ):void{
   if(platform!=="win32"||computerName.trim().toUpperCase()!=="MSI"){
     throw new Error("Manual M1 first-look is restricted to the approved MSI device");
   }
-  if(args.length!==1||!
-     [MANUAL_FIRST_LOOK_FLAG,MANUAL_M2_HANDOFF_FLAG].includes(args[0])){
-    throw new Error("Explicit Sandbox read-only flag is required");
-  }
-  if(args[0]===MANUAL_M2_HANDOFF_FLAG&&stdoutIsTerminal){
-    throw new Error("Private M2 metadata must be redirected, not displayed in a terminal");
+  if(args.length!==1||args[0]!==MANUAL_FIRST_LOOK_FLAG){
+    throw new Error("Explicit --sandbox-first-look-readonly flag is required");
   }
   if(isTerminal){
     throw new Error("Pipe a short-lived Sandbox owner JWT on stdin; never type it as an argument");
@@ -99,7 +90,6 @@ if(invoked){
     // local filesystem content, or calling the remote Sandbox.
     assertManualM1Invocation(
       process.platform,hostname(),process.argv.slice(2),!!process.stdin.isTTY,
-      !!process.stdout.isTTY,
     );
     const jwt=await readOwnerJwtFromPipe(process.stdin);
     // Initial observation only. An empty baseline is never treated as a
@@ -107,15 +97,9 @@ if(invoked){
     const preview=await previewApprovedMsiSandboxSync({
       sandboxOwnerJwt:jwt,baseline:[],
     });
-    if(process.argv[2]===MANUAL_M2_HANDOFF_FLAG){
-      // Private slugs and hashes: stdout is redirected to an Owner-controlled
-      // local JSON file. Never include JWT, Markdown or server responses.
-      process.stdout.write(serializeManualM2Handoff(preview)+"\n");
-    }else{
-      console.log("M1_SANDBOX_READONLY_RESULT "+JSON.stringify(
-        describeManualM1Acceptance(preview),
-      ));
-    }
+    console.log("M1_SANDBOX_READONLY_RESULT "+JSON.stringify(
+      describeManualM1Acceptance(preview),
+    ));
   }catch{
     // Fail closed without serializing server responses, filenames, or JWTs.
     console.error("M1_SANDBOX_READONLY_NOT_COMPLETED (check MSI registration, explicit flag, Sandbox-only Owner JWT and network)");

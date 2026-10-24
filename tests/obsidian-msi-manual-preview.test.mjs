@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {readFile} from "node:fs/promises";
 import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
 import {
-  MANUAL_FIRST_LOOK_FLAG,MANUAL_M2_HANDOFF_FLAG,assertManualM1Invocation,
+  MANUAL_FIRST_LOOK_FLAG,assertManualM1Invocation,
   readOwnerJwtFromPipe,describeManualM1Acceptance,
 } from "../scripts/obsidian-msi-manual-preview.ts";
 
@@ -13,12 +13,6 @@ test("manual M1 acceptance requires MSI plus explicit first-look flag and piped 
   assert.doesNotThrow(()=>assertManualM1Invocation(
     "win32","MSI",[MANUAL_FIRST_LOOK_FLAG],false,
   ));
-  assert.doesNotThrow(()=>assertManualM1Invocation(
-    "win32","MSI",[MANUAL_M2_HANDOFF_FLAG],false,false,
-  ));
-  assert.throws(()=>assertManualM1Invocation(
-    "win32","MSI",[MANUAL_M2_HANDOFF_FLAG],false,true,
-  ),/redirected/);
   for(const args of [[],["--help"],[MANUAL_FIRST_LOOK_FLAG,"other"]]){
     assert.throws(()=>assertManualM1Invocation("win32","MSI",args,false),/flag/);
   }
