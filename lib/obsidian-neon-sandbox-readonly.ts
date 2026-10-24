@@ -247,3 +247,73 @@ export async function fetchVerifiedNeonSandboxOwnerFingerprints(args:{
   await verifyNeonSandboxOwnerRls(args);
   return fetchNeonSandboxFingerprints(args);
 }
+
+/**
+ * M4: fetch ONE exact, already-reviewed Sandbox note for a separately
+ * approved Incoming copy. This never writes files, modifies a Baseline,
+ * assumes a winner in a conflict, or accesses a Production endpoint.
+ * The caller must stage the returned content outside the actual Vault.
+ */
+export async function fetchVerifiedNeonSandboxMarkdown(args:{
+  branchId:string;
+  jwt:string;
+  slug:string;
+  expectedSha256:string;
+  expectedRevision:string;
+  fetcher?:Fetcher;
+}):Promise<string>{
+  if(!args||args.branchId!==NEON_SYNC_SANDBOX_BRANCH||
+     typeof args.slug!=="string"||args.slug.length<3||args.slug.length>120||
+     !SLUG.test(args.slug)||!/^[0-9a-f]{64}$/.test(args.expectedSha256)||
+     !/^[0-9a-f]{64}$/.test(args.expectedRevision)){
+    throw new Error("M4 requires a reviewed Sandbox note and exact remote version");
+  }
+
+  // A single RLS-filtered GET can return 200+[] for a non-owner, so prove
+  // ownership AND require a complete inventory before selecting one note.
+  const before=await fetchVerifiedNeonSandboxOwnerFingerprints({
+    branchId:args.branchId,jwt:args.jwt,fetcher:args.fetcher,
+  });
+  const reviewed=before.fingerprints.find(n=>n.slug===args.slug);
+  if(!reviewed||reviewed.sha256!==args.expectedSha256||
+     reviewed.revision!==args.expectedRevision){
+    throw new Error("M4 reviewed Sandbox version is stale or missing");
+  }
+
+  const url=new URL(NEON_SYNC_SANDBOX_DATA_API.replace(/\/$/,"")+"/knowledge_notes");
+  url.searchParams.set("select","id,slug,title,summary,content_md,category,tags,learned_on,updated_at");
+  url.searchParams.set("slug","eq."+args.slug);
+  url.searchParams.set("limit","2");
+  const response=await (args.fetcher??fetch)(url.href,{
+    method:"GET",redirect:"manual",credentials:"omit",cache:"no-store",
+    headers:{
+      Authorization:"Bearer "+args.jwt,Accept:"application/json",
+      "Cache-Control":"no-store",Prefer:"count=exact",
+    },
+    signal:AbortSignal.timeout(16000),
+  });
+  if(response.status!==200||
+     !/application\/json/i.test(response.headers.get("content-type")||"")||
+     response.headers.get("content-range")?.trim()!=="0-0/1"){
+    throw new Error("M4 exact Sandbox note GET was unavailable or incomplete");
+  }
+  let record:unknown;
+  try{record=JSON.parse(await limitedResponseText(response)) as unknown;}
+  catch{throw new Error("M4 exact Sandbox note GET returned invalid JSON");}
+  if(!Array.isArray(record)||record.length!==1){
+    throw new Error("M4 exact Sandbox note GET did not return one note");
+  }
+  const note=validateRow(record[0]);
+  if(note.slug!==args.slug)throw new Error("M4 Sandbox returned a different note");
+  const markdown=serializeObsidianMarkdown({
+    title:note.title,slug:note.slug,excerpt:note.summary,
+    category:note.category,tags:note.tags,learned_on:note.learned_on,
+    content_md:note.content_md,
+  });
+  if(Buffer.byteLength(markdown,"utf8")>MAX_NOTE_BYTES||
+     createHash("sha256").update(markdown).digest("hex")!==args.expectedSha256||
+     createHash("sha256").update(note.id+":"+note.updated_at).digest("hex")!==args.expectedRevision){
+    throw new Error("M4 Sandbox note changed after the reviewed inventory");
+  }
+  return markdown;
+}
