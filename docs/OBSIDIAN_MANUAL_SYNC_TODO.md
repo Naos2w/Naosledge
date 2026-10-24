@@ -60,7 +60,7 @@ try {
 
 ## M3 上傳隔離預演（2026-10-24）
 
-- **2026-10-24 新增真實 Neon Sandbox API create-only 傳輸元件（尚未真人啟用）**：`lib/obsidian-neon-sandbox-create.ts` 只對固定非正式 Sandbox 執行 Owner-RLS 自身驗證、完整遠端 GET、單篇 POST INSERT、再次完整 GET 驗證 SHA/revision；需單篇 `review-missing-remote`、一致的可攜 Markdown SHA 與另外輸入的 `CREATE SANDBOX <slug>` 確認字串。既有 `(owner_id,slug)` 唯一限制拒絕並行撞名；無 upsert/PATCH/DELETE、無 Baseline 寫入，失敗不自動重試。`tests/obsidian-m3-neon-sandbox-create.test.mjs` 以模擬 HTTP 驗證實際請求形狀、Owner 閘門和撞名拒絕，**不是 Neon 真實寫入驗收**。目前元件未接 MSI 操作入口、未取得短效 Owner JWT、未執行真正 Sandbox POST，仍需真人逐篇授權與完成 M3 update-CAS/復原設計；不得將此低階介面視為正式同步開放。
+- **2026-10-24 新增真實 Neon Sandbox API create-only 傳輸元件（尚未真人啟用）**：`lib/obsidian-neon-sandbox-create.ts` 只對固定非正式 Sandbox 執行 Owner-RLS 自身驗證、完整遠端 GET、單篇 POST INSERT、再次完整 GET 驗證 SHA/revision；需單篇 `review-missing-remote`、一致的可攜 Markdown SHA 與另外輸入的 `CREATE SANDBOX <slug>` 確認字串。**傳輸前現在透過 `readMarkdown()` 回呼在 Owner GET 完成後重新讀取本機來源並比對原 M1 SHA**，避免將預覽當時快取的 Markdown 寫入已變動的筆記；既有 `(owner_id,slug)` 唯一限制拒絕並行撞名；無 upsert/PATCH/DELETE、無 Baseline 寫入，失敗不自動重試。`tests/obsidian-m3-neon-sandbox-create.test.mjs` 以模擬 HTTP 驗證實際請求形狀、Owner 閘門和撞名拒絕，**不是 Neon 真實寫入驗收**。目前元件未接 MSI 操作入口、未取得短效 Owner JWT、未執行真正 Sandbox POST，仍需真人逐篇授權與完成 M3 update-CAS/復原設計；不得將此低階介面視為正式同步開放。
 
 - `lib/obsidian-durable-write-sandbox.ts` 已新增 `SyntheticUploadConsent` 與 `approvedUpload()`：只允許從作業系統**新建的隨機暫存 Scratch** 讀合成 Markdown，更新**同一進程內的合成 Remote Map**；無 Neon HTTP、無實際 Obsidian Vault 路徑、無真實 Owner JWT。
 - 只有 M1 規劃器回報 `review-upload` 或 `review-missing-remote` 才提供 `uploadConsents`。逐篇授權含亂數 nonce 與 10 分鐘期限，僅一次有效；上傳前及人工介入後再次比對兩端 SHA、遠端 revision，版本變動、雙改衝突與非法方向一律拒絕。

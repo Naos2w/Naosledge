@@ -22,7 +22,7 @@ const decision={
 };
 const options={
   branchId:NEON_SYNC_SANDBOX_BRANCH,sandboxOwnerJwt:jwt,
-  decision,markdown,typedConfirmation:"CREATE SANDBOX "+draft.slug,
+  decision,readMarkdown:async()=>markdown,typedConfirmation:"CREATE SANDBOX "+draft.slug,
 };
 const asJson=(v,status=200,inventory=false)=>new Response(JSON.stringify(v),{
   status,headers:{
@@ -94,10 +94,13 @@ test("M3 refuses missing individual consent, modified content, and existing remo
   await assert.rejects(createNeonSandboxNoteOnly({
     ...options,typedConfirmation:"",fetcher:n.fetcher,
   }),/confirmation/);
+  assert.deepEqual(n.calls,[],"missing consent must fail before any request");
   await assert.rejects(createNeonSandboxNoteOnly({
-    ...options,markdown:markdown+" changed",fetcher:n.fetcher,
+    ...options,readMarkdown:async()=>markdown+" changed",fetcher:n.fetcher,
   }),/exact reviewed/);
-  assert.deepEqual(n.calls,[]);
+  assert.deepEqual(n.calls,[
+    "GET /neondb/rest/v1/blog_admins","GET /neondb/rest/v1/knowledge_notes",
+  ],"a changed local note must fail after Owner GET and before POST");
   const other=fakeNetwork({exists:true});
   await assert.rejects(createNeonSandboxNoteOnly({...options,fetcher:other.fetcher}),
     /remote note exists/);
@@ -105,6 +108,24 @@ test("M3 refuses missing individual consent, modified content, and existing remo
     "GET /neondb/rest/v1/blog_admins","GET /neondb/rest/v1/knowledge_notes",
   ]);
 });
+test("M3 reads local source only after fresh Owner inventory, never from cached M1 text",async()=>{
+  const n=fakeNetwork();
+  const events=[];
+  const result=await createNeonSandboxNoteOnly({
+    ...options,
+    fetcher:async(...args)=>{
+      events.push("remote:"+args[1].method);
+      return n.fetcher(...args);
+    },
+    readMarkdown:async()=>{
+      events.push("local:re-read");
+      return markdown;
+    },
+  });
+  assert.equal(result.sha256,digest);
+  assert.deepEqual(events,["remote:GET","remote:GET","local:re-read","remote:POST","remote:GET"]);
+});
+
 test("M3 rejects missing Owner RLS proof before POST",async()=>{
   const n=fakeNetwork({ownerGranted:false});
   await assert.rejects(createNeonSandboxNoteOnly({...options,fetcher:n.fetcher}),/Owner RLS grant/);

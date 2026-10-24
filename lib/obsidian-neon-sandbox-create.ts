@@ -26,15 +26,14 @@ export async function createNeonSandboxNoteOnly(args:{
   sandboxOwnerJwt:string;
   /** M1's inspected decision, never an executable M2 UI selection. */
   decision:SyncDecision;
-  /** Re-read Markdown bytes, not a path to an actual Obsidian Vault. */
-  markdown:string;
+  /** Re-read the approved note immediately before POST; never reuse M1's cached Markdown. */
+  readMarkdown:()=>Promise<string>;
   /** Must be typed for this exact note by a future approved caller. */
   typedConfirmation:string;
   fetcher?:Fetcher;
 }):Promise<{slug:string;sha256:string;revision:string;baselineSaved:false}>{
   if(!args||args.branchId!==NEON_SYNC_SANDBOX_BRANCH||
-     typeof args.markdown!=="string"||
-     Buffer.byteLength(args.markdown,"utf8")>MAX_MARKDOWN_BYTES){
+     typeof args.readMarkdown!=="function"){
     throw Error("M3 requires one bounded note for the approved Sandbox");
   }
   const d=args.decision;
@@ -44,13 +43,6 @@ export async function createNeonSandboxNoteOnly(args:{
      args.typedConfirmation!=="CREATE SANDBOX "+d.slug){
     throw Error("M3 requires a fresh per-note create-only confirmation");
   }
-  const parsed=parseObsidianMarkdown(args.markdown,d.slug+".md","1970-01-01");
-  if(!parsed||parsed.metadata.slug!==d.slug||
-     serializeObsidianMarkdown({...parsed.metadata,content_md:parsed.content_md})!==args.markdown||
-     createHash("sha256").update(args.markdown,"utf8").digest("hex")!==d.expectedLocalSha){
-    throw Error("M3 Markdown is not the exact reviewed portable note");
-  }
-
   // Independent Owner-RLS proof first: 200 + [] alone does not prove ownership.
   const request=args.fetcher??fetch;
   const before=await fetchVerifiedNeonSandboxOwnerFingerprints({
@@ -58,6 +50,19 @@ export async function createNeonSandboxNoteOnly(args:{
   });
   if(before.numberOfNotes>=20||before.fingerprints.some(n=>n.slug===d.slug)){
     throw Error("M3 create stopped: remote note exists or full inventory reached its limit");
+  }
+
+  // An M1 snapshot may be stale after the Owner GET. Read the source again
+  // only now, immediately before insertion, and refuse changed bytes.
+  const markdown=await args.readMarkdown();
+  if(typeof markdown!=="string"||Buffer.byteLength(markdown,"utf8")>MAX_MARKDOWN_BYTES){
+    throw Error("M3 requires one bounded note for the approved Sandbox");
+  }
+  const parsed=parseObsidianMarkdown(markdown,d.slug+".md","1970-01-01");
+  if(!parsed||parsed.metadata.slug!==d.slug||
+     serializeObsidianMarkdown({...parsed.metadata,content_md:parsed.content_md})!==markdown||
+     createHash("sha256").update(markdown,"utf8").digest("hex")!==d.expectedLocalSha){
+    throw Error("M3 Markdown is not the exact reviewed portable note");
   }
 
   // Only INSERT; (owner_id,slug) is UNIQUE in the existing Neon schema.
