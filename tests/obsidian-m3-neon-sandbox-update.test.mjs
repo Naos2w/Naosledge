@@ -176,3 +176,59 @@ test("M3 non-owner RLS proof rejects prior to note GET or PATCH",async()=>{
   }),/Owner RLS grant/);
   assert.deepEqual(mock.calls,["GET /neondb/rest/v1/blog_admins"]);
 });
+
+
+// Exercise the manual entry with the same offline HTTP contract as the library.
+const {M3_MANUAL_UPDATE_FLAG,assertManualM3UpdateInvocation,
+  readManualUpdateRequest,updateOneReviewedSandboxNote}=
+  await import("../scripts/obsidian-m3-sandbox-manual-update.ts");
+const manualRequest={sandboxOwnerJwt:jwt,markdown:newMarkdown,decision,
+  typedConfirmation:args.typedConfirmation};
+
+test("M3 manual update requires MSI, explicit flag and piped input; rejects invalid requests",async()=>{
+  assertManualM3UpdateInvocation("win32","MSI",[M3_MANUAL_UPDATE_FLAG],false);
+  for(const input of [
+    ["linux","MSI",[M3_MANUAL_UPDATE_FLAG],false],
+    ["win32","OTHER",[M3_MANUAL_UPDATE_FLAG],false],
+    ["win32","MSI",[],false],
+    ["win32","MSI",[M3_MANUAL_UPDATE_FLAG,"extra"],false],
+    ["win32","MSI",[M3_MANUAL_UPDATE_FLAG],true],
+  ])assert.throws(()=>assertManualM3UpdateInvocation(...input),/piped manual approval/);
+  await assert.rejects(readManualUpdateRequest(["not-json"]),/must be JSON/);
+  await assert.rejects(readManualUpdateRequest(["x".repeat(1_520_001)]),/too large/);
+  for(const override of [
+    {destination:"untrusted"},{sandboxOwnerJwt:"not-a-jwt"},
+    {markdown:"x".repeat(250_001)}, {markdown:newMarkdown+"changed"},
+    {typedConfirmation:""},
+    {decision:{...decision,choice:"conflict"}},
+    {decision:{...decision,expectedRemoteRevision:null}},
+    {decision:{...decision,expectedLocalSha:oldSha}},
+    {decision:{...decision,slug:"different-note"}},
+    {decision:{...decision,extra:true}},
+  ])await assert.rejects(readManualUpdateRequest([JSON.stringify({...manualRequest,...override})]));
+});
+
+test("M3 manual update passes the reviewed note through CAS and propagates a lost race without retry",async()=>{
+  const request=await readManualUpdateRequest([JSON.stringify(manualRequest)]);
+  const mock=mockNetwork();
+  assert.deepEqual(await updateOneReviewedSandboxNote(request,mock.fetcher),{baselineSaved:false});
+  assert.equal(mock.calls.length,5);
+  assert.equal(mock.getRemote().content_md,latest.content_md);
+  const raced=mockNetwork({race:true});
+  await assert.rejects(updateOneReviewedSandboxNote(request,raced.fetcher),/manual reconciliation/);
+  assert.equal(raced.calls.filter(s=>s.startsWith("PATCH ")).length,1);
+});
+
+test("M3 actual CLI rejects malformed stdin without exposing input",async()=>{
+  const {spawnSync}=await import("node:child_process");
+  const result=spawnSync(process.execPath,["--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
+    "scripts/obsidian-m3-sandbox-manual-update.ts",M3_MANUAL_UPDATE_FLAG],{
+    input:JSON.stringify({privateMarker:"never-echo-this"}),encoding:"utf8",
+    timeout:10000,
+  });
+  assert.equal(result.error,undefined);
+  assert.equal(result.status,1);
+  assert.equal(result.stdout,"");
+  assert.equal(result.stderr.trim(),
+    "M3_SANDBOX_UPDATE_NOT_VERIFIED; inspect Sandbox manually before any retry");
+});
