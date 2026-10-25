@@ -14,6 +14,8 @@ import {fileURLToPath} from "node:url";
 import path from "node:path";
 import os from "node:os";
 import {chromium} from "playwright-core";
+import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
+import {serializeManualM2Handoff} from "../lib/obsidian-m2-review-choices.ts";
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
 const fixture=path.join(root,"app","m2-sync-local-fixture");
@@ -151,13 +153,31 @@ try{
   await page.getByRole("button",{name:"衝突",exact:true}).click();
   assert.equal(await page.locator(".vault-sync-note").count(),1);
   await page.getByRole("button",{name:"全部",exact:true}).click();
-  await page.getByRole("searchbox",{name:"搜尋範例筆記"}).fill("local-new");
+  await page.getByRole("searchbox",{name:"搜尋筆記"}).fill("local-new");
   assert.equal(await page.locator(".vault-sync-note").count(),1);
-  await page.getByRole("searchbox",{name:"搜尋範例筆記"}).fill("");
+  await page.getByRole("searchbox",{name:"搜尋筆記"}).fill("");
   await page.getByRole("button",{name:"清除選擇"}).click();
   assert.equal(await page.getByRole("button",{name:"清除選擇"}).isDisabled(),true);
   assert.equal(await page.locator("#vault-sync-review-summary").count(),0);
   console.log("PASS filters, search, reset without sending a request");
+
+  // Real integration seam: a locally selected MSI-style read-only JSON
+  // snapshot is parsed inside the browser; no file upload/network transfer.
+  const handoff=serializeManualM2Handoff(await makeSyntheticM2Preview());
+  await page.locator("#vault-sync-handoff-file").setInputFiles({
+    name:"msi-review.json",mimeType:"application/json",buffer:Buffer.from(handoff),
+  });
+  assert.ok(await page.getByText("MSI 手動匯入 · 唯讀快照").isVisible());
+  assert.equal(await page.locator(".vault-sync-note").count(),7);
+  await page.locator("#vault-sync-handoff-file").setInputFiles({
+    name:"invalid.json",mimeType:"application/json",buffer:Buffer.from('{"format":"bad"}'),
+  });
+  assert.ok(await page.getByRole("alert",{name:""}).filter({hasText:"匯入失敗"}).isVisible());
+  assert.ok(await page.getByText("MSI 手動匯入 · 唯讀快照").isVisible(),
+    "Invalid files must not replace a valid preview");
+  await page.getByRole("button",{name:"清除私人快照並回到合成預演"}).click();
+  assert.ok(await page.getByText("互動預演 · 合成筆記").isVisible());
+  console.log("PASS client-only M2 JSON import, invalid rejection, in-memory clear");
 
   await mkdir(screenshots,{recursive:true});
   await page.screenshot({path:path.join(screenshots,"m2-desktop.png"),fullPage:true});

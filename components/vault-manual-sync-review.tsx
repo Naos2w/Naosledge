@@ -10,6 +10,7 @@ import type {ManualReviewPreview} from "@/lib/obsidian-manual-sync-review";
 import type {SyncChoice} from "@/lib/obsidian-sync-plan";
 import {
   chooseReviewIntent,reviewIntentOptions,summariseReviewIntents,
+  parseManualM2Handoff,MANUAL_M2_HANDOFF_MAX_BYTES,
   type ReviewIntent,type ReviewIntentSelections,
 } from "@/lib/obsidian-m2-review-choices";
 
@@ -30,7 +31,10 @@ const INTENT_ICON={
 };
 type Filter="all"|"review"|"conflict"|"done";
 
-export default function VaultManualSyncReview({preview}:{preview:ManualReviewPreview}){
+export default function VaultManualSyncReview({preview:syntheticPreview}:{preview:ManualReviewPreview}){
+  const [manualPreview,setManualPreview]=useState<ManualReviewPreview|null>(null);
+  const [importError,setImportError]=useState(false);
+  const preview=manualPreview??syntheticPreview;
   const [choices,setChoices]=useState<ReviewIntentSelections>({});
   const [filter,setFilter]=useState<Filter>("all");
   const [query,setQuery]=useState("");
@@ -50,6 +54,23 @@ export default function VaultManualSyncReview({preview}:{preview:ManualReviewPre
     setShowSummary(false);
   }
 
+  async function importLocalHandoff(file:File|undefined){
+    if(!file)return;
+    try{
+      if(file.size>MANUAL_M2_HANDOFF_MAX_BYTES){
+        throw Error("File too large");
+      }
+      // Browser-local File.text(): never POST private slugs or fingerprints.
+      const reviewed=parseManualM2Handoff(await file.text());
+      setManualPreview(reviewed);
+      setChoices({});setFilter("all");setQuery("");setShowSummary(false);
+      setImportError(false);
+    }catch{
+      setImportError(true);
+      // On failure, never replace an earlier verified display with a partial list.
+    }
+  }
+
   return <section className="vault-root container vault-sync-page">
     <div className="vault-topline">
       <Link className="back-link" href="/vault"><ArrowLeft size={16}/> 返回私人知識庫</Link>
@@ -61,14 +82,35 @@ export default function VaultManualSyncReview({preview}:{preview:ManualReviewPre
         <h1>同步審查<span className="title-period">.</span></h1>
         <p>逐篇決定下一步，再確認整份清單。Obsidian 與 NaosLedge 的原稿都受到保護。</p>
       </div>
-      <span className="vault-sync-demo-label">互動預演 · 合成筆記</span>
+      <span className="vault-sync-demo-label">{manualPreview?"MSI 手動匯入 · 唯讀快照":"互動預演 · 合成筆記"}</span>
     </header>
 
     <div className="vault-sync-notice" role="status">
       <ShieldCheck aria-hidden="true" size={20}/>
       <div>
         <strong>目前不會執行同步。</strong>
-        <span>畫面使用虛構資料，沒有讀取真實 Obsidian 筆記或 Neon 內容。所有選擇只保留在本頁記憶體，不會上傳、下載、覆寫、刪除或建立授權。</span>
+        <span>{manualPreview?
+          "這是從 MSI 手動匯入的本機快照，不是網站即時連線或身分驗收。快照可能過期；所有選擇只存在本頁記憶體，絕不執行上傳、下載、覆寫、刪除或建立授權。":
+          "畫面使用虛構資料，沒有讀取真實 Obsidian 筆記或 Neon 內容。所有選擇只保留在本頁記憶體，不會上傳、下載、覆寫、刪除或建立授權。"}</span>
+      </div>
+    </div>
+
+    <div className="vault-sync-notice" role="group" aria-label="手動匯入 MSI Sandbox 唯讀快照">
+      <ShieldAlert aria-hidden="true" size={20}/>
+      <div>
+        <strong>匯入 MSI 產生的唯讀差異快照（選用）</strong>
+        <span>僅在這台瀏覽器本機讀取 JSON，不會傳回網站。檔案包含私人筆記名稱與 SHA 指紋；請勿上傳至 GitHub 或公開分享。匯入不代表允許執行同步。</span>
+        <label htmlFor="vault-sync-handoff-file">選擇 MSI Sandbox JSON 檔案</label>
+        <input id="vault-sync-handoff-file" type="file" accept=".json,application/json"
+          onChange={event=>{
+            void importLocalHandoff(event.currentTarget.files?.[0]);
+            event.currentTarget.value="";
+          }}/>
+        {manualPreview&&<button type="button" onClick={()=>{
+          setManualPreview(null);setChoices({});setQuery("");setFilter("all");
+          setShowSummary(false);setImportError(false);
+        }}>清除私人快照並回到合成預演</button>}
+        {importError&&<span role="alert">匯入失敗：不是完整有效的唯讀差異快照，原畫面未更動。</span>}
       </div>
     </div>
 
@@ -82,7 +124,7 @@ export default function VaultManualSyncReview({preview}:{preview:ManualReviewPre
     </div>}
 
     <div className="vault-sync-totals" aria-label="同步差異摘要">
-      <div><strong>{preview.decisions.length}</strong><span>示例筆記</span></div>
+      <div><strong>{preview.decisions.length}</strong><span>{manualPreview?"快照筆記":"示例筆記"}</span></div>
       <div><strong>{tally.needsReview}</strong><span>待審查</span></div>
       <div><strong>{preview.conflicts}</strong><span>雙邊衝突</span></div>
       <div><strong>{tally.selected}</strong><span>已選擇</span></div>
@@ -107,9 +149,9 @@ export default function VaultManualSyncReview({preview}:{preview:ManualReviewPre
       </div>
       <label className="vault-sync-search">
         <Search size={17} aria-hidden="true"/>
-        <span className="visually-hidden">搜尋範例筆記</span>
+        <span className="visually-hidden">搜尋筆記</span>
         <input value={query} onChange={e=>setQuery(e.target.value)}
-          type="search" maxLength={120} placeholder="搜尋筆記名稱" aria-label="搜尋範例筆記"/>
+          type="search" maxLength={120} placeholder="搜尋筆記名稱" aria-label="搜尋筆記"/>
       </label>
     </div>
 
@@ -127,8 +169,8 @@ export default function VaultManualSyncReview({preview}:{preview:ManualReviewPre
             <h3>{row.slug}</h3>
             <p>{status.message}</p>
             <dl className="vault-sync-versions">
-              <div><dt>Obsidian</dt><dd title="合成資料 SHA-256 指紋">{row.expectedLocalSha?.slice(0,10)??"不存在"}</dd></div>
-              <div><dt>NaosLedge</dt><dd title="合成資料 SHA-256 指紋">{row.expectedRemoteSha?.slice(0,10)??"不存在"}</dd></div>
+              <div><dt>Obsidian</dt><dd title={manualPreview?"匯入快照 SHA-256 指紋":"合成資料 SHA-256 指紋"}>{row.expectedLocalSha?.slice(0,10)??"不存在"}</dd></div>
+              <div><dt>NaosLedge</dt><dd title={manualPreview?"匯入快照 SHA-256 指紋":"合成資料 SHA-256 指紋"}>{row.expectedRemoteSha?.slice(0,10)??"不存在"}</dd></div>
             </dl>
           </div>
           <div className="vault-sync-note-actions">
