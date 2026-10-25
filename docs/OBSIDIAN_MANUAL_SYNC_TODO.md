@@ -89,6 +89,8 @@ try {
 
 ## M4 Incoming 隔離預演與固定 Sandbox 讀取（2026-10-24）
 
+- **2026-10-26 M4 低階 Incoming 決策一致性守門**：在 `stageNeonSandboxIncoming()` 本身驗證單篇 M2 `SyncDecision` 必須恰含 6 個規定欄位、合法本地 SHA／遠端 SHA／revision，`review-missing-local` 必須本地 SHA 為 null，`review-download`／`conflict` 必須有與遠端不同的本地 SHA。拒絕偽造衝突、已相同版本、遺漏本地版本與夾帶任意目的地，且在 Owner GET 或建立 Incoming 前拒絕；不再僅倚賴 MSI CLI 已做的同型驗證。新增紅燈→綠燈模擬 HTTP／Scratch 回歸，未執行真正 Neon GET 或任何 Vault 寫入，也未核准正式同步。
+
 - **2026-10-25 M4 MSI 人工暫存下載入口**：新增 `scripts/obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only`，僅在 MSI 以人工管線輸入短效 Sandbox Owner JWT、單篇 M2 `SyncDecision`（完整兩端 SHA／Revision）、`SAVE SANDBOX INCOMING <slug>` 確認後，呼叫原有固定 Sandbox 逐篇 GET 與驗證。輸入長度限制、拒絕目的地／任意多餘欄位／非法方向、禁止讀寫 Obsidian 原稿；成功僅回報私人 OS 暫存 Incoming 路徑，不建立 Baseline，也不刪除。須由 Owner 自行保護與清理暫存副本；目前只通過離線模擬，不表示真人 JWT/Neon GET 成功。這是手動驗收工具，不是正式 UI 同步執行器。
 
 - **PR #30 低階功能（尚未真人驗收）**：`fetchVerifiedNeonSandboxMarkdown()` 在固定 Neon Sandbox 以短效 Owner JWT 驗證 `blog_admins` 和完整清單，再透過單篇 GET 比對可攜 Markdown SHA-256 與遠端 revision；清單或版本不符即拒絕。`stageNeonSandboxIncoming()` 僅在人工逐篇輸入 `SAVE SANDBOX INCOMING <slug>` 後，於 OS per-user 暫存根目錄新建隨機 Incoming 目錄並以 `wx` 建立副本。只適用 `review-download`、`review-missing-local`、`conflict`；不提供任意目的地、不碰真實 Vault、不覆寫原稿、不更新 Baseline、不刪除。此前只有模擬 HTTP＋隨機暫存檔測試；本輪補上以下 MSI 人工入口，仍未完成真正 Neon GET 驗收或正式的私人暫存檔清理流程。

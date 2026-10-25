@@ -30,7 +30,15 @@ export async function stageNeonSandboxIncoming(args:{
   // Keep the exact approved primitives across asynchronous remote reads.
   // A caller must not redirect the filename or returned evidence mid-flight.
   const d=args?.decision?{...args.decision}:undefined;
+  // The CLI validates these relationships, but this exported staging API must
+  // not trust a different future caller to supply a consistent M2 decision.
+  const fields=[
+    "slug","choice","manualReview","expectedLocalSha",
+    "expectedRemoteSha","expectedRemoteRevision",
+  ];
   if(!args||args.branchId!==NEON_SYNC_SANDBOX_BRANCH||!d||
+     Object.keys(d).length!==fields.length||
+     !fields.every(field=>Object.hasOwn(d,field))||
      !["review-download","review-missing-local","conflict"].includes(d.choice)||
      d.manualReview!==true||
      typeof d.slug!=="string"||d.slug.length<3||d.slug.length>120||
@@ -39,6 +47,11 @@ export async function stageNeonSandboxIncoming(args:{
      !/^[0-9a-f]{64}$/.test(d.expectedRemoteSha)||
      typeof d.expectedRemoteRevision!=="string"||
      !/^[0-9a-f]{64}$/.test(d.expectedRemoteRevision)||
+     (d.expectedLocalSha!==null&&
+       (typeof d.expectedLocalSha!=="string"||
+        !/^[0-9a-f]{64}$/.test(d.expectedLocalSha)))||
+     (d.choice==="review-missing-local")!==(d.expectedLocalSha===null)||
+     (d.expectedLocalSha!==null&&d.expectedLocalSha===d.expectedRemoteSha)||
      args.typedConfirmation!=="SAVE SANDBOX INCOMING "+d.slug){
     throw new Error("M4 requires a fresh per-note Incoming confirmation");
   }
