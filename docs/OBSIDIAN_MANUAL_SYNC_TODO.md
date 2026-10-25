@@ -14,9 +14,9 @@
 
 ## 最新優先 TODO（2026-10-25）
 
-1. **P0｜M1/M2 已整合 main**：PR #26、#27 已於 2026-10-24 合併；#27 Merge SHA `a192aa3e7af04b5c7bb0df34bc108799ddd7fb83`。這只代表離線原型整合，非真實 Sandbox／正式同步驗收。PR #28–31 均為獨立分支且仍 OPEN，須各自核對當次 HEAD 的非 skipped CI 與本人合併授權；不得對已合併的 #27 新增 Commit 或擅自部署。
+1. **P0｜整合進度**：M1 #26、M2 #27、MSI 唯讀 JSON 匯出 #31 及 M2 瀏覽器本機匯入 #28 已合併 `main`；M3 create-only [#29](https://github.com/Naos2w/Naosledge/pull/29) 正在整合、M4 Incoming [#30](https://github.com/Naos2w/Naosledge/pull/30) 待整合。須核對最新 `main` 與對應 HEAD CI；合併不是部署，也不代表真正 Sandbox／正式同步已完成驗收。
 2. **P1｜真正的 M1 唯讀驗收**：2026-10-24 在真正 MSI 上完成安裝／GUI 註冊及固定路徑唯讀掃描（0 個直接 Markdown、0 個未涵蓋資料夾、0 次寫入）。新增手動工具 `scripts/obsidian-msi-manual-preview.ts`，可從 stdin 一次性取得 Sandbox Owner JWT，先以 `blog_admins` 本人 RLS 列驗明 Owner 身分，再執行真正的 Owner-RLS 筆記 GET（避免非 Owner 收到 200 空清單卻被誤判成功）；**目前尚缺 Sandbox-only 短效 Owner JWT，並未執行真實遠端 GET**。新增 PostgREST `Prefer: count=exact`＋嚴格 `Content-Range`/回傳筆數一致性檢查，避免即使 Owner 驗證成功，伺服器限制筆數或未回傳完整清單時仍誤將空清單／局部清單視為 `fullInventory=true`；缺少精確總數也拒絕預覽。認證失敗、超限或不完整時必須停止；目前僅已通過離線模擬驗證，不能當成真實 Sandbox GET 成功。
-3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。**2026-10-24 已加強 M2 合成／未來唯讀預覽的資料完整性驗證**：驗證完整 Inventory、7 類差異計數、SHA／Revision、缺漏警示與逐篇方向一致；遠端指紋與 Revision 必須成對存在，不能有 SHA 卻缺少 Revision 就讓使用者選擇操作（已新增先失敗後通過的回歸測試）。錯誤／截斷／矛盾清單一律拒絕。修正合法 slug `constructor` 被 Object 原型屬性錯認為使用者選擇的問題；但實際 Owner JWT／Neon GET 仍未接線，不能稱真實資料審查已完成。
+3. **P1｜M2 真實唯讀預覽接線**：只在受控站長流程顯示差異；保留逐篇選擇、版本資訊與「未涵蓋筆記」警示；不提供任何實際傳輸、刪除或自動執行。**2026-10-24 已加強 M2 合成／未來唯讀預覽的資料完整性驗證**：驗證完整 Inventory、7 類差異計數、SHA／Revision、缺漏警示與逐篇方向一致；遠端指紋與 Revision 必須成對存在，不能有 SHA 卻缺少 Revision 就讓使用者選擇操作（已新增先失敗後通過的回歸測試）。錯誤／截斷／矛盾清單一律拒絕。修正合法 slug `constructor` 被 Object 原型屬性錯認為使用者選擇的問題；已整合 MSI 人工匯出與 M2 瀏覽器本機匯入，但仍未取得 Sandbox-only Owner JWT 完成真正 Neon GET 或私人快照端到端驗收；不能稱真實資料審查已完成。
 4. **P1｜M3 Sandbox 手動上傳**：PR #29 新增固定 Neon Integration Sandbox 的 create-only POST 元件，以及 `scripts/obsidian-m3-sandbox-manual-create.ts --sandbox-scratch-create-only` MSI 人工單篇入口。僅接受 stdin 傳入的**合成／獨立 Scratch 可攜式 Markdown**、短效 Sandbox-only Owner JWT 與 `CREATE SANDBOX <slug>` 明確確認；先驗 Owner RLS 與完整清單，拒絕同名覆寫、PATCH／DELETE，不寫 Baseline，結果不明不得自動重試。輸入不讀真實 Obsidian Vault，也不視 M2 UI 選擇為寫入授權。**離線 HTTP 模擬與 CLI 輸入驗證不等於真正 Neon Sandbox POST 成功**；需 Owner 在本機安全取得短效 JWT 並明確逐篇批准後才可驗收。M3 舊筆記條件更新、真正 Vault 連動仍未實作／未授權。
 5. **P2｜M4/M5**：M4 **合成 Incoming 副本預演已新增**（只在隨機 Scratch 的獨立 Incoming 建檔，支援衝突保留兩份，不修改原稿、不更新 Baseline）；M5 已新增**隨機 Scratch 專用 append-only 成功證據、限量雙版本行比較及唯讀日誌重新載入預檢**。恢復預檢遇到多筆同名歷史、版次變更、兩端差異或記憶體 Baseline 不一致會保守標示、絕不推斷勝者或自動匯入。正式 Vault／Neon 持久化、真正 MSI 下載適配器、跨程序重啟後可信載入及 UI 接線仍待開發／授權；任何刪除仍需另外的明確人工決定。
 6. **P2｜M6/M7**：新增 `tests/obsidian-m6-synthetic-cross-stage.test.mjs`，先以隨機 Scratch／記憶體 Remote 跨階段回歸 M1 預覽、M2 非執行選擇、M3 逐篇上傳、M4 Incoming 保留雙份、M5 只記錄已驗證一致的 Baseline，以及過期版本／漏掃／不完整清單的 fail-closed 行為。**這不是 Neon 或 MSI 真實 E2E**，仍須另外完成真正 Sandbox Auth／RLS／API＋MSI 測試與回復驗收；M7 正式啟用仍需 Owner 個別授權。
@@ -29,7 +29,7 @@
 | --- | --- | --- | --- |
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
 | **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已於 PR #26 合併 `main`（Merge SHA `eb3023b1`；PR CI #87 SUCCESS）。離線整合通過；真正 Owner JWT／Neon GET 尚未驗收，不代表正式同步可用；獨立 QA 不再是一般開發前置條件** |
-| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27 已於 2026-10-24 合併 main；真人唯讀 JSON 匯入 PR #28 與 MSI 匯出 PR #31 尚未合併，真實 Owner-RLS GET／端到端預覽未驗收。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
+| **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA 短指紋、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27、#31、#28 已合併 `main`，M2 匯出/匯入程式碼整合完成；真正 Owner-RLS GET／端到端預覽仍未驗收，沒有上線或啟用同步。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
 | **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **PR #29 具備固定 Neon Sandbox create-only POST 與 MSI scratch-only 手動 stdin 入口；模擬 HTTP 單篇建立驗證已通過。尚無真正 Sandbox JWT／POST 驗收、既有筆記條件更新、真實 Vault 串接或正式同步授權** |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | **合成 Scratch Incoming 副本預演已實作／測試；真人 Vault 或 Neon Sandbox API 尚未接線／授權** |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | **合成 Scratch 的逐篇 Baseline append-only 證據、唯讀雙版本行比較及唯讀日誌重新載入預檢已實作；衝突保留、還原不清除 Baseline 已驗證。真正可跨程序重啟並驗證來源的持久載入、正式資料層／UI 接線仍待開發** |
@@ -57,6 +57,8 @@ try {
 ```
 
 - 終端只輸出筆數、衝突數、未涵蓋數與不允許操作旗標，不會列出 Markdown、slug、SHA 或 JWT。首次 Baseline 為 `[]`，代表「沒有既定同步基準」，**不是同步成功或任何覆寫授權**。沒有有效 Sandbox Owner JWT 時，此項仍列為待驗收，不能宣稱成功。
+
+- **M2 MSI → 站長瀏覽器安全交接**：已合併 #31 的 `--sandbox-m2-readonly-handoff` MSI 單次手動匯出與 #28 的瀏覽器本機 JSON 匯入。MSI 端將通過 Owner-RLS 的快照寫入使用者本機排他建立的臨時 JSON，只輸出路徑；檔案含私人 slug／SHA／revision，不含 Markdown 正文或 JWT，匯入後須由本人清理。此流程尚未取得真正 Sandbox Owner JWT 或真人端到端驗收，且不授權任何同步寫入。
 
 ## M3 上傳隔離預演（2026-10-24）
 
