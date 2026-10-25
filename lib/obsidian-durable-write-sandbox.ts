@@ -90,7 +90,7 @@ export type SyntheticBaselineReloadPreview={
     slug:string;
     checkpointCount:number;
     checkpointId:string|null;
-    status:"matches-current-pair"|"ambiguous-history"|
+    status:"matches-current-pair"|"ambiguous-history"|"missing-journal-evidence"|
       "memory-baseline-disagrees"|"changed-local"|"changed-remote"|"changed-both";
   }>;
   syntheticOnly:true;
@@ -836,11 +836,19 @@ export async function createDurableSyntheticObsidianWorkspace(){
     }={}):Promise<SyntheticBaselineReloadPreview>{
       const events=await this.listConfirmedSyntheticBaselines();
       await ensureActive();
+      // A live memory baseline with no checkpoint must be visible as missing
+      // evidence, never silently omitted from a seemingly empty reload report.
+      const memorySnapshot=new Map([...baseline.entries()].map(
+        ([slug,value])=>[slug,value.sha256],
+      ));
       const grouped=new Map<string,SyntheticBaselineCheckpoint[]>();
       for(const item of events){
         const prior=grouped.get(item.slug)??[];
         prior.push(item);
         grouped.set(item.slug,prior);
+      }
+      for(const slug of memorySnapshot.keys()){
+        if(!grouped.has(slug))grouped.set(slug,[]);
       }
       const notes:SyntheticBaselineReloadPreview["notes"]=[];
       const inspectedSources:Array<{
@@ -848,6 +856,13 @@ export async function createDurableSyntheticObsidianWorkspace(){
         remoteRevision:string|null;baselineSha:string|null;
       }>=[];
       for(const [slug,records] of [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0],"en"))){
+        if(records.length===0){
+          notes.push({
+            slug,checkpointCount:0,checkpointId:null,
+            status:"missing-journal-evidence",
+          });
+          continue;
+        }
         if(records.length!==1){
           notes.push({
             slug,checkpointCount:records.length,checkpointId:null,
@@ -906,6 +921,13 @@ export async function createDurableSyntheticObsidianWorkspace(){
            (baseline.get(seen.slug)?.sha256??null)!==seen.baselineSha){
           throw Error("M5 reload source changed during inspection");
         }
+      }
+      // Include journal-less memory entries in the consistency check, even
+      // when no persisted records exist at all.
+      if(baseline.size!==memorySnapshot.size||
+         [...baseline.entries()].some(([slug,value])=>
+           memorySnapshot.get(slug)!==value.sha256)){
+        throw Error("M5 reload memory baseline changed during inspection");
       }
       return {
         notes,syntheticOnly:true,autoImportAllowed:false,

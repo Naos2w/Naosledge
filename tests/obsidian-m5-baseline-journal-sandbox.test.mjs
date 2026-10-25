@@ -238,6 +238,64 @@ test("M5 rejects corrupt or redirected scratch journal instead of treating it as
   });
 });
 
+test("M5 reload identifies a memory baseline with no persisted journal evidence",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("memory-only","same content");
+    await box.seedRemote("memory-only","same content");
+    await box.setBaseline([{slug:"memory-only",sha256:sha("same content")}]);
+    assert.equal((await box.preview()).plan.decisions[0].choice,"unchanged");
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[]);
+    const report=await box.inspectSyntheticBaselineReload();
+    assert.deepEqual(report.notes,[{
+      slug:"memory-only",checkpointCount:0,checkpointId:null,
+      status:"missing-journal-evidence",
+    }],"matching current bytes cannot substitute for persisted sync evidence");
+    assert.equal(report.autoImportAllowed,false);
+    assert.equal(report.writeAllowed,false);
+    assert.equal(report.deleteAllowed,false);
+    assert.equal(report.manualReviewRequired,true);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[],
+      "read-only inspection must not fabricate a checkpoint");
+  });
+});
+
+test("M5 reload keeps a recorded note distinct from an unrecorded memory baseline",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("recorded-note","recorded");
+    const consent=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:consent.slug,confirmation:consent.confirmation});
+    await box.seedLocal("unrecorded-note","unrecorded");
+    await box.seedRemote("unrecorded-note","unrecorded");
+    await box.setBaseline([
+      {slug:"recorded-note",sha256:sha("recorded")},
+      {slug:"unrecorded-note",sha256:sha("unrecorded")},
+    ]);
+    const report=await box.inspectSyntheticBaselineReload();
+    assert.deepEqual(report.notes.map(({slug,status,checkpointCount})=>({
+      slug,status,checkpointCount,
+    })),[
+      {slug:"recorded-note",status:"matches-current-pair",checkpointCount:1},
+      {slug:"unrecorded-note",status:"missing-journal-evidence",checkpointCount:0},
+    ]);
+    assert.equal((await box.listConfirmedSyntheticBaselines()).length,1,
+      "read-only reload never appends evidence for the memory-only note");
+  });
+});
+
+test("M5 reload rejects an unrecorded memory baseline added during final inspection",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("late-memory-only","same");
+    await box.seedRemote("late-memory-only","same");
+    await assert.rejects(box.inspectSyntheticBaselineReload({
+      beforeFinalJournalRecheckForSyntheticTest:async()=>{
+        await box.setBaseline([{slug:"late-memory-only",sha256:sha("same")}]);
+      },
+    }),/M5 reload memory baseline changed during inspection/);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[],
+      "a transient memory change cannot manufacture a disk checkpoint");
+  });
+});
+
 test("M5 reload inspection is read-only even for a matching synthetic pair",async()=>{
   await withScratch(async box=>{
     assert.deepEqual((await box.inspectSyntheticBaselineReload()).notes,[],
