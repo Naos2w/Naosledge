@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import {randomBytes} from "node:crypto";
 import {existsSync} from "node:fs";
-import {mkdir,readFile,rm,writeFile} from "node:fs/promises";
+import {mkdir,readFile,rm,unlink,writeFile} from "node:fs/promises";
 import {spawn} from "node:child_process";
 import {createServer} from "node:net";
 import {setTimeout as delay} from "node:timers/promises";
@@ -16,6 +16,7 @@ import os from "node:os";
 import {chromium} from "playwright-core";
 import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
 import {serializeManualM2Handoff} from "../lib/obsidian-m2-review-choices.ts";
+import {saveManualM2Handoff} from "./obsidian-msi-manual-preview.ts";
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
 const fixture=path.join(root,"app","m2-sync-local-fixture");
@@ -37,7 +38,7 @@ import {makeSyntheticM2Preview} from "@/lib/obsidian-m2-synthetic-fixture";
 export const dynamic="force-dynamic";
 export const metadata={robots:{index:false,follow:false}};
 export default async function M2LocalFixture({searchParams}){
-  const {coverage}=await searchParams;
+  const {coverage,mode}=await searchParams;
   const preview=await makeSyntheticM2Preview();
   const shown=coverage==="partial"?{
     ...preview,previewStatus:"partial-local-coverage" as const,
@@ -46,7 +47,7 @@ export default async function M2LocalFixture({searchParams}){
       localDirectoriesNotScanned:1,localCoverageNeedsReview:true,
     },
   }:preview;
-  return <VaultManualSyncReview preview={shown}/>;
+  return mode==="empty"?<VaultManualSyncReview/>:<VaultManualSyncReview preview={shown}/>;
 }
 `;
 
@@ -102,6 +103,25 @@ try{
     if(!url.startsWith(origin+"/")&&!url.startsWith("data:")&&!url.startsWith("blob:"))
       remoteRequests.push("unexpected-external-request");
   });
+  // Exercise the production entry state: no synthetic notes until the Owner
+  // explicitly imports a valid MSI export file. This is still a synthetic
+  // exporter fixture, NOT an authenticated Neon Sandbox acceptance.
+  await page.goto(origin+"/m2-sync-local-fixture?mode=empty",{waitUntil:"networkidle"});
+  assert.ok(await page.getByText("等待 MSI 唯讀快照").isVisible());
+  assert.equal(await page.locator(".vault-sync-note").count(),0);
+  assert.ok(await page.getByText("尚未匯入 MSI 唯讀快照").isVisible());
+  const exported=await saveManualM2Handoff(await makeSyntheticM2Preview());
+  try{
+    await page.locator("#vault-sync-handoff-file").setInputFiles(exported);
+    assert.ok(await page.getByText("MSI 手動匯入 · 唯讀快照").isVisible());
+    assert.equal(await page.locator(".vault-sync-note").count(),7);
+    assert.ok(await page.getByText("遠端版本",{exact:true}).first().isVisible());
+    await page.getByRole("button",{name:"移除私人快照"}).click();
+    assert.equal(await page.locator(".vault-sync-note").count(),0);
+    assert.ok(await page.getByText("等待 MSI 唯讀快照").isVisible());
+  }finally{await unlink(exported).catch(()=>{});}
+  console.log("PASS production-like empty state and physical MSI-style handoff export/import/clear");
+
   for(const width of [375,768,1024,1440]){
     await page.setViewportSize({width,height:width<500?812:920});
     const response=await page.goto(origin+"/m2-sync-local-fixture",{waitUntil:"networkidle"});

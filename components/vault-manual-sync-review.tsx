@@ -31,7 +31,7 @@ const INTENT_ICON={
 };
 type Filter="all"|"review"|"conflict"|"done";
 
-export default function VaultManualSyncReview({preview:syntheticPreview}:{preview:ManualReviewPreview}){
+export default function VaultManualSyncReview({preview:syntheticPreview}:{preview?:ManualReviewPreview}){
   const [manualPreview,setManualPreview]=useState<ManualReviewPreview|null>(null);
   const [importError,setImportError]=useState(false);
   const preview=manualPreview??syntheticPreview;
@@ -39,8 +39,8 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
   const [filter,setFilter]=useState<Filter>("all");
   const [query,setQuery]=useState("");
   const [showSummary,setShowSummary]=useState(false);
-  const tally=useMemo(()=>summariseReviewIntents(preview,choices),[preview,choices]);
-  const visible=useMemo(()=>preview.decisions.filter(row=>{
+  const tally=useMemo(()=>preview?summariseReviewIntents(preview,choices):null,[preview,choices]);
+  const visible=useMemo(()=>(preview?.decisions??[]).filter(row=>{
     const match=row.slug.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
     if(!match)return false;
     if(filter==="review")return row.perNoteConfirmationRequired;
@@ -50,6 +50,7 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
   }),[preview,filter,query]);
 
   function choose(slug:string,intent:ReviewIntent){
+    if(!preview)return;
     setChoices(before=>chooseReviewIntent(preview,before,slug,intent));
     setShowSummary(false);
   }
@@ -82,7 +83,7 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
         <h1>同步審查<span className="title-period">.</span></h1>
         <p>逐篇決定下一步，再確認整份清單。Obsidian 與 NaosLedge 的原稿都受到保護。</p>
       </div>
-      <span className="vault-sync-demo-label">{manualPreview?"MSI 手動匯入 · 唯讀快照":"互動預演 · 合成筆記"}</span>
+      <span className="vault-sync-demo-label">{manualPreview?"MSI 手動匯入 · 唯讀快照":syntheticPreview?"互動預演 · 合成筆記":"等待 MSI 唯讀快照"}</span>
     </header>
 
     <div className="vault-sync-notice" role="status">
@@ -91,15 +92,16 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
         <strong>目前不會執行同步。</strong>
         <span>{manualPreview?
           "這是從 MSI 手動匯入的本機快照，不是網站即時連線或身分驗收。快照可能過期；所有選擇只存在本頁記憶體，絕不執行上傳、下載、覆寫、刪除或建立授權。":
-          "畫面使用虛構資料，沒有讀取真實 Obsidian 筆記或 Neon 內容。所有選擇只保留在本頁記憶體，不會上傳、下載、覆寫、刪除或建立授權。"}</span>
+          syntheticPreview?"畫面使用虛構資料，沒有讀取真實 Obsidian 筆記或 Neon 內容。所有選擇只保留在本頁記憶體，不會上傳、下載、覆寫、刪除或建立授權。":
+          "尚未載入任何筆記。請在 MSI 執行本人授權的 Sandbox 唯讀匯出，再手動選取 JSON；網站不會自行讀取您的電腦或 Neon。"}</span>
       </div>
     </div>
 
     <div className="vault-sync-notice" role="group" aria-label="手動匯入 MSI Sandbox 唯讀快照">
       <ShieldAlert aria-hidden="true" size={20}/>
       <div>
-        <strong>匯入 MSI 產生的唯讀差異快照（選用）</strong>
-        <span>僅在這台瀏覽器本機讀取 JSON，不會傳回網站。檔案包含私人筆記名稱與 SHA 指紋；請勿上傳至 GitHub 或公開分享。匯入不代表允許執行同步。</span>
+        <strong>匯入 MSI 產生的唯讀差異快照</strong>
+        <span>先在 MSI 執行 Sandbox Owner JWT 唯讀匯出，再在此選擇輸出的 JSON。只於瀏覽器本機解析，不會傳回網站；檔案含私人筆記名稱及 SHA，匯入後請自行清除暫存檔。匯入不是同步授權。</span>
         <label htmlFor="vault-sync-handoff-file">選擇 MSI Sandbox JSON 檔案</label>
         <input id="vault-sync-handoff-file" type="file" accept=".json,application/json"
           onChange={event=>{
@@ -109,11 +111,18 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
         {manualPreview&&<button type="button" onClick={()=>{
           setManualPreview(null);setChoices({});setQuery("");setFilter("all");
           setShowSummary(false);setImportError(false);
-        }}>清除私人快照並回到合成預演</button>}
+        }}>{syntheticPreview?"清除私人快照並回到合成預演":"移除私人快照"}</button>}
         {importError&&<span role="alert">匯入失敗：不是完整有效的唯讀差異快照，原畫面未更動。</span>}
       </div>
     </div>
 
+    {!preview&&<div className="vault-sync-empty" role="status">
+      <strong>尚未匯入 MSI 唯讀快照</strong>
+      <p>在 MSI 上手動執行 <code>scripts/obsidian-msi-manual-preview.ts --sandbox-m2-readonly-handoff</code>，以標準輸入提供短效的 Sandbox Owner JWT，產生本機 JSON 後再從上方選擇檔案。請勿將 JWT 貼到網頁、聊天、指令參數或檔案。</p>
+      <p>未取得真正的 Sandbox Owner 身分驗證與完整清單時，這裡不顯示任何示例筆記，避免將合成資料誤認為真實結果。</p>
+    </div>}
+
+    {preview&&tally&&<>
     {preview.previewStatus==="partial-local-coverage"&&<div className="vault-sync-coverage" role="alert">
       <ShieldAlert aria-hidden="true" size={20}/>
       <div>
@@ -171,6 +180,7 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
             <dl className="vault-sync-versions">
               <div><dt>Obsidian</dt><dd title={manualPreview?"匯入快照 SHA-256 指紋":"合成資料 SHA-256 指紋"}>{row.expectedLocalSha?.slice(0,10)??"不存在"}</dd></div>
               <div><dt>NaosLedge</dt><dd title={manualPreview?"匯入快照 SHA-256 指紋":"合成資料 SHA-256 指紋"}>{row.expectedRemoteSha?.slice(0,10)??"不存在"}</dd></div>
+              <div><dt>遠端版本</dt><dd>{row.expectedRemoteRevision??"不存在"}</dd></div>
             </dl>
           </div>
           <div className="vault-sync-note-actions">
@@ -233,5 +243,6 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
       <p className="vault-sync-final-warning"><ShieldAlert size={18} aria-hidden="true"/>
         這不是同步執行清單，也沒有「批准上傳」效力。離開或重新整理頁面後，選擇會消失；真正操作需在後續 M3／M4 重新核對兩端版本並取得本人確認。</p>
     </section>}
+    </>}
   </section>;
 }

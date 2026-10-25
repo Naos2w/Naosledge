@@ -9,6 +9,10 @@
 .vault-sync-notice>svg{flex-shrink:0;margin-top:3px;color:var(--accent)}
 .vault-sync-notice strong{display:block;font-size:14px;color:var(--ink)}
 .vault-sync-notice span{display:block;font-size:12px;color:var(--ink-soft)}
+.vault-sync-empty{margin-top:22px;padding:28px;border:1px dashed var(--rule-strong);background:var(--sheet);color:var(--ink-soft);line-height:1.85}
+.vault-sync-empty strong{font-size:16px;color:var(--ink)}
+.vault-sync-empty p{font-size:13px;margin:9px 0 0;overflow-wrap:anywhere}
+.vault-sync-empty code{font:12px ui-monospace,Consolas,monospace;overflow-wrap:anywhere;color:var(--accent)}
 .vault-sync-coverage{display:flex;align-items:start;gap:14px;padding:17px 21px;border:1px solid var(--rule-strong);border-left:3px solid var(--warm);margin-top:14px;background:var(--sheet);color:var(--ink-soft)}
 .vault-sync-coverage>svg{color:var(--warm);flex-shrink:0;margin-top:3px}
 .vault-sync-coverage strong{display:block;color:var(--ink);font-size:13px}
