@@ -175,3 +175,27 @@ test("M4 MSI manual request creates one private Scratch Incoming copy with no or
   },denied.fetcher),/per-note Incoming confirmation/);
   assert.deepEqual(denied.calls,[]);
 });
+
+
+test("M4 keeps the approved filename and fingerprints when the caller mutates its decision during GET",async()=>{
+  const decision={...choice};
+  const n=fakeNetwork();
+  const result=await stageNeonSandboxIncoming({
+    ...options,decision,
+    fetcher:async(url,opts)=>{
+      decision.slug="different-note";
+      decision.expectedRemoteSha="b".repeat(64);
+      decision.expectedRemoteRevision="c".repeat(64);
+      return n.fetcher(url,opts);
+    },
+  });
+  try{
+    assert.equal(path.basename(result.path),note.slug+".md");
+    assert.equal(await readFile(result.path,"utf8"),portable(note));
+    assert.equal(result.sha256,digest);
+    assert.equal(result.revision,revision);
+    assert.equal(n.calls.length,3);
+  }finally{
+    await rm(path.dirname(result.path),{recursive:true,force:true});
+  }
+});

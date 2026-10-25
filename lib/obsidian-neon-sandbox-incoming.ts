@@ -27,7 +27,9 @@ export async function stageNeonSandboxIncoming(args:{
   originalModified:false;
   baselineSaved:false;
 }>{
-  const d=args?.decision;
+  // Keep the exact approved primitives across asynchronous remote reads.
+  // A caller must not redirect the filename or returned evidence mid-flight.
+  const d=args?.decision?{...args.decision}:undefined;
   if(!args||args.branchId!==NEON_SYNC_SANDBOX_BRANCH||!d||
      !["review-download","review-missing-local","conflict"].includes(d.choice)||
      d.manualReview!==true||
