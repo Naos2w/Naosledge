@@ -7,6 +7,10 @@ import path from "node:path";
 import {serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
 import {stageNeonSandboxIncoming} from "../lib/obsidian-neon-sandbox-incoming.ts";
 import {
+  M4_SCRATCH_INCOMING_FLAG,assertManualM4Invocation,
+  readScratchIncomingRequest,stageOneReviewedSandboxIncoming,
+} from "../scripts/obsidian-m4-sandbox-manual-incoming.ts";
+import {
   NEON_SYNC_SANDBOX_BRANCH,NEON_SYNC_SANDBOX_DATA_API,
 } from "../lib/obsidian-neon-sandbox-readonly.ts";
 
@@ -118,4 +122,80 @@ test("M4 rejects absent Owner grant and stale remote content before staging",asy
   await assert.rejects(stageNeonSandboxIncoming({...options,fetcher:changed.fetcher}),/changed after/);
   const incomplete=fakeNetwork({wrongRange:true});
   await assert.rejects(stageNeonSandboxIncoming({...options,fetcher:incomplete.fetcher}),/unavailable or incomplete/);
+});
+
+test("M4 MSI manual Incoming entry requires explicit flag, approved host and stdin pipe",async()=>{
+  assertManualM4Invocation("win32","MSI",[M4_SCRATCH_INCOMING_FLAG],false);
+  for(const bad of [
+    ["linux","MSI",[M4_SCRATCH_INCOMING_FLAG],false],
+    ["win32","OTHER",[M4_SCRATCH_INCOMING_FLAG],false],
+    ["win32","MSI",[],false],
+    ["win32","MSI",[M4_SCRATCH_INCOMING_FLAG],true],
+  ]){
+    assert.throws(()=>assertManualM4Invocation(...bad),/piped manual Incoming/);
+  }
+  const request={sandboxOwnerJwt:jwt,decision:choice,
+    typedConfirmation:"SAVE SANDBOX INCOMING "+note.slug};
+  await assert.rejects(readScratchIncomingRequest(["not-json"]),/must be JSON/);
+  await assert.rejects(readScratchIncomingRequest(["x".repeat(12_001)]),/too large/);
+  await assert.rejects(readScratchIncomingRequest([JSON.stringify({
+    ...request,destination:"C:\\Naos\\Obsidian\\Naosledge",
+  })]),/exactly one reviewed note/);
+  await assert.rejects(readScratchIncomingRequest([JSON.stringify({
+    ...request,decision:{...choice,path:"untrusted"},
+  })]),/input is invalid/);
+  await assert.rejects(readScratchIncomingRequest([JSON.stringify({
+    ...request,typedConfirmation:"",
+  })]),/per-note read-only decision/);
+  await assert.rejects(readScratchIncomingRequest([JSON.stringify({
+    ...request,decision:{...choice,choice:"review-upload"},
+  })]),/per-note read-only decision/);
+});
+
+test("M4 MSI manual request creates one private Scratch Incoming copy with no original write",async()=>{
+  const request=await readScratchIncomingRequest([JSON.stringify({
+    sandboxOwnerJwt:jwt,decision:choice,
+    typedConfirmation:"SAVE SANDBOX INCOMING "+note.slug,
+  })]);
+  const n=fakeNetwork();
+  const result=await stageOneReviewedSandboxIncoming(request,n.fetcher);
+  try{
+    assert.equal(await readFile(result.path,"utf8"),portable(note));
+    assert.equal(path.basename(result.path),note.slug+".md");
+    assert.deepEqual({
+      originalModified:result.originalModified,baselineSaved:result.baselineSaved,
+    },{originalModified:false,baselineSaved:false});
+    assert.equal(n.calls.length,3);
+  }finally{
+    await rm(path.dirname(result.path),{recursive:true,force:true});
+  }
+  const denied=fakeNetwork();
+  await assert.rejects(stageOneReviewedSandboxIncoming({
+    ...request,typedConfirmation:"not approved",
+  },denied.fetcher),/per-note Incoming confirmation/);
+  assert.deepEqual(denied.calls,[]);
+});
+
+
+test("M4 keeps the approved filename and fingerprints when the caller mutates its decision during GET",async()=>{
+  const decision={...choice};
+  const n=fakeNetwork();
+  const result=await stageNeonSandboxIncoming({
+    ...options,decision,
+    fetcher:async(url,opts)=>{
+      decision.slug="different-note";
+      decision.expectedRemoteSha="b".repeat(64);
+      decision.expectedRemoteRevision="c".repeat(64);
+      return n.fetcher(url,opts);
+    },
+  });
+  try{
+    assert.equal(path.basename(result.path),note.slug+".md");
+    assert.equal(await readFile(result.path,"utf8"),portable(note));
+    assert.equal(result.sha256,digest);
+    assert.equal(result.revision,revision);
+    assert.equal(n.calls.length,3);
+  }finally{
+    await rm(path.dirname(result.path),{recursive:true,force:true});
+  }
 });
