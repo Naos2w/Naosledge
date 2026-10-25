@@ -6,7 +6,8 @@
  * show the resulting private per-user temporary file for manual inspection.
  * This module is not invoked from web routes or background automation.
  */
-import {mkdtemp,realpath,rm,writeFile} from "node:fs/promises";
+import {createHash} from "node:crypto";
+import {mkdtemp,open,readFile,realpath,rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import type {SyncDecision} from "./obsidian-sync-plan.ts";
@@ -76,7 +77,21 @@ export async function stageNeonSandboxIncoming(args:{
     const target=path.join(incoming,d.slug+".md");
     // The directory was freshly created with an unpredictable name; 'wx'
     // still forbids any replacement even if another process created a file.
-    await writeFile(target,markdown,{flag:"wx",mode:0o600});
+    const data=Buffer.from(markdown,"utf8");
+    const handle=await open(target,"wx",0o600);
+    try{
+      await handle.writeFile(data);
+      // An Incoming path is not a successful delivery until its file bytes
+      // have been flushed and verified on disk. No Vault or Baseline write.
+      await handle.sync();
+    }finally{
+      await handle.close();
+    }
+    const persisted=await readFile(target);
+    if(persisted.length!==data.length||
+       createHash("sha256").update(persisted).digest("hex")!==d.expectedRemoteSha){
+      throw new Error("M4 staged Incoming copy failed disk recheck");
+    }
     return {
       path:target,sha256:d.expectedRemoteSha,
       revision:d.expectedRemoteRevision,originalModified:false,

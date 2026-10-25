@@ -75,7 +75,10 @@ test("M4 copies exactly one Owner-RLS Sandbox note into a new temp Incoming dire
   const n=fakeNetwork();
   const first=await stageNeonSandboxIncoming({...options,fetcher:n.fetcher});
   try{
-    assert.equal(await readFile(first.path,"utf8"),portable(note));
+    const staged=await readFile(first.path);
+    assert.equal(staged.toString("utf8"),portable(note));
+    assert.equal(createHash("sha256").update(staged).digest("hex"),digest,
+      "success receipt must describe the persisted Incoming bytes");
     assert.equal(path.basename(first.path),note.slug+".md");
     assert.ok(first.path.startsWith(tmpdir()));
     assert.deepEqual({originalModified:first.originalModified,baselineSaved:first.baselineSaved},
