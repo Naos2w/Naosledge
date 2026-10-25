@@ -15,8 +15,9 @@ import path from "node:path";
 import os from "node:os";
 import {chromium} from "playwright-core";
 import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
-import {serializeManualM2Handoff} from "../lib/obsidian-m2-review-choices.ts";
+import {parseManualM2Handoff,serializeManualM2Handoff} from "../lib/obsidian-m2-review-choices.ts";
 import {saveManualM2Handoff} from "./obsidian-msi-manual-preview.ts";
+import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
 const fixture=path.join(root,"app","m2-sync-local-fixture");
@@ -122,6 +123,52 @@ try{
   }finally{await unlink(exported).catch(()=>{});}
   console.log("PASS production-like empty state and physical MSI-style handoff export/import/clear");
 
+  // The one-note path is always tested with a disposable in-memory M1
+  // fixture; an explicitly supplied real MSI/Owner-RLS JSON replaces it.
+  // No JWT enters the browser, and the page remains localhost-only.
+  const realHandoff=process.env.NAOSLEDGE_M1M2_REAL_SANDBOX_HANDOFF;
+  const oneNote=realHandoff?null:await previewManualObsidianSync({
+    baseline:[],
+    readLocal:async()=>({fingerprints:[],unsupportedMarkdownFiles:0,otherFiles:0,
+      directoriesNotScanned:0,autoApplyAllowed:false}),
+    readRemote:async()=>({
+      fingerprints:[{slug:"m1m2-synthetic",sha256:"a".repeat(64),revision:"synthetic-r1"}],
+      numberOfNotes:1,sandboxOnly:true,rlsEnforcedByDataApi:true,
+      writeEnabled:false,fullInventory:true,
+    }),
+  });
+  const testHandoff=oneNote?await saveManualM2Handoff(oneNote):null;
+  const liveFile=realHandoff??testHandoff;
+  try{
+    if(!liveFile)throw Error("M2 handoff not provided");
+    if(!path.isAbsolute(liveFile)||path.dirname(liveFile)!==os.tmpdir()||
+       !path.basename(liveFile).startsWith("naosledge-m2-sandbox-readonly-")||
+       !liveFile.endsWith(".json"))throw Error("Invalid temporary MSI handoff path");
+    const real=parseManualM2Handoff(await readFile(liveFile,"utf8"));
+    assert.equal(real.inventory.remoteFullInventory,true);
+    assert.equal(real.inventory.localSupportedNotes,0);
+    assert.equal(real.inventory.remoteNotes,1);
+    assert.equal(real.summary["review-missing-local"],1);
+    const row=real.decisions[0];
+    assert.equal(row.choice,"review-missing-local");
+    await page.goto(origin+"/m2-sync-local-fixture?mode=empty",{waitUntil:"networkidle"});
+    await page.locator("#vault-sync-handoff-file").setInputFiles(liveFile);
+    await page.getByText("MSI 手動匯入 · 唯讀快照")
+      .waitFor({state:"visible",timeout:10_000});
+    assert.equal(await page.locator(".vault-sync-note").count(),1);
+    const action=page.getByRole("group",{name:row.slug+" 的審查意圖"});
+    await action.getByRole("button",{name:"預定下載"}).click();
+    assert.equal(await action.getByRole("button",{name:"預定上傳"}).count(),0);
+    assert.ok(await page.getByText("遠端版本",{exact:true}).first().isVisible());
+    await page.getByRole("button",{name:"查看審查摘要"}).click();
+    assert.match(await page.locator("#vault-sync-review-summary").innerText(),/預定下載 1/);
+    await page.getByRole("button",{name:"移除私人快照"}).click();
+    assert.equal(await page.locator(".vault-sync-note").count(),0);
+    console.log(realHandoff?
+      "PASS REAL Sandbox JWT/RLS-derived MSI JSON -> M2 browser import/review/clear":
+      "PASS single-note synthetic MSI JSON -> M2 browser import/review/clear");
+  }finally{if(testHandoff)await unlink(testHandoff).catch(()=>{}); }
+
   for(const width of [375,768,1024,1440]){
     await page.setViewportSize({width,height:width<500?812:920});
     const response=await page.goto(origin+"/m2-sync-local-fixture",{waitUntil:"networkidle"});
@@ -192,7 +239,8 @@ try{
   await page.locator("#vault-sync-handoff-file").setInputFiles({
     name:"invalid.json",mimeType:"application/json",buffer:Buffer.from('{"format":"bad"}'),
   });
-  assert.ok(await page.getByRole("alert",{name:""}).filter({hasText:"匯入失敗"}).isVisible());
+  await page.getByText("匯入失敗：不是完整有效的唯讀差異快照，原畫面未更動。")
+    .waitFor({state:"visible",timeout:10_000});
   assert.ok(await page.getByText("MSI 手動匯入 · 唯讀快照").isVisible(),
     "Invalid files must not replace a valid preview");
   await page.getByRole("button",{name:"清除私人快照並回到合成預演"}).click();

@@ -1,6 +1,6 @@
 # NaosLedge × Obsidian M2 — 手動逐篇同步審查 UI
 
-更新：2026-10-26。M1/M2 已整合 `main`；本輪讓正式路由預設不顯示合成資料，並完成 MSI 檔案交接的本機瀏覽器回歸。真正 Sandbox Owner-JWT 遠端讀取仍未驗收；本階段不包含同步執行。
+更新：2026-10-26。M1/M2 既有實作已整合 `main`；PR #34 本輪完成正式頁預設空白待匯入，以及 **MSI + 真實 Neon Sandbox 合成 Owner JWT／RLS GET → JSON → 本機 Chrome 審查 E2E 驗收**。這不是正式 Production 網站部署，也沒有同步執行。
 
 ## 產品契約
 
@@ -37,11 +37,11 @@ npm run build
 npm run test:release:closed:local
 ```
 
-Chrome 瀏覽器測試檢查 375、768、1024、1440px 不溢出、操作至少 44px、Tab/Enter 選擇、衝突只可保留兩份或略過、逐篇方向選擇、搜尋和清除；另以 OS 暫存 JSON 檔完成匯出→匯入→清除路徑。沒有外部 HTTP 請求，截圖只儲存 MSI 作業系統暫存目錄，不加入 GitHub。
+Chrome 瀏覽器測試檢查 375、768、1024、1440px 不溢出、操作至少 44px、Tab/Enter 選擇、衝突只可保留兩份或略過、逐篇方向選擇、搜尋和清除；另以 OS 暫存 JSON 檔完成匯出→匯入→清除路徑。加入一篇僅遠端存在的 fixture 回歸；提供受控 `NAOSLEDGE_M1M2_REAL_SANDBOX_HANDOFF` 時會改用真正 Sandbox JWT/RLS 匯出的檔案執行同一測試。Chrome 不直接發外部 HTTP 請求，截圖只儲存 MSI 暫存目錄，不加入 GitHub。
 
-## MSI → M2 唯讀 JSON 手動交接（程式完成；真正 Owner JWT 驗收待完成）
+## MSI → M2 唯讀 JSON 手動交接（真實 Sandbox 合成 Owner E2E PASS）
 
-PR #28（瀏覽器本機匯入）與 #31（MSI `--sandbox-m2-readonly-handoff` 匯出）均已合併。兩端交接已在 MSI Chrome 以合成資料實際建立檔案並完成本機匯入驗證。**尚未取得 Sandbox-only Owner JWT 完成真正 Owner-RLS GET 與真人私人資料驗收**；不得使用舊的 `--sandbox-m2-review-json`／管線 `Set-Content` 輸出私人資料。
+PR #28（瀏覽器本機匯入）與 #31（MSI `--sandbox-m2-readonly-handoff` 匯出）均已合併。**2026-10-26 已使用 Neon Sandbox 真正簽發的臨時合成站長 JWT，通過 `blog_admins` Owner-RLS → 1 篇非空 `knowledge_notes` 完整 GET → MSI 雙次本機掃描 → M2 JSON → 本機 Chrome 匯入／選擇「預定下載」／移除快照。** 所有測試 Auth/站長授權/筆記/連結資料已清除且再次查證 0 筆。這只是 Sandbox 與本機 Chrome 的驗收，不等於正式 Vercel 網站真人 Production 站長登入。不得使用舊的 `--sandbox-m2-review-json`／管線 `Set-Content` 輸出私人資料。
 
 只有在 **MSI** 上持有短效、**Neon Sandbox-only Owner JWT** 時，Owner 才能自願執行下列指令。JWT 由 SecureString 轉為本進程標準輸入，**不放 argv、環境變數、Git 或聊天**。PR #31 會在作業系統使用者暫存目錄**排他建立隨機檔名**，終端只顯示檔案路徑；JSON 含私人 slug、兩端 SHA/revision 與審查分類，**不含 JWT 或 Markdown 正文**。
 
@@ -57,6 +57,6 @@ try {
 
 匯出前仍需固定 Neon Sandbox 的 `blog_admins` Owner-RLS 驗證、完整 `knowledge_notes` GET 與 M1 二次本機掃描；任何錯誤都不得視為空清單成功。使用回報的檔案路徑，在已授權的私人 `/vault/sync` 用「選擇 MSI Sandbox JSON 檔案」於**瀏覽器本機**讀入；不會 POST、執行同步或保存審查選擇。JSON 只是某一時間點的差異快照，未來任何寫入仍須重新驗證兩邊版本並由本人逐篇核准。匯入後請手動安全清理暫存 JSON，不得把它當成備份或 Baseline。
 
-**尚缺**：真人私人帳號在受控 Preview 使用 UI 的驗收、真正 MSI+Neon Sandbox Owner-RLS 唯讀 M1 端到端、歷史 Baseline、內容差異比較、真實寫入操作、正式部署。M2 即使合併，以上全部仍須另行核准。M3/M4 需要重讀兩端版本，逐篇取得本人當次授權，確保不覆寫／不自動刪除。
+**M1/M2 已完成的驗收**：真實 MSI+Neon Sandbox Owner-RLS GET、非空差異 JSON、本機 Chrome 真正讀入、逐篇審查及清除。**仍不在 M1/M2 本輪範圍**：Production/受控 Preview 真人站長會話、歷史 Baseline、正文差異比較、正式寫入與部署；後續 M3/M4 必須重新核對兩端版本、逐篇另行授權。
 
 注意：現在只顯示 SHA 前 10 字元，並不提供 Markdown 正文比較。合成示例中遠端 RLS 旗標只是測試形狀，**沒有做真正的 Owner 身分／Neon 連線**；手動匯入 JSON 也只是**已由 MSI 端生成的快照**，不能證明網站端剛完成 RLS 驗證，且可能已過期。不得用本次 UI 當作正式同步已啟用的證明。

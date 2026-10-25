@@ -4,11 +4,11 @@
 
 > v3 在先前版本的基礎上加入 Dark Liquid Glass 與流暢動畫，保留文章資料結構、Supabase RLS、登入及資料存取邏輯。v1、v2 保留為歷史版本。
 
-## M1/M2 最新開發狀態（2026-10-23）
+## M1/M2 最新開發狀態（2026-10-26）
 
-- **M1 已合併 `main`**：[PR #26](https://github.com/Naos2w/Naosledge/pull/26)，Merge SHA `eb3023b1`，離線唯讀同步預覽與 CI 已通過，正式 Owner-JWT Neon Sandbox GET、獨立 QA 仍待驗收。
-- **M2 於獨立分支開發**：站長限定 `/vault/sync` 審查預演 UI，依 M1 差異顯示逐篇「預定上傳／預定下載／保留兩份／略過」，在合成資料下測試操作與 RWD；**所有選擇只在頁面記憶體，沒有執行器、真實同步或資料刪除**。詳見 [M2 說明](docs/OBSIDIAN_M2_REVIEW_UI.md) 與 [同步正式 TODO](docs/OBSIDIAN_MANUAL_SYNC_TODO.md)。
-- 本節屬原始碼開發狀態，**不代表** M1/M2 已部署到正式網站。PR #21–25 保留為未合併的獨立合成安全研究分支，不列入 M2 前置依賴。
+- **M1 原始功能已合併 `main`**：[PR #26](https://github.com/Naos2w/Naosledge/pull/26)。2026-10-26 已於 MSI 使用真正 Neon Integration Sandbox 合成站長 JWT／RLS 完成非空遠端唯讀 GET，與已註冊 Obsidian Vault 的本機雙次掃描及差異分類完整驗收；不需要獨立 QA。
+- **M2 原始功能已合併 `main`；整合驗收修正在 [PR #34](https://github.com/Naos2w/Naosledge/pull/34)**：站長限定 `/vault/sync` 正式頁面預設不載入假資料，僅接收本人手動選取的 MSI 唯讀 JSON。2026-10-26 已實際完成 Sandbox Owner-RLS → MSI JSON → localhost Chrome 匯入、選擇「預定下載」、檢視摘要與清除；逐篇選擇只在記憶體，**沒有實際同步、覆寫或刪除原稿**。測試身分、權限與筆記已清除，Sandbox 回復 0 筆。詳見 [M2 說明](docs/OBSIDIAN_M2_REVIEW_UI.md) 與 [同步 TODO](docs/OBSIDIAN_MANUAL_SYNC_TODO.md)。
+- **這是 Sandbox 合成身分及 MSI 本機 Chrome 的實測，不是正式 Vercel 真人登入驗收或 Production 發布**。PR #34 尚待 CI 與合併授權；正式 Vault 寫入／自動同步仍禁止。PR #21–25 的安全研究分支不列入 M1/M2 前置依賴。
 
 ## 正式環境狀態（2026-10-18）
 
