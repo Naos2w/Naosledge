@@ -45,9 +45,10 @@ const asJson=(value,range=null)=>new Response(JSON.stringify(value),{
   },
 });
 
-function mockNetwork({granted=true,race=false,failPostVerify=false}={}){
+function mockNetwork({granted=true,race=false,failPostVerify=false,
+  oldContent=old.content_md,outgoingLinks=[],linkRangeUnknown=false}={}){
   const calls=[];
-  let remote={...old};
+  let remote={...old,content_md:oldContent};
   let postVerified=false;
   async function fetcher(raw,options){
     const u=new URL(raw);
@@ -68,9 +69,21 @@ function mockNetwork({granted=true,race=false,failPostVerify=false}={}){
         assert.equal(u.searchParams.get("slug"),"eq."+old.slug);
         return asJson([{id:remote.id,slug:remote.slug,updated_at:remote.updated_at}],"0-0/1");
       }
+      if(u.searchParams.get("slug")==="eq."+old.slug){
+        assert.equal(u.searchParams.get("limit"),"2");
+        return asJson([remote],"0-0/1");
+      }
       assert.equal(u.searchParams.get("limit"),"21");
       if(postVerified&&failPostVerify)remote={...old,updated_at:newStamp};
       return asJson([remote],"0-0/1");
+    }
+    if(u.pathname.endsWith("/knowledge_links")&&options.method==="GET"){
+      assert.equal(u.searchParams.get("source_note_id"),"eq."+rowId);
+      assert.equal(u.searchParams.get("select"),"target_key");
+      assert.equal(u.searchParams.get("limit"),"1");
+      assert.equal(options.headers.Prefer,"count=exact");
+      return asJson(outgoingLinks.slice(0,1),
+        linkRangeUnknown?null:outgoingLinks.length?`0-0/${outgoingLinks.length}`:"*/0");
     }
     if(u.pathname.endsWith("/knowledge_notes")&&options.method==="PATCH"){
       assert.equal(u.searchParams.get("id"),"eq."+rowId);
@@ -103,6 +116,10 @@ test("M3 single-note Sandbox PATCH uses row id + updated_at atomic CAS, then re-
     "GET /neondb/rest/v1/blog_admins",
     "GET /neondb/rest/v1/knowledge_notes",
     "GET /neondb/rest/v1/knowledge_notes",
+    "GET /neondb/rest/v1/blog_admins",
+    "GET /neondb/rest/v1/knowledge_notes",
+    "GET /neondb/rest/v1/knowledge_notes",
+    "GET /neondb/rest/v1/knowledge_links",
     "PATCH /neondb/rest/v1/knowledge_notes",
     "GET /neondb/rest/v1/knowledge_notes",
   ]);
@@ -151,6 +168,43 @@ test("M3 refuses changed local note after remote verification and before PATCH",
   assert.equal(mock.getRemote().content_md,old.content_md);
 });
 
+test("M3 rejects new active WikiLinks before PATCH to protect the backlink index",async()=>{
+  const note=portable({...latest,content_md:"Updated with [[linked-note]]"});
+  const mock=mockNetwork();
+  await assert.rejects(updateNeonSandboxNoteIfUnchanged({
+    ...args,decision:{...decision,expectedLocalSha:digest(note)},
+    readMarkdown:async()=>note,fetcher:mock.fetcher,
+  }),/cannot maintain WikiLinks atomically/);
+  assert.equal(mock.calls.some(s=>s.startsWith("PATCH ")),false);
+  assert.equal(mock.getRemote().content_md,old.content_md);
+});
+
+test("M3 rejects removal of existing WikiLinks even when the new note is link-free",async()=>{
+  const existing="Previous [[linked-note]]";
+  const mock=mockNetwork({oldContent:existing});
+  await assert.rejects(updateNeonSandboxNoteIfUnchanged({
+    ...args,decision:{...decision,expectedRemoteSha:digest(portable({
+      ...old,content_md:existing,
+    }))},fetcher:mock.fetcher,
+  }),/cannot maintain existing WikiLinks atomically/);
+  assert.equal(mock.calls.some(s=>s.startsWith("PATCH ")),false);
+  assert.equal(mock.getRemote().content_md,existing);
+});
+
+test("M3 requires a proven empty RLS outgoing-link index before PATCH",async()=>{
+  for(const options of [
+    {outgoingLinks:[{target_key:"old-target"}]},
+    {linkRangeUnknown:true},
+  ]){
+    const mock=mockNetwork(options);
+    await assert.rejects(updateNeonSandboxNoteIfUnchanged({
+      ...args,fetcher:mock.fetcher,
+    }),/outgoing WikiLink index/);
+    assert.equal(mock.calls.some(s=>s.startsWith("PATCH ")),false);
+    assert.equal(mock.getRemote().content_md,old.content_md);
+  }
+});
+
 test("M3 lost CAS race updates zero rows, preserves other editor and never retries",async()=>{
   const mock=mockNetwork({race:true});
   await assert.rejects(updateNeonSandboxNoteIfUnchanged({
@@ -158,7 +212,7 @@ test("M3 lost CAS race updates zero rows, preserves other editor and never retri
   }),/needs manual reconciliation/);
   assert.equal(mock.calls.filter(s=>s.startsWith("PATCH ")).length,1);
   assert.equal(mock.getRemote().title,"Other editor");
-  assert.equal(mock.calls.length,4,"no retry or inferred Baseline");
+  assert.equal(mock.calls.length,8,"no retry or inferred Baseline");
 });
 
 test("M3 remote post-PATCH mismatch cannot certify a baseline or success",async()=>{
@@ -212,7 +266,7 @@ test("M3 manual update passes the reviewed note through CAS and propagates a los
   const request=await readManualUpdateRequest([JSON.stringify(manualRequest)]);
   const mock=mockNetwork();
   assert.deepEqual(await updateOneReviewedSandboxNote(request,mock.fetcher),{baselineSaved:false});
-  assert.equal(mock.calls.length,5);
+  assert.equal(mock.calls.length,9);
   assert.equal(mock.getRemote().content_md,latest.content_md);
   const raced=mockNetwork({race:true});
   await assert.rejects(updateOneReviewedSandboxNote(request,raced.fetcher),/manual reconciliation/);
