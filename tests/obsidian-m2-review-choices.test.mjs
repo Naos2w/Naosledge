@@ -103,10 +103,11 @@ test("tampered non-read-only or duplicated M1 previews always fail closed",async
   assert.throws(()=>summariseReviewIntents(p,null),/Invalid/);
 });
 
-test("M2 private route requires Vault owner and only passes fixture data, no real readers or transfer API",async()=>{
+test("M2 private route requires Vault owner and starts without synthetic notes or transfer API",async()=>{
   const src=await readFile(new URL("../app/vault/sync/page.tsx",import.meta.url),"utf8");
   assert.match(src,/await requireVault\(\)/);
-  assert.match(src,/makeSyntheticM2Preview\(\)/);
+  assert.doesNotMatch(src,/makeSyntheticM2Preview|obsidian-m2-synthetic-fixture/);
+  assert.match(src,/<VaultManualSyncReview\/>/);
   assert.match(src,/force-dynamic/);
   assert.match(src,/index:false/);
   assert.doesNotMatch(src,/previewApprovedMsiSandboxSync|fetchNeonSandboxFingerprints|readObsidianLocalManifest|writeFile|fetch\(/);
@@ -114,6 +115,9 @@ test("M2 private route requires Vault owner and only passes fixture data, no rea
   assert.doesNotMatch(ui,/localStorage|sessionStorage|fetch\(|navigator\.sendBeacon|onSubmit=|use server|\/api\/|deleteNote|post\(/i);
   assert.match(ui,/合成筆記/);
   assert.match(ui,/目前不會執行同步/);
+  assert.match(ui,/尚未匯入 MSI 唯讀快照/);
+  assert.match(ui,/等待 MSI 唯讀快照/);
+  assert.match(ui,/遠端版本/);
   assert.match(ui,/這不是同步執行清單/);
   assert.match(ui,/preview\.previewStatus==="partial-local-coverage"/);
   assert.match(ui,/未支援的 Markdown 檔名/);

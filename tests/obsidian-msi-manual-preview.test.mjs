@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {readFile,unlink} from "node:fs/promises";
+import {spawnSync} from "node:child_process";
+import {fileURLToPath} from "node:url";
 import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
 import {
   MANUAL_FIRST_LOOK_FLAG,MANUAL_M2_HANDOFF_FLAG,assertManualM1Invocation,
@@ -80,6 +82,18 @@ test("manual M2 handoff writes a single private-metadata-only JSON for local UI 
   }finally{
     await unlink(file);
   }
+});
+
+test("live M1/M2 synthetic owner harness refuses to create an account without explicit approval",()=>{
+  const script=fileURLToPath(new URL("../scripts/obsidian-m1m2-sandbox-live-acceptance.ts",import.meta.url));
+  const result=spawnSync(process.execPath,[
+    "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
+    script,"--m1-m2-sandbox-synthetic-acceptance",
+  ],{encoding:"utf8",timeout:10_000,env:{...process.env,
+    NAOSLEDGE_SYNTHETIC_SANDBOX_WRITE_APPROVED:""}});
+  assert.equal(result.status,1);
+  assert.match(result.stderr,/restricted to MSI Windows|approval acknowledgement/);
+  assert.doesNotMatch(result.stdout,/OWNER_CREATED|WAIT_FOR_SANDBOX_ADMIN_GRANT/);
 });
 
 test("manual M1 CLI is detached from the website and has no Vault-write or arbitrary-target API",async()=>{

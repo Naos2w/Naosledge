@@ -28,7 +28,7 @@ export default async function VaultHome({searchParams}:{
     <div className="vault-nav">{!privateVaultPreviewIntent(process.env)&&
       <Link href="/studio">公開文章工作室 <ArrowRight size={14}/></Link>}
       <Link href="/vault/graph" className="vault-graph-entry"><Network size={16}/> 知識網絡圖 <ArrowRight size={14}/></Link>
-      <Link href="/vault/sync" className="vault-graph-entry"><GitCompareArrows size={16}/> 同步審查預演 <ArrowRight size={14}/></Link></div>
+      <Link href="/vault/sync" className="vault-graph-entry"><GitCompareArrows size={16}/> 同步審查（唯讀） <ArrowRight size={14}/></Link></div>
     <form action="/vault" className="vault-search" role="search">
       <Search size={18}/><label htmlFor="vault-query" className="visually-hidden">搜尋私人知識</label>
       <input id="vault-query" name="q" maxLength={120} defaultValue={query}
