@@ -115,6 +115,8 @@ try {
 
 - **2026-10-26 M5 未建檔來源覆蓋驗證（同一候選 PR）**：修正 `inspectSyntheticBaselineReload()` 原本只列出 Journal／記憶體 Baseline 已知 slug，導致新出現、尚無任何同步證據的本地或遠端合成筆記在重載報告中直接消失。現在先做完整合成 Scratch 本地指紋與 Remote Map 清單，將沒有 Checkpoint 的來源列為 `missing-journal-evidence`；末段再次比對整份本地 SHA／遠端 SHA+Revision 清單，新增、修改或移除即拒絕過期預檢，未索引的本地檔案亦 fail-closed。M5、M6 定向回歸已更新；**仍僅限合成 Scratch 的唯讀預檢，不會自動匯入 Baseline、確認同步成功、存取真實 Vault 或對 Neon 寫入**。
 
+- **2026-10-26 M5 合成筆記根目錄覆蓋漏洞（同一候選 PR）**：新增先失敗後通過的回歸測試：共用的 Vault 唯讀掃描器會合理忽略 `.obsidian/` 設定目錄，但 M5 的隨機 Scratch `notes/` 根目錄並不是 Vault，不應允許這個排除規則隱藏額外 Markdown。`inspectSyntheticBaselineReload()` 現在在初次及最後清單驗證時拒絕出現 `.obsidian` 的合成 notes 根目錄，避免在不完整來源下回報 `matches-current-pair`。只修改隔離 Scratch 的唯讀預檢，不更動正式 Vault 掃描規則或授權寫入；M5 跨程序可信恢復與 M6 真實 E2E 仍未完成。
+
 ## M6 合成跨階段安全回歸（2026-10-24，非真實 E2E）
 
 - `tests/obsidian-m6-synthetic-cross-stage.test.mjs` 把既有 M1 唯讀組合器、M2 審查意圖、M3 合成上傳、M4 Incoming 副本與 M5 唯讀證據檢查串成**單一 Scratch 隔離測試**；模擬 Remote 只存在記憶體，沒有真正 Neon HTTP、Owner JWT、Production、真實 Obsidian Vault 或傳輸授權。

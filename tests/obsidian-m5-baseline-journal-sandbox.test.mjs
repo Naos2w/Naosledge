@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {readFile,readdir,writeFile,rm} from "node:fs/promises";
+import {mkdir,readFile,readdir,writeFile,rm} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import {createDurableSyntheticObsidianWorkspace} from "../lib/obsidian-durable-write-sandbox.ts";
@@ -284,6 +284,27 @@ test("M5 reload refuses changed uncheckpointed local content and incomplete cove
       /M5 reload local inventory is incomplete/,
       "unknown files must not disappear from a recovery inventory");
     assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[]);
+  });
+});
+
+test("M5 reload refuses an ignored Obsidian config directory inside synthetic notes",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("config-coverage","approved");
+    const consent=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:consent.slug,confirmation:consent.confirmation});
+    assert.equal((await box.inspectSyntheticBaselineReload()).notes[0].status,
+      "matches-current-pair");
+    // The shared Vault scanner intentionally ignores .obsidian, but this
+    // synthetic notes root has no allowed configuration directory. An
+    // untracked Markdown there must invalidate a complete M5 recovery scan.
+    const config=path.join(box.syntheticWorkspacePath,"notes",".obsidian");
+    await mkdir(config);
+    await writeFile(path.join(config,"untracked.md"),"hidden source");
+    await assert.rejects(box.inspectSyntheticBaselineReload(),
+      /M5 reload local inventory is incomplete/,
+      "an ignored folder cannot be silently omitted from recovery");
+    assert.equal((await box.listConfirmedSyntheticBaselines()).length,1,
+      "a refused inspection must not delete or rewrite evidence");
   });
 });
 

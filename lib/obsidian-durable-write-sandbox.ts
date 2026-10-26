@@ -842,6 +842,12 @@ export async function createDurableSyntheticObsidianWorkspace(){
       // Recovery must inventory both sources, not only checkpointed or
       // memory-baselined slugs. A never-synchronized note still needs review.
       const captureSourceInventory=async()=>{
+        // The shared Vault scanner correctly ignores .obsidian configuration,
+        // but this isolated synthetic notes directory has no config folder.
+        // Ignoring one here would make a partial recovery inventory look complete.
+        if((await readdir(notes)).some(name=>name.toLowerCase()===".obsidian")){
+          throw Error("M5 reload local inventory is incomplete");
+        }
         const local=await readObsidianLocalManifest(notes);
         if(local.unsupportedMarkdownFiles||local.otherFiles||local.directoriesNotScanned){
           throw Error("M5 reload local inventory is incomplete");
