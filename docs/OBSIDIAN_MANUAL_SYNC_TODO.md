@@ -95,7 +95,26 @@ try {
 
 ## M4 Incoming 隔離預演與固定 Sandbox 讀取（2026-10-24）
 
-- **2026-10-26 M2 → M4 瀏覽器選擇交接（獨立候選 PR，待合併）**：真正 MSI M1/M2 唯讀 JSON 匯入私有審查頁後，只有本人逐篇選「預定下載」（`review-download`／`review-missing-local`）或衝突「保留兩份」（`conflict`），且本機覆蓋完整、遠端 Revision 為真正 Sandbox 使用的 64 位 SHA 時，才顯示「匯出單篇 Incoming 交接 JSON」。瀏覽器只用 Blob 下載**一篇**僅含 slug／choice／兩端 SHA／revision 的六欄 `SyncDecision`，外層帶 `naosledge.m4.sandbox-incoming-intent.v1` 格式；無 JWT、正文、原稿路徑、目的地、授權或自動操作。MSI 人工將 `JSON.decision` 組入既有 `obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only` stdin，**另外**輸入短效 Sandbox Owner JWT 及逐篇 `SAVE SANDBOX INCOMING <slug>`；M4 會再次 Owner-RLS GET、比對版本，成功只寫新 OS 暫存 Incoming，**原稿及 Baseline 不變**。使用者應在本機保護並清除含私人筆記識別資訊的匯出檔。Node 定向測試與實體 Chrome 檔案下載測試使用**合成** M1 資料，並未執行真正 Neon GET、原稿存取或 Sandbox 寫入；實際 MSI／Owner 身分下載驗收仍需另行核准。手動 PowerShell 接線示例（**只供本人核准後在 MSI 執行，絕不可將 JWT 貼進檔案／argv／日誌**）：
+- **2026-10-26 M2→MSI Incoming 直接交接候選**：M2 已合併的單篇「下載／保留兩份」交接 JSON，現在可原封不動當作 MSI M4 stdin 請求的 `handoff` 物件，不必人工摘錄 SHA／Revision 到 `decision`；舊 `decision` 輸入維持相容。入口仍需要短效 Sandbox Owner JWT 與另一個逐篇 `SAVE SANDBOX INCOMING <slug>` 確認，嚴格拒絕多餘欄位及錯誤格式，再經原本 Owner-RLS GET、版本重驗、獨立檔案回讀驗證。以 M2 JSON→M4 MSI parser→模擬 Owner GET→實際 OS 暫存 Incoming 位元組的離線整合測試驗證；**尚未使用真實 Neon Sandbox Owner JWT/GET，沒有修改任何 Vault 或 Baseline**。
+- MSI 本人手動執行示意（下載的 JSON 僅為未受信任審查提示；私密 SHA/slug 不要寫入日誌；操作前須另外取得 Owner 對這篇的授權，不應在無授權時執行）：
+
+```powershell
+$handoff = Get-Content -LiteralPath 'C:\Temp\naosledge-m4-incoming-note.json' -Raw -Encoding utf8 | ConvertFrom-Json
+$approval = Read-Host 'Type SAVE SANDBOX INCOMING <slug>'
+$secret = Read-Host 'Short-lived Sandbox OWNER JWT' -AsSecureString
+try {
+  @{ sandboxOwnerJwt = [System.Net.NetworkCredential]::new('', $secret).Password
+     handoff = $handoff; typedConfirmation = $approval } |
+    ConvertTo-Json -Depth 8 -Compress |
+    node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only
+} finally {
+  Remove-Variable handoff,approval,secret -ErrorAction SilentlyContinue
+}
+```
+- 上述命令只在本人持有可用的短效 Sandbox Owner JWT 且**本次個別批准真正 GET/副本下載**後才使用；本輪沒有執行。僅顯示生成的私人暫存 Incoming 路徑，不寫真實 Vault、不持久化 Baseline。使用後由本人清理下載 JSON 及 Incoming 副本。
+
+
+- **2026-10-26 M2 → M4 瀏覽器選擇交接（PR #40 已合併 main）**：真正 MSI M1/M2 唯讀 JSON 匯入私有審查頁後，只有本人逐篇選「預定下載」（`review-download`／`review-missing-local`）或衝突「保留兩份」（`conflict`），且本機覆蓋完整、遠端 Revision 為真正 Sandbox 使用的 64 位 SHA 時，才顯示「匯出單篇 Incoming 交接 JSON」。瀏覽器只用 Blob 下載**一篇**僅含 slug／choice／兩端 SHA／revision 的六欄 `SyncDecision`，外層帶 `naosledge.m4.sandbox-incoming-intent.v1` 格式；無 JWT、正文、原稿路徑、目的地、授權或自動操作。MSI 可直接把完整交接 JSON 作為 `handoff` 送入既有 `obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only` stdin（舊版另支援抽取 `JSON.decision`），**另外**輸入短效 Sandbox Owner JWT 及逐篇 `SAVE SANDBOX INCOMING <slug>`；M4 會再次 Owner-RLS GET、比對版本，成功只寫新 OS 暫存 Incoming，**原稿及 Baseline 不變**。使用者應在本機保護並清除含私人筆記識別資訊的匯出檔。Node 定向測試與實體 Chrome 檔案下載測試使用**合成** M1 資料，並未執行真正 Neon GET、原稿存取或 Sandbox 寫入；實際 MSI／Owner 身分下載驗收仍需另行核准。以下為**舊版 decision 手動組合示例**，上方 `handoff` 整包交接為建議方式（**只供本人核准後在 MSI 執行，絕不可將 JWT 貼進檔案／argv／日誌**）：
 
 ```powershell
 $handoffPath = 'C:\\Users\\Naos\\Downloads\\naosledge-m4-incoming-<slug>.json'
