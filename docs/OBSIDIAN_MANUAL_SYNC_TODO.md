@@ -30,7 +30,7 @@
 | **M0** | 兩邊皆可編輯、手動逐篇確認、衝突不覆寫、不自動刪除 | Owner 已確認 | **完成** |
 | **M1** | 把現有本機 SHA 掃描、Neon Sandbox RLS 唯讀清單，交給同一份差異預覽 | 完整遠端清單才產生預覽；同名初次差異→衝突；缺失、兩邊修改與未覆蓋檔案都可見；M1 完全不寫入 | **已合併 main；2026-10-26 MSI 本機與真實 Neon Sandbox 合成 Owner JWT／RLS／非空 GET 完成 M1 端到端驗收。沒有啟用正式同步或 Production 寫入** |
 | **M2** | 私人站長審查畫面：上傳、下載、保留兩份、略過；逐篇選擇 | 站長限定、M1 差異卡片、兩端 SHA／遠端 Revision、逐篇選擇、衝突方向限制、摘要、RWD／鍵盤驗收；不執行同步 | **PR #27/#28/#31 已合併 main；本輪完成實際 Sandbox Owner-RLS GET → MSI JSON → Chrome 獨立檔案匯入／逐篇選擇／清除端到端驗收。正式頁改為空白待匯入；Production 網站真人登入及發布尚未驗收，也未啟用同步。詳見 [M2 規格](OBSIDIAN_M2_REVIEW_UI.md)** |
-| **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **PR #29 已合併 `main`，具備固定 Neon Sandbox create-only POST 與 MSI scratch-only 手動 stdin 入口；模擬 HTTP 單篇建立驗證已通過。既有筆記的條件式 Sandbox PATCH 低階候選元件已通過離線模擬；已新增 MSI 逐篇更新入口；尚無真正 Sandbox JWT／POST／PATCH 驗收、真實 Vault 串接或正式同步授權** |
+| **M3** | Obsidian → NaosLedge 的逐篇上傳 | 僅允許本人、Sandbox 首驗、建立/更新前重新讀取 SHA/Revision；失敗不更新 Baseline；沒有 DELETE | **PR #29 已合併 `main`，具備固定 Neon Sandbox create-only POST 與 MSI scratch-only 手動 stdin 入口；模擬 HTTP 單篇建立驗證已通過。本輪已補 WikiLinked 新筆記經現有 Owner-RLS 原子 RPC 寫入並核對索引的隔離候選（未執行真正 Sandbox RPC）。既有筆記的條件式 Sandbox PATCH 低階候選元件已通過離線模擬；已新增 MSI 逐篇更新入口；尚無真正 Sandbox JWT／POST／PATCH 驗收、真實 Vault 串接或正式同步授權** |
 | **M4** | NaosLedge → Obsidian 的逐篇下載 | 先在獨立 Inbox/Incoming 產生新檔；已存在原稿不直接覆寫；本人另行決定如何合併 | **合成 Scratch Incoming 副本已測試；PR #30 新增固定 Sandbox Owner-RLS 單篇 GET 與獨立 OS Incoming 副本，模擬 HTTP/隨機暫存檔驗證通過；尚無真人 MSI/Neon GET 驗收，不接觸 Obsidian 原稿** |
 | **M5** | 衝突比較與 Baseline 持續記錄 | 僅在已核准成功且已再次確認兩邊內容一致後保存 Baseline；離線、rename、重試不得誤覆寫或清除 | **合成 Scratch 的逐篇 Baseline append-only 證據、唯讀雙版本行比較及唯讀日誌重新載入預檢已實作；衝突保留、還原不清除 Baseline 已驗證。真正可跨程序重啟並驗證來源的持久載入、正式資料層／UI 接線仍待開發** |
 | **M6** | 在獨立 Sandbox 做真實 Auth/RLS/API ＋ MSI 測試 | 上傳、下載、同名雙改、部分清單、網路失敗、回復與防刪案例通過，測試資料清理留證據 | **合成 M1–M5 跨階段安全回歸已新增；真實 Neon Sandbox＋MSI E2E 仍待開發／授權，不可視為驗收完成** |
@@ -88,6 +88,8 @@ try {
 - 既有 `consents` 仍只供下載預演，新增的 `uploadConsents` **不能當作 M2 React 選擇、真實寫入授權、API 憑證或正式同步工作清單**。後續仍要補真正的 Owner Auth / RLS + Sandbox E2E，並確認遠端寫入有版本條件與恢復策略。
 
 - **2026-10-26 M3 WikiLink/backlink 防護（離線實作）**：發現現有 M3 固定 Sandbox 直接 `POST/PATCH knowledge_notes` 不會同步維護應用程式 `save_knowledge_note()` 管理的 `knowledge_links`，可能造成反向連結索引不一致。現在建立前拒絕正文中可作用的 `[[WikiLink]]`；條件式更新前還會核對**新版及遠端舊版**內容皆無作用中的 WikiLink，並以同一 Owner JWT/RLS GET 確認舊筆記 `knowledge_links` 出站索引總數確實為 0。若索引查詢缺失、非完整回應或有舊連結，一律**在 POST/PATCH 之前拒絕**；無連結筆記仍保留原單篇手動／CAS 路徑。M3 相關離線 HTTP／CLI 21/21 PASS，新增 4 項負向案例（新增／移除連結、索引非空／缺少完整性）。**沒有呼叫真實 Sandbox POST/PATCH，沒有 Production、Vault 或 Baseline 寫入。** 下一步在經批准的 Sandbox 隔離 schema 設計及驗收能**單一交易**同時維護 `knowledge_notes`、`knowledge_links` 與樂觀版本條件的寫入器；在那之前不開放帶 WikiLink 的直接上傳。這項受控隔離測試不授權任何正式 Migration。
+
+- **2026-10-26 M3 WikiLink create-only 原子寫入接線（本輪候選）**：沿用 Production/Sandbox 既有 `002` 的 `save_knowledge_note()` SECURITY INVOKER／Owner-RLS RPC，對**新增且含作用中 WikiLink** 的單篇 Scratch Markdown 只傳 `p_id=null`，由單一 SQL 交易同時 INSERT `knowledge_notes` 與 `knowledge_links`；無連結筆記仍使用原 create-only POST。RPC 參數的 `p_links` 必須由當次重讀的 Markdown AST 提取，最多 80 個，不能由外部單獨指定。寫入後透過 RLS 完整 Inventory、RPC 回傳 UUID 對照、SHA/revision、精確 backlink 數量與鍵值、最後一次 Inventory 重驗；任何失敗只能人工檢查，絕不重試或建立 Baseline。現有 MSI 手動 `--sandbox-scratch-create-only` 可重用相同路徑，**未在真正 Neon Sandbox 執行此新 RPC，也未接入正式 Vault／Production**。先前 #35 的 WikiLink **create** 禁令由這項候選解除；既有筆記的 WikiLink **update** 仍拒絕，待另外有 CAS + 同交易維護連結的正式設計／驗收，絕不偷用無版本條件的舊 RPC 更新既有筆記。
 
 ## M4 Incoming 隔離預演與固定 Sandbox 讀取（2026-10-24）
 

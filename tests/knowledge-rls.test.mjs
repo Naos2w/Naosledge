@@ -175,6 +175,26 @@ test("P1/P2 private vault migration isolates knowledge, links, publications and 
       });
     });
 
+    await t.test("M3 create-only RPC refuses duplicate owner slug without changing note or WikiLink index",async()=>{
+      await as("authenticated",alice,async query=>{
+        await assert.rejects(query(
+          "SELECT public.save_knowledge_note(NULL,$1,$2,$3,$4,$5,$6,$7,$8)",
+          ["Stolen title","neon-auth","unsafe overwrite","[[injected]]",
+            "筆記",["unsafe"],"2026-10-26",["injected"]],
+        ),/duplicate key/,"p_id=NULL must be INSERT-only even for an existing slug");
+        const note=await query(
+          "SELECT title,content_md FROM public.knowledge_notes WHERE id=$1",[target],
+        );
+        assert.deepEqual(note.rows,[{
+          title:"Neon Auth",content_md:"只供 Alice 的神經元秘密",
+        }]);
+        const links=await query(
+          "SELECT target_key FROM public.knowledge_links WHERE source_note_id=$1",[target],
+        );
+        assert.deepEqual(links.rows,[],"failed create cannot leave a partial backlink");
+      });
+    });
+
     await t.test("search isolates owners; indexes Latin; Chinese substring searches work",async()=>{
       const en=await as("authenticated",alice,query=>query(
         "SELECT slug FROM public.search_knowledge_notes('RLS',50) ORDER BY slug"));

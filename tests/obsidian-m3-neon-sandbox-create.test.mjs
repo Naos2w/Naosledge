@@ -112,20 +112,127 @@ test("M3 refuses missing individual consent, modified content, and existing remo
     "GET /neondb/rest/v1/blog_admins","GET /neondb/rest/v1/knowledge_notes",
   ]);
 });
-test("M3 refuses to create a WikiLinked note without atomic backlink maintenance",async()=>{
-  const linkedMarkdown=serializeObsidianMarkdown({
-    ...draft,content_md:"A reference to [[another-note]]",
-  });
-  const n=fakeNetwork();
-  await assert.rejects(createNeonSandboxNoteOnly({
-    ...options,decision:{...decision,
-      expectedLocalSha:createHash("sha256").update(linkedMarkdown).digest("hex"),
-    },readMarkdown:async()=>linkedMarkdown,fetcher:n.fetcher,
-  }),/cannot maintain WikiLinks atomically/);
+// WikiLinked create-only notes use the already-existing SECURITY INVOKER
+// save_knowledge_note RPC (p_id:null), never a direct index-breaking POST.
+const linkedDraft={...draft,
+  content_md:"Reference [[another-note]] and [[Second Note|display]].\n\n" +
+    "\`[[ignored-code-reference]]\`",
+};
+const linkedMarkdown=serializeObsidianMarkdown(linkedDraft);
+const linkedSha=createHash("sha256").update(linkedMarkdown).digest("hex");
+const linkedOptions={...options,decision:{...decision,expectedLocalSha:linkedSha},
+  readMarkdown:async()=>linkedMarkdown};
+const linkedKeys=["another-note","second note"];
+
+function fakeLinkedNetwork({ownerGranted=true,rpcStatus=200,rpcId=row().id,
+  indexedKeys=linkedKeys,missingLinkRange=false,driftAfterLinks=false,
+}={}){
+  const calls=[];
+  let note=null;
+  let afterLinks=false;
+  async function fetcher(raw,req){
+    const url=new URL(raw);
+    assert.equal(url.origin,new URL(NEON_SYNC_SANDBOX_DATA_API).origin);
+    assert.equal(req.redirect,"manual");
+    assert.equal(req.credentials,"omit");
+    assert.equal(req.cache,"no-store");
+    assert.equal(req.headers.Authorization,"Bearer "+jwt);
+    const operation=req.method+" "+url.pathname;
+    calls.push(operation);
+    if(url.pathname.endsWith("/blog_admins")){
+      assert.equal(req.method,"GET");
+      return asJson(ownerGranted?[{user_id:owner}]:[]);
+    }
+    if(url.pathname.endsWith("/knowledge_notes")&&req.method==="GET"){
+      assert.equal(req.headers.Prefer,"count=exact");
+      if(afterLinks&&driftAfterLinks&&note)note={...note,updated_at:"2026-10-25T10:00:00.000Z"};
+      const idOnly=url.searchParams.get("select")==="id,slug,updated_at";
+      const found=idOnly&&note?[{
+        id:note.id,slug:note.slug,updated_at:note.updated_at,
+      }]:note?[note]:[];
+      return asJson(found,200,true);
+    }
+    if(url.pathname.endsWith("/rpc/save_knowledge_note")){
+      assert.equal(req.method,"POST");
+      assert.equal(req.headers["Content-Type"],"application/json");
+      assert.deepEqual(JSON.parse(req.body),{
+        p_id:null,p_title:linkedDraft.title,p_slug:linkedDraft.slug,
+        p_summary:linkedDraft.excerpt,p_content_md:linkedDraft.content_md,
+        p_category:linkedDraft.category,p_tags:linkedDraft.tags,
+        p_learned_on:linkedDraft.learned_on,p_links:linkedKeys,
+      },"Only the owner-scoped, insert-only transaction receives source-derived links");
+      if(rpcStatus!==200)return asJson({message:"duplicate or permission denied"},rpcStatus);
+      note={...row(),content_md:linkedDraft.content_md};
+      return asJson(rpcId,200);
+    }
+    if(url.pathname.endsWith("/knowledge_links")){
+      assert.equal(req.method,"GET");
+      assert.equal(url.searchParams.get("source_note_id"),"eq."+row().id);
+      assert.equal(url.searchParams.get("limit"),"3");
+      assert.equal(url.searchParams.get("select"),"target_key");
+      assert.equal(req.headers.Prefer,"count=exact");
+      afterLinks=true;
+      const listed=indexedKeys.map(target_key=>({target_key}));
+      return missingLinkRange?asJson(listed):asJson(listed,200,true);
+    }
+    throw Error("Unexpected linked M3 request");
+  }
+  return {fetcher,calls};
+}
+
+test("M3 WikiLinked scratch create uses single-transaction Owner-RLS RPC and verifies backlinks",async()=>{
+  const n=fakeLinkedNetwork();
+  const result=await createNeonSandboxNoteOnly({...linkedOptions,fetcher:n.fetcher});
+  assert.equal(result.sha256,linkedSha);
+  assert.match(result.revision,/^[0-9a-f]{64}$/);
+  assert.equal(result.baselineSaved,false);
   assert.deepEqual(n.calls,[
     "GET /neondb/rest/v1/blog_admins",
     "GET /neondb/rest/v1/knowledge_notes",
-  ],"unsupported linked note must not reach POST");
+    "POST /neondb/rest/v1/rpc/save_knowledge_note",
+    "GET /neondb/rest/v1/knowledge_notes",
+    "GET /neondb/rest/v1/knowledge_notes",
+    "GET /neondb/rest/v1/knowledge_links",
+    "GET /neondb/rest/v1/knowledge_notes",
+  ]);
+  const manual=await readScratchCreateRequest([JSON.stringify({
+    sandboxOwnerJwt:jwt,markdown:linkedMarkdown,
+    typedConfirmation:"CREATE SANDBOX "+draft.slug,
+  })]);
+  const cli=fakeLinkedNetwork();
+  assert.deepEqual(await createOneReviewedScratchNote(manual,cli.fetcher),
+    {baselineSaved:false},"Manual CLI uses the same atomic single-note create");
+});
+
+test("M3 WikiLinked create fails closed on RLS denial, duplicate, bad RPC identity, stale index and drift",async()=>{
+  for(const [scenario,config,error,postCount] of [
+    ["non-owner",{ownerGranted:false},/Owner RLS grant/,0],
+    ["duplicate",{rpcStatus:409},/insert was rejected/,1],
+    ["unverified-id",{rpcId:"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"},/manual reconciliation/,1],
+    ["wrong-index",{indexedKeys:["another-note","unrelated"]},/manual reconciliation/,1],
+    ["incomplete-index",{missingLinkRange:true},/manual reconciliation/,1],
+    ["remote-drift",{driftAfterLinks:true},/manual reconciliation/,1],
+  ]){
+    const n=fakeLinkedNetwork(config);
+    await assert.rejects(createNeonSandboxNoteOnly({
+      ...linkedOptions,fetcher:n.fetcher,
+    }),error,scenario);
+    assert.equal(n.calls.filter(x=>x.startsWith("POST ")).length,postCount,scenario);
+    assert.equal(n.calls.some(x=>x.startsWith("PATCH ")||x.startsWith("DELETE ")),false);
+  }
+});
+
+test("M3 refuses more than 80 WikiLinks before any Sandbox mutation",async()=>{
+  const tooMany=serializeObsidianMarkdown({
+    ...draft,content_md:Array.from({length:81},(_,i)=>"[[link-"+i+"]] ").join(""),
+  });
+  const n=fakeLinkedNetwork();
+  await assert.rejects(createNeonSandboxNoteOnly({
+    ...options,decision:{...decision,
+      expectedLocalSha:createHash("sha256").update(tooMany).digest("hex"),
+    },readMarkdown:async()=>tooMany,fetcher:n.fetcher,
+  }),/atomic WikiLink limit/);
+  assert.equal(n.calls.filter(x=>x.startsWith("POST ")).length,0);
 });
 
 test("M3 reads local source only after fresh Owner inventory, never from cached M1 text",async()=>{
