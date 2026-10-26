@@ -75,6 +75,24 @@
 .vault-sync-final li span{overflow-wrap:anywhere}
 .vault-sync-final li strong{color:var(--accent);white-space:nowrap}
 .vault-sync-final-warning{font-size:12px;line-height:1.8;color:var(--ink-soft);display:flex;gap:11px;align-items:start;padding-top:12px;margin:11px 0 0}
+.vault-sync-conflict-review{margin-top:45px;border-top:1px solid var(--rule-strong)}
+.vault-sync-conflict-review .vault-sync-notice{margin-top:13px}
+.vault-sync-conflict-review .vault-sync-notice label{display:block;margin-top:12px;font-size:12px;font-weight:700;color:var(--ink)}
+.vault-sync-conflict-review .vault-sync-notice input{margin-top:8px;max-width:100%;font-size:12px}
+.vault-sync-conflict-review .vault-sync-notice button{display:block;margin-top:10px;padding:10px 15px;background:var(--sheet);color:var(--ink);border:1px solid var(--rule-strong);min-height:44px}
+.vault-sync-conflict-review code{font:11px ui-monospace,Consolas,monospace;overflow-wrap:anywhere}
+.vault-sync-conflict-result{margin-top:18px;border:1px solid var(--rule-strong);padding:18px;background:var(--sheet);min-width:0}
+.vault-sync-conflict-verified,.vault-sync-conflict-caution{font-size:12px;line-height:1.7;color:var(--ink-soft);display:flex;gap:10px;align-items:start;margin:0}
+.vault-sync-conflict-verified>svg{color:var(--accent);flex-shrink:0}
+.vault-sync-conflict-verified>span{font-size:11px}
+.vault-sync-conflict-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:18px 0}
+.vault-sync-conflict-columns article{min-width:0;border:1px solid var(--rule);background:var(--field)}
+.vault-sync-conflict-columns h3{font-size:13px;line-height:1.6;padding:11px 14px;margin:0;border-bottom:1px solid var(--rule)}
+.vault-sync-conflict-columns h3 small{font:10px ui-monospace,Consolas,monospace;color:var(--muted);margin-left:7px}
+.vault-sync-conflict-columns pre{font:12px/1.75 ui-monospace,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;overflow:auto;padding:15px;margin:0;color:var(--ink)}
+.vault-sync-conflict-caution>svg{color:var(--warm);flex-shrink:0}
+@media(max-width:750px){.vault-sync-conflict-columns{grid-template-columns:minmax(0,1fr)}}
+
 .vault-sync-final-warning svg{flex-shrink:0;margin-top:2px;color:var(--warm)}
 @media(max-width:950px){
  .vault-sync-totals{flex-wrap:wrap;row-gap:20px}

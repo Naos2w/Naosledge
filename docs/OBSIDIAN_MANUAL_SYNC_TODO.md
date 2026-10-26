@@ -2,7 +2,7 @@
 
 更新：2026-10-26；M1/M2 已完成真實 Neon Integration Sandbox 合成 Owner JWT／RLS → MSI 唯讀掃描／JSON → 本機 Chrome 審查整合驗收。尚未部署 Production。
 
-**2026-10-26 實際基準更正**：PR #35–#40 已合併 main（`2cf082d6fbdbdc40e944e16e56027642584e9c53`；CI #157 SUCCESS），不可重做；PR #41 的 MSI M2→M4 交接已合併 main（`d551d86bfd11b8a863d8d74431fcee5bc7609b26`；CI #162 SUCCESS）。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
+**2026-10-26 實際基準更正**：PR #35–#40 已合併 main（`2cf082d6fbdbdc40e944e16e56027642584e9c53`；CI #157 SUCCESS），不可重做；PR #41 的 MSI M2→M4 交接已合併 main（`d551d86bfd11b8a863d8d74431fcee5bc7609b26`；CI #162 SUCCESS），PR #42 的 M4 雙副本及跨程序收據驗證已合併 main（`7971fa486ef9fc8ef724493c90ba533c6ecb2b7a`；CI #164 SUCCESS）。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
 
 ## 不得更改的產品契約
 
@@ -153,6 +153,8 @@ try {
 - **仍未接入真實 NaosLedge、Neon 或 MSI Obsidian Vault**；`syntheticWorkspacePath` 僅供測試，絕不可把本工廠當正式寫入適配器。真實下載前需完成 Owner／Sandbox 驗收與獨立 Inbox 路徑安全設計。
 
 ## M5 Baseline 保留與合成成功證據（2026-10-24）
+
+- **2026-10-26 M5 私人審查頁雙版本實際接線（候選）**：`/vault/sync` 增加完全在瀏覽器本機執行的 M4 Incoming 衝突比對。人工同時選取同一筆 Incoming 的 `incoming-receipt.json`、`<slug>.md`、`<slug>--local.md`，按 M4 實際產出格式、slug／檔名及兩個**完整 SHA-256** 驗證後，並排顯示兩份原始 Markdown 純文字；驗證失敗不顯示正文，重新選取會清除先前內容，支援人工清除。已用 M4 實際暫存三檔→M5 匯入及改檔拒絕進行 Node 整合回歸，另在 MSI localhost Chrome 驗證三檔匯入、並排呈現、竄改拒絕、RWD，未產生外部網路請求；仍未接觸真正 Neon 或 Vault。**這是供 Owner 人工比較的前端候選功能，無瀏覽器網路請求、無 JWT、無自動合併/覆寫、無 Baseline 寫入；收據只自述 M4 暫存位元組，不能證明真正 Neon 當前狀態或曾完成可信同步。真正 Owner-RLS Sandbox E2E 及跨程序可信 Baseline 仍未完成。**
 
 - `lib/obsidian-durable-write-sandbox.ts` 在**當次隨機 Scratch** 新增 `baseline-journal/`：合成環境每次已批准的上傳、下載或復原，在再次確認兩端 SHA 相同、遠端 revision 未變後，才以新 UUID `.json` **追加**同步成功證據（無 Markdown 正文或憑證）；寫檔前先暫存、再次比對、提交並同步檔案與目錄（Windows 目錄同步僅 best-effort）。無任何正式 Obsidian／Neon 路徑參數，不能用於正式同步。
 - `listConfirmedSyntheticBaselines()` 僅供同一 Scratch 唯讀檢驗並嚴格拒絕遭改動或不合法的 checkpoint；**不會將檔案自動匯入 Baseline、重建現有記憶體狀態或觸發同步**。
