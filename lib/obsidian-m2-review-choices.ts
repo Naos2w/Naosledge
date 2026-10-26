@@ -4,7 +4,7 @@
  * localStorage, server actions, network or operation/executor endpoints.
  */
 import type {ManualReviewPreview} from "./obsidian-manual-sync-review.ts";
-import type {SyncChoice} from "./obsidian-sync-plan.ts";
+import type {SyncChoice,SyncDecision} from "./obsidian-sync-plan.ts";
 
 export type ReviewIntent="upload"|"download"|"keep-both"|"skip";
 export type ReviewIntentSelections=Record<string,ReviewIntent>;
@@ -161,6 +161,78 @@ export function chooseReviewIntent(
   }
   // Fresh object, safe own keys only. No action gets dispatched anywhere.
   return {...current,[slug]:intent};
+}
+
+export const MANUAL_M3_UPLOAD_INTENT_FORMAT="naosledge.m3.sandbox-upload-intent.v1";
+const M3_DECISION_FIELDS=[
+  "slug","choice","manualReview","expectedLocalSha",
+  "expectedRemoteSha","expectedRemoteRevision",
+];
+
+/**
+ * M2 -> MSI M3: a single frozen, untrusted upload comparison.
+ * Neither a command nor authorization; no JWT, Markdown or file path.
+ */
+export function serializeManualM3UploadIntent(
+  preview:ManualReviewPreview,
+  selected:ReviewIntentSelections,
+  slug:string,
+):string{
+  summariseReviewIntents(preview,selected);
+  if(preview.previewStatus!=="ready"){
+    throw Error("M3 upload handoff needs full local inventory coverage");
+  }
+  const row=preview.decisions.find(d=>d.slug===slug);
+  if(!row||!row.manualReview||
+     !Object.hasOwn(selected,slug)||selected[slug]!=="upload"||
+     (row.choice!=="review-upload"&&row.choice!=="review-missing-remote")||
+     row.expectedLocalSha===null||
+     (row.choice==="review-upload"&&!SHA.test(row.expectedRemoteRevision??""))){
+    throw Error("M3 upload handoff requires one reviewed upload");
+  }
+  const output={
+    format:MANUAL_M3_UPLOAD_INTENT_FORMAT,
+    decision:{
+      slug:row.slug,choice:row.choice,manualReview:true,
+      expectedLocalSha:row.expectedLocalSha,
+      expectedRemoteSha:row.expectedRemoteSha,
+      expectedRemoteRevision:row.expectedRemoteRevision,
+    },
+  };
+  // Keep the same validation rules on both browser-export and MSI-import.
+  parseManualM3UploadIntent(output);
+  return JSON.stringify(output)+"\n";
+}
+
+/** Strict untrusted metadata parser shared by M3 CREATE and UPDATE entrypoints. */
+export function parseManualM3UploadIntent(value:unknown):SyncDecision{
+  if(!exactFields(value,["format","decision"])||
+     (value as {format?:unknown}).format!==MANUAL_M3_UPLOAD_INTENT_FORMAT){
+    throw Error("M3 upload handoff format is invalid");
+  }
+  const d=(value as {decision:unknown}).decision;
+  if(!exactFields(d,M3_DECISION_FIELDS)){
+    throw Error("M3 upload handoff decision contains unexpected fields");
+  }
+  const note=d as Record<string,unknown>;
+  if(typeof note.slug!=="string"||note.slug.length<3||note.slug.length>120||
+     !SLUG.test(note.slug)||note.manualReview!==true||
+     typeof note.expectedLocalSha!=="string"||!SHA.test(note.expectedLocalSha)||
+     !["review-upload","review-missing-remote"].includes(String(note.choice))||
+     (note.choice==="review-missing-remote"&&
+       (note.expectedRemoteSha!==null||note.expectedRemoteRevision!==null))||
+     (note.choice==="review-upload"&&
+       (typeof note.expectedRemoteSha!=="string"||!SHA.test(note.expectedRemoteSha)||
+        typeof note.expectedRemoteRevision!=="string"||!SHA.test(note.expectedRemoteRevision)||
+        note.expectedRemoteSha===note.expectedLocalSha))){
+    throw Error("M3 upload handoff fingerprints or direction are invalid");
+  }
+  return {
+    slug:note.slug,choice:note.choice as SyncDecision["choice"],manualReview:true,
+    expectedLocalSha:note.expectedLocalSha,
+    expectedRemoteSha:note.expectedRemoteSha as string|null,
+    expectedRemoteRevision:note.expectedRemoteRevision as string|null,
+  };
 }
 
 export const MANUAL_M4_INCOMING_INTENT_FORMAT="naosledge.m4.sandbox-incoming-intent.v1";

@@ -10,6 +10,7 @@ import {fileURLToPath} from "node:url";
 import {parseObsidianMarkdown,serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
 import {updateNeonSandboxNoteIfUnchanged} from "../lib/obsidian-neon-sandbox-update.ts";
 import {NEON_SYNC_SANDBOX_BRANCH} from "../lib/obsidian-neon-sandbox-readonly.ts";
+import {parseManualM3UploadIntent} from "../lib/obsidian-m2-review-choices.ts";
 import type {SyncDecision} from "../lib/obsidian-sync-plan.ts";
 
 export const M3_MANUAL_UPDATE_FLAG="--sandbox-manual-update-only";
@@ -46,11 +47,16 @@ export async function readManualUpdateRequest(
   catch{throw Error("M3 update request must be JSON");}
   if(!value||typeof value!=="object"||Array.isArray(value)||
      Object.keys(value).length!==4||
-     !["sandboxOwnerJwt","markdown","decision","typedConfirmation"].every(
+     !["sandboxOwnerJwt","markdown","typedConfirmation"].every(
        key=>Object.hasOwn(value,key)
-     ))throw Error("M3 update requires exactly one note, decision and confirmation");
+     )||Object.hasOwn(value,"decision")===Object.hasOwn(value,"handoff")){
+    throw Error("M3 update requires exactly one note, decision and confirmation");
+  }
   const r=value as Record<string,unknown>;
-  const d=r.decision;
+  // M2's single-note handoff is untrusted; a separate MSI Owner JWT,
+  // canonical Markdown and typed UPDATE confirmation are still mandatory.
+  const d=Object.hasOwn(r,"handoff")?
+    parseManualM3UploadIntent(r.handoff):r.decision;
   if(typeof r.sandboxOwnerJwt!=="string"||r.sandboxOwnerJwt.length>8192||
      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(r.sandboxOwnerJwt)||
      typeof r.markdown!=="string"||Buffer.byteLength(r.markdown,"utf8")>250_000||
@@ -74,7 +80,9 @@ export async function readManualUpdateRequest(
      createHash("sha256").update(r.markdown,"utf8").digest("hex")!==note.expectedLocalSha){
     throw Error("M3 update requires the exact reviewed canonical Markdown");
   }
-  return r as UpdateRequest;
+  return {sandboxOwnerJwt:r.sandboxOwnerJwt as string,
+    markdown:r.markdown as string,decision:note as SyncDecision,
+    typedConfirmation:r.typedConfirmation as string};
 }
 
 export async function updateOneReviewedSandboxNote(

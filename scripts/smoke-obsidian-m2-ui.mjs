@@ -15,7 +15,11 @@ import path from "node:path";
 import os from "node:os";
 import {chromium} from "playwright-core";
 import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
-import {parseManualM2Handoff,serializeManualM2Handoff,MANUAL_M4_INCOMING_INTENT_FORMAT} from "../lib/obsidian-m2-review-choices.ts";
+import {
+  parseManualM2Handoff,serializeManualM2Handoff,
+  MANUAL_M4_INCOMING_INTENT_FORMAT,MANUAL_M3_UPLOAD_INTENT_FORMAT,
+  parseManualM3UploadIntent,
+} from "../lib/obsidian-m2-review-choices.ts";
 import {saveManualM2Handoff} from "./obsidian-msi-manual-preview.ts";
 import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 
@@ -114,9 +118,22 @@ try{
   const exported=await saveManualM2Handoff(await makeSyntheticM2Preview());
   try{
     await page.locator("#vault-sync-handoff-file").setInputFiles(exported);
-    assert.ok(await page.getByText("MSI 手動匯入 · 唯讀快照").isVisible());
+    await page.getByText("MSI 手動匯入 · 唯讀快照")
+      .waitFor({state:"visible",timeout:15_000});
     assert.equal(await page.locator(".vault-sync-note").count(),7);
     assert.ok(await page.getByText("遠端版本",{exact:true}).first().isVisible());
+    const createAction=page.getByRole("group",{name:"local-new 的審查意圖"});
+    await createAction.getByRole("button",{name:"預定上傳"}).click();
+    const [uploadHandoff]=await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button",{name:"local-new 的 M3 上傳交接 JSON"}).click(),
+    ]);
+    assert.equal(uploadHandoff.suggestedFilename(),"naosledge-m3-upload-local-new.json");
+    const uploadFile=JSON.parse(await readFile(await uploadHandoff.path(),"utf8"));
+    assert.equal(uploadFile.format,MANUAL_M3_UPLOAD_INTENT_FORMAT);
+    assert.equal(parseManualM3UploadIntent(uploadFile).choice,"review-missing-remote");
+    assert.equal(Object.hasOwn(uploadFile,"sandboxOwnerJwt"),false);
+    assert.equal(Object.hasOwn(uploadFile,"markdown"),false);
     await page.getByRole("button",{name:"移除私人快照"}).click();
     assert.equal(await page.locator(".vault-sync-note").count(),0);
     assert.ok(await page.getByText("等待 MSI 唯讀快照").isVisible());

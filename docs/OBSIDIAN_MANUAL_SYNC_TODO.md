@@ -2,7 +2,7 @@
 
 更新：2026-10-26；M1/M2 已完成真實 Neon Integration Sandbox 合成 Owner JWT／RLS → MSI 唯讀掃描／JSON → 本機 Chrome 審查整合驗收。尚未部署 Production。
 
-**2026-10-26 實際基準更正**：PR #35–#40 已合併 main（`2cf082d6fbdbdc40e944e16e56027642584e9c53`；CI #157 SUCCESS），不可重做；PR #41 的 MSI M2→M4 交接已合併 main（`d551d86bfd11b8a863d8d74431fcee5bc7609b26`；CI #162 SUCCESS）。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
+**2026-10-26 實際基準更正**：PR #35–#42 已依序合併 main（最新 `7971fa486ef9fc8ef724493c90ba533c6ecb2b7a`；CI #164 SUCCESS），包含 M3 WikiLink 原子候選、M2→M4 交接、M4 雙版本 Incoming 與跨程序檔案收據，均不必重做。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
 
 ## 不得更改的產品契約
 
@@ -22,6 +22,8 @@
 4. **P1｜M3 Sandbox 手動上傳**：PR #29 新增固定 Neon Integration Sandbox 的 create-only POST 元件，以及 `scripts/obsidian-m3-sandbox-manual-create.ts --sandbox-scratch-create-only` MSI 人工單篇入口。僅接受 stdin 傳入的**合成／獨立 Scratch 可攜式 Markdown**、短效 Sandbox-only Owner JWT 與 `CREATE SANDBOX <slug>` 明確確認；先驗 Owner RLS 與完整清單，拒絕同名覆寫、PATCH／DELETE，不寫 Baseline，結果不明不得自動重試。輸入不讀真實 Obsidian Vault，也不視 M2 UI 選擇為寫入授權。**離線 HTTP 模擬與 CLI 輸入驗證不等於真正 Neon Sandbox POST 成功**；需 Owner 在本機安全取得短效 JWT 並明確逐篇批准後才可驗收。M3 既有筆記的低階 Sandbox 條件式 PATCH 已新增候選實作：先用 Owner RLS 完整清單驗證審查版本、GET 原 row ID/updated_at、重新讀取本機 SHA，再以同一筆資料庫 PATCH 的 `id + slug + updated_at` 條件避免遠端並行覆寫，成功後再 GET 驗證；任何 0 筆更新、競態或結果不明都不自動重試、也不更新 Baseline。已通過假 HTTP 測試，並已新增 MSI 手動 stdin 更新入口；未進行真正 Sandbox JWT/PATCH 驗收，更不操作真實 Vault。
 5. **P2｜M4/M5**：M4 除既有合成 Incoming 副本預演外，PR #30/#32 已合併：固定 Neon Sandbox Owner-RLS 單篇唯讀 GET、重新驗證 SHA/revision、獨立 OS 暫存 Incoming 副本及 MSI 人工單篇入口；目前只通過模擬 HTTP＋真實隨機暫存檔測試，沒有真人 Neon GET 或原稿寫入；M5 已新增**隨機 Scratch 專用 append-only 成功證據、限量雙版本行比較及唯讀日誌重新載入預檢**。恢復預檢遇到多筆同名歷史、版次變更、兩端差異或記憶體 Baseline 不一致會保守標示、絕不推斷勝者或自動匯入。正式 Vault／Neon 持久化、真正 MSI 下載適配器、跨程序重啟後可信載入及 UI 接線仍待開發／授權；任何刪除仍需另外的明確人工決定。
 6. **P2｜M6/M7**：新增 `tests/obsidian-m6-synthetic-cross-stage.test.mjs`，先以隨機 Scratch／記憶體 Remote 跨階段回歸 M1 預覽、M2 非執行選擇、M3 逐篇上傳、M4 Incoming 保留雙份、M5 只記錄已驗證一致的 Baseline，以及過期版本／漏掃／不完整清單的 fail-closed 行為。**這不是 Neon 或 MSI 真實 E2E**，仍須另外完成真正 Sandbox Auth／RLS／API＋MSI 測試與回復驗收；M7 正式啟用仍需 Owner 個別授權。
+
+**2026-10-26 M2→M3 單篇上傳交接（新增候選，尚未合併）**：私人 M2 審查頁在本人匯入完整 MSI Sandbox 唯讀快照、逐篇選「預定上傳」且本機清單無漏掃後，可透過瀏覽器 Blob 下載該篇 `naosledge.m3.sandbox-upload-intent.v1` JSON。僅含 slug、`review-upload`／`review-missing-remote` 方向與兩端 SHA/revision，不含 JWT、Markdown、Vault 路徑或執行授權。MSI M3 create-only Scratch／conditional UPDATE CLI 另以 stdin 接受完整 `handoff`（仍相容既有 `decision` 或無 handoff 的 Scratch 建立），嚴格驗證六欄方向及所有 SHA、當次重新取得的 canonical Markdown 位元組與 slug；此外仍需另行輸入短效 Sandbox Owner JWT 及 `CREATE SANDBOX <slug>`／`UPDATE SANDBOX <slug>` 明確文字確認，對真正遠端版本再次 Owner-RLS GET／CAS。缺欄位、修改後的本地 SHA、缺少修訂、錯誤方向、混入其他欄位、部分本地掃描均拒絕，不會有自動傳輸／重試／Baseline／刪除。僅離線 HTTP 模擬與本機 Node 測試，**不是**真實 Sandbox Owner E2E 或 Vault 正式上傳；M3 真實寫入仍須新的單次 Owner 批准。
 
 **暫緩**：PR #21–25 安全研究整合、TPM/DPAPI、企業級 AES 備份輪換、強制斷電實驗、Cron 自動同步及自動覆寫。這些不是 M2／M3 一般開發前置條件。
 

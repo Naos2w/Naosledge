@@ -13,11 +13,16 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {parseObsidianMarkdown,serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
 import {planObsidianReconciliation} from "../lib/obsidian-sync-plan.ts";
+import {parseManualM3UploadIntent} from "../lib/obsidian-m2-review-choices.ts";
 import {createNeonSandboxNoteOnly} from "../lib/obsidian-neon-sandbox-create.ts";
 import {NEON_SYNC_SANDBOX_BRANCH} from "../lib/obsidian-neon-sandbox-readonly.ts";
 
 export const M3_SCRATCH_ONLY_FLAG="--sandbox-scratch-create-only";
 const MAX_REQUEST_BYTES=265_000;
+type CreateRequest={
+  sandboxOwnerJwt:string;markdown:string;typedConfirmation:string;
+  handoff?:unknown;
+};
 
 export function assertManualM3Invocation(
   platform:string,computerName:string,args:readonly string[],isTerminal:boolean,
@@ -30,7 +35,7 @@ export function assertManualM3Invocation(
 
 export async function readScratchCreateRequest(
   source:AsyncIterable<string|Uint8Array>,
-):Promise<{sandboxOwnerJwt:string;markdown:string;typedConfirmation:string}>{
+):Promise<CreateRequest>{
   const chunks:Buffer[]=[];
   let total=0;
   for await(const chunk of source){
@@ -43,10 +48,11 @@ export async function readScratchCreateRequest(
   try{request=JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;}
   catch{throw Error("M3 scratch request must be JSON");}
   if(!request||typeof request!=="object"||Array.isArray(request)||
-     Object.keys(request).length!==3||
+     ![3,4].includes(Object.keys(request).length)||
      !["sandboxOwnerJwt","markdown","typedConfirmation"].every(
        key=>Object.hasOwn(request,key)
-     )){
+     )||
+     (Object.keys(request).length===4&&!Object.hasOwn(request,"handoff"))){
     throw Error("M3 scratch request must contain exactly one note and confirmation");
   }
   const r=request as Record<string,unknown>;
@@ -56,7 +62,13 @@ export async function readScratchCreateRequest(
      typeof r.typedConfirmation!=="string"||r.typedConfirmation.length>160){
     throw Error("M3 scratch input is missing or invalid");
   }
-  return r as {sandboxOwnerJwt:string;markdown:string;typedConfirmation:string};
+  if(Object.hasOwn(r,"handoff")){
+    const decision=parseManualM3UploadIntent(r.handoff);
+    if(decision.choice!=="review-missing-remote"){
+      throw Error("M3 CREATE accepts only a reviewed missing-remote handoff");
+    }
+  }
+  return r as CreateRequest;
 }
 
 /** Immutable stdin Markdown is the only source; no filesystem/Vault access. */
@@ -80,7 +92,15 @@ export async function createOneReviewedScratchNote(
   const plan=planObsidianReconciliation({
     local:[{slug,sha256:digest}],remote:[],baseline:[],
   });
-  const decision=plan.decisions[0];
+  // M2's handoff is only a version hint, not a write authorization.
+  // The independent per-note confirmation and live Owner/RLS checks remain.
+  const decision=request.handoff?
+    parseManualM3UploadIntent(request.handoff):plan.decisions[0];
+  if(decision.choice!=="review-missing-remote"||decision.slug!==slug||
+     decision.expectedLocalSha!==digest||
+     decision.expectedRemoteSha!==null||decision.expectedRemoteRevision!==null){
+    throw Error("M3 reviewed CREATE handoff no longer matches Scratch Markdown");
+  }
   const result=await createNeonSandboxNoteOnly({
     branchId:NEON_SYNC_SANDBOX_BRANCH,
     sandboxOwnerJwt:request.sandboxOwnerJwt,
