@@ -6,7 +6,7 @@
 
 **2026-10-26 晚間 main/候選再核對**：PR #41/#42 已合併，main 現為 `7971fa486ef9fc8ef724493c90ba533c6ecb2b7a`，CI #164 SUCCESS；PR #43（M5 Scratch 跨程序預檢）、#44（M4 Incoming Owner-RLS 唯讀重驗）、#45（本機雙版本 UI）、#46（M2→M3 人工上傳意圖）各自仍為未合併候選、exact-head CI 已成功；不得重開重做。下述里程碑表為既有基準敘述，尚未包含這些未合併候選。SQL003 僅已安裝 Integration Sandbox，Production 未安裝；未取得本輪真正 Owner JWT/M3 寫入及 M6 Sandbox E2E 授權。
 
-## 不得更改的產品契約
+**2026-10-26 M5 待驗候選**：新 MSI 手動入口 `scripts/obsidian-m5-manual-equality.ts` 可呼叫既有已註冊 Obsidian Vault 雙次唯讀掃描與固定 Neon Integration Sandbox Owner-RLS 完整 GET，將當下兩端 **SHA 相同且有遠端 revision** 的筆記保存為 OS Scratch 中獨立、metadata-only、排他建立的「觀察收據」，並供新程序以新的 Owner JWT 再次重新掃描兩端驗證。它**不是可信的已完成同步證據、沒有驗證過人工上／下載完成、不會載入／儲存正式 Baseline，也不會覆寫任何資料**。本輪本機 HTTP 部分僅使用合成 Reader；真正 Sandbox 身分／Owner GET 與正式持久 Baseline 完成仍受授權限制。PR #43–#47 為另外未合併的候選，不能當成 main 既有功能。\n\n## 不得更改的產品契約
 
 - **Obsidian 與 NaosLedge 都是正式編輯入口**，任何一邊編輯都不構成對另一邊的覆寫授權。
 - **預設手動觸發，同步前逐篇確認**；沒有自動同步、背景輪詢或自動套用。
