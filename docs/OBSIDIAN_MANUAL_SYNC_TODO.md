@@ -2,6 +2,8 @@
 
 更新：2026-10-26；M1/M2 已完成真實 Neon Integration Sandbox 合成 Owner JWT／RLS → MSI 唯讀掃描／JSON → 本機 Chrome 審查整合驗收。尚未部署 Production。
 
+**2026-10-26 實際基準更正**：PR #35–#40 已合併 main（`2cf082d6fbdbdc40e944e16e56027642584e9c53`；CI #157 SUCCESS），不可重做；PR #41 的 MSI M2→M4 直接 handoff consumer CI 已成功、尚待另行 merge 授權。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
+
 ## 不得更改的產品契約
 
 - **Obsidian 與 NaosLedge 都是正式編輯入口**，任何一邊編輯都不構成對另一邊的覆寫授權。
@@ -62,7 +64,7 @@ try {
 
 ## M3 上傳隔離預演（2026-10-24）
 
-- **2026-10-26 M3 existing-note WikiLink 原子更新候選（未部署）**：本輪新增**獨立候選** `neon/migrations/003_m3_wikilink_cas_candidate.sql`，定義新 `SECURITY INVOKER`／Owner RLS RPC `update_knowledge_note_cas_with_links`：鎖定並以完整 `id + slug + updated_at` 做 SQL CAS，再核對舊的 outgoing `knowledge_links`，於**同一個 PostgreSQL transaction** 更新既有筆記及替換 WikiLink 索引，任何不一致／權限不足全交易回滾。M3 MSI 手動逐篇更新入口現在遇到**新增、變更或刪除 WikiLink** 時只走此新 RPC，先重讀遠端原稿與索引，完成後再 GET 重驗新筆記 SHA／revision、完整 backlinks 及整體 Inventory；RPC 不存在或連線結果不明**絕不降級為舊的無 CAS save_knowledge_note(p_id!=null)／PATCH、不自動重試、不保存 Baseline**。沒有 WikiLink 的既有 PATCH CAS 路徑維持不變。本輪以真實 PGlite SQL transaction/RLS 測試及隔離 HTTP／MSI stdin 回歸驗證候選；**SQL 003 尚未套用到任何 Neon、候選程式尚未於真正 Neon Sandbox Owner JWT 做 POST/PATCH**，日後套用 schema/寫入與正式使用仍須 Owner 單次具體授權，且需保留回滾前置條件。
+- **2026-10-26 M3 existing-note WikiLink 原子更新候選（未部署）**：本輪新增**獨立候選** `neon/migrations/003_m3_wikilink_cas_candidate.sql`，定義新 `SECURITY INVOKER`／Owner RLS RPC `update_knowledge_note_cas_with_links`：鎖定並以完整 `id + slug + updated_at` 做 SQL CAS，再核對舊的 outgoing `knowledge_links`，於**同一個 PostgreSQL transaction** 更新既有筆記及替換 WikiLink 索引，任何不一致／權限不足全交易回滾。M3 MSI 手動逐篇更新入口現在遇到**新增、變更或刪除 WikiLink** 時只走此新 RPC，先重讀遠端原稿與索引，完成後再 GET 重驗新筆記 SHA／revision、完整 backlinks 及整體 Inventory；RPC 不存在或連線結果不明**絕不降級為舊的無 CAS save_knowledge_note(p_id!=null)／PATCH、不自動重試、不保存 Baseline**。沒有 WikiLink 的既有 PATCH CAS 路徑維持不變。本輪以真實 PGlite SQL transaction/RLS 測試及隔離 HTTP／MSI stdin 回歸驗證候選；**SQL 003 已依 2026-10-26 單次核准安裝到獨立 Neon Integration Sandbox，Production 未安裝；真正 Owner JWT POST／PATCH／CAS E2E 仍未執行**。後續任何真實 Sandbox／Production 寫入、再次 schema 變更或正式啟用都需要新的單次 Owner 具體授權；不能重裝 SQL003。
 
 - **2026-10-25 MSI 單篇條件式更新入口（PR #33，尚未真人驗收）**：`node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m3-sandbox-manual-update.ts --sandbox-manual-update-only`，僅接受 MSI 人工 stdin JSON，且恰含 `sandboxOwnerJwt`、`markdown`、`decision`、`typedConfirmation`。Owner 必須使用真實 M1/M2 審查取得的 `review-upload` 決策（完整本地／遠端 SHA 與 revision），提供與本地 SHA 相符的 canonical Markdown，並另行逐篇確認 `UPDATE SANDBOX <slug>`；工具不推造決策，也不能證明輸入決策的來源。JWT 只在本機以短效 Sandbox-only 身分透過 stdin 輸入，不能貼入聊天、argv、env 或日誌。工具重用既有 Owner-RLS／完整清單／原子 CAS PATCH／回讀驗證，不讀寫 Vault、不存 Baseline、不自動重試；失敗可能已寫入 Sandbox，必須本人先檢查。只有離線模擬及 CLI 拒絕測試，真正 JWT/PATCH 驗收仍為 `blocked_needs_owner`。
 
@@ -95,7 +97,9 @@ try {
 
 ## M4 Incoming 隔離預演與固定 Sandbox 讀取（2026-10-24）
 
-- **2026-10-26 M2 → M4 瀏覽器選擇交接（獨立候選 PR，待合併）**：真正 MSI M1/M2 唯讀 JSON 匯入私有審查頁後，只有本人逐篇選「預定下載」（`review-download`／`review-missing-local`）或衝突「保留兩份」（`conflict`），且本機覆蓋完整、遠端 Revision 為真正 Sandbox 使用的 64 位 SHA 時，才顯示「匯出單篇 Incoming 交接 JSON」。瀏覽器只用 Blob 下載**一篇**僅含 slug／choice／兩端 SHA／revision 的六欄 `SyncDecision`，外層帶 `naosledge.m4.sandbox-incoming-intent.v1` 格式；無 JWT、正文、原稿路徑、目的地、授權或自動操作。MSI 人工將 `JSON.decision` 組入既有 `obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only` stdin，**另外**輸入短效 Sandbox Owner JWT 及逐篇 `SAVE SANDBOX INCOMING <slug>`；M4 會再次 Owner-RLS GET、比對版本，成功只寫新 OS 暫存 Incoming，**原稿及 Baseline 不變**。使用者應在本機保護並清除含私人筆記識別資訊的匯出檔。Node 定向測試與實體 Chrome 檔案下載測試使用**合成** M1 資料，並未執行真正 Neon GET、原稿存取或 Sandbox 寫入；實際 MSI／Owner 身分下載驗收仍需另行核准。手動 PowerShell 接線示例（**只供本人核准後在 MSI 執行，絕不可將 JWT 貼進檔案／argv／日誌**）：
+- **2026-10-26 M4/M5 兩端衝突實體副本候選**：原有 M4 MSI 人工單篇管線可**選擇性**加上 `localMarkdown`（只允許 `conflict`，需恰符審查的 `expectedLocalSha`，限 250 KiB）；先在記憶體驗 SHA，再以原有固定 Sandbox Owner-RLS GET 驗證並取得遠端 Markdown。成功時同一個全新 OS 暫存 Incoming 內以排他 `wx` + `fsync` + 回讀 SHA 建立 `<slug>.md`（遠端）及 `<slug>--local.md`（使用者透過 stdin 提供的本地快照）；任一寫入失敗清除本次暫存目錄。既有無 `localMarkdown` 的單篇流程不變；**不讀寫真實 Vault、不存 Baseline、不推斷雙方勝者，不能證明提交快照後 Vault 未再次變更**。目前僅合成 HTTP + 真實 OS 暫存檔離線驗證；仍無真實 Owner JWT／Neon GET 驗收。
+
+- **2026-10-26 M2 → M4 瀏覽器選擇交接（PR #40 已合併 main）**：真正 MSI M1/M2 唯讀 JSON 匯入私有審查頁後，只有本人逐篇選「預定下載」（`review-download`／`review-missing-local`）或衝突「保留兩份」（`conflict`），且本機覆蓋完整、遠端 Revision 為真正 Sandbox 使用的 64 位 SHA 時，才顯示「匯出單篇 Incoming 交接 JSON」。瀏覽器只用 Blob 下載**一篇**僅含 slug／choice／兩端 SHA／revision 的六欄 `SyncDecision`，外層帶 `naosledge.m4.sandbox-incoming-intent.v1` 格式；無 JWT、正文、原稿路徑、目的地、授權或自動操作。MSI 人工將 `JSON.decision` 組入既有 `obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only` stdin，**另外**輸入短效 Sandbox Owner JWT 及逐篇 `SAVE SANDBOX INCOMING <slug>`；M4 會再次 Owner-RLS GET、比對版本，成功只寫新 OS 暫存 Incoming，**原稿及 Baseline 不變**。使用者應在本機保護並清除含私人筆記識別資訊的匯出檔。Node 定向測試與實體 Chrome 檔案下載測試使用**合成** M1 資料，並未執行真正 Neon GET、原稿存取或 Sandbox 寫入；實際 MSI／Owner 身分下載驗收仍需另行核准。手動 PowerShell 接線示例（**只供本人核准後在 MSI 執行，絕不可將 JWT 貼進檔案／argv／日誌**）：
 
 ```powershell
 $handoffPath = 'C:\\Users\\Naos\\Downloads\\naosledge-m4-incoming-<slug>.json'

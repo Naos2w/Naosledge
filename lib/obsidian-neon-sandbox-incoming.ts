@@ -20,9 +20,13 @@ export async function stageNeonSandboxIncoming(args:{
   sandboxOwnerJwt:string;
   decision:SyncDecision;
   typedConfirmation:string;
+  /** Optional caller-supplied local bytes: conflict-only, never read from Vault. */
+  localMarkdown?:string;
   fetcher?:typeof fetch;
 }):Promise<{
   path:string;
+  /** Independent local conflict snapshot, never the Vault original. */
+  localCopyPath:string|null;
   sha256:string;
   revision:string;
   originalModified:false;
@@ -57,6 +61,21 @@ export async function stageNeonSandboxIncoming(args:{
     throw new Error("M4 requires a fresh per-note Incoming confirmation");
   }
 
+  // An optional conflict pair is frozen and hash-checked before any Owner GET.
+  // We cannot certify that the actual Vault is unchanged: the caller supplies
+  // this exact local snapshot voluntarily, without a path or filesystem read.
+  if(args.localMarkdown!==undefined&&
+     (d.choice!=="conflict"||typeof args.localMarkdown!=="string")){
+    throw new Error("M4 local snapshot is only allowed for a conflict");
+  }
+  const localBytes=args.localMarkdown===undefined?null:
+    Buffer.from(args.localMarkdown,"utf8");
+  if(localBytes&&
+     (localBytes.length>250_000||
+      createHash("sha256").update(localBytes).digest("hex")!==d.expectedLocalSha)){
+    throw new Error("M4 local conflict snapshot differs from reviewed SHA");
+  }
+
   const markdown=await fetchVerifiedNeonSandboxMarkdown({
     branchId:args.branchId,jwt:args.sandboxOwnerJwt,
     slug:d.slug,expectedSha256:d.expectedRemoteSha,
@@ -75,25 +94,29 @@ export async function stageNeonSandboxIncoming(args:{
   const incoming=await mkdtemp(path.join(root,"naosledge-sandbox-incoming-"));
   try{
     const target=path.join(incoming,d.slug+".md");
-    // The directory was freshly created with an unpredictable name; 'wx'
-    // still forbids any replacement even if another process created a file.
-    const data=Buffer.from(markdown,"utf8");
-    const handle=await open(target,"wx",0o600);
-    try{
-      await handle.writeFile(data);
-      // An Incoming path is not a successful delivery until its file bytes
-      // have been flushed and verified on disk. No Vault or Baseline write.
-      await handle.sync();
-    }finally{
-      await handle.close();
-    }
-    const persisted=await readFile(target);
-    if(persisted.length!==data.length||
-       createHash("sha256").update(persisted).digest("hex")!==d.expectedRemoteSha){
-      throw new Error("M4 staged Incoming copy failed disk recheck");
+    const localCopyPath=localBytes?path.join(incoming,d.slug+"--local.md"):null;
+    // Each copy is exclusively created and fsynced, then re-read from disk.
+    // A failure discards this entire new Incoming directory, never the Vault.
+    const stageFile=async(filename:string,data:Buffer,expectedSha:string)=>{
+      const handle=await open(filename,"wx",0o600);
+      try{
+        await handle.writeFile(data);
+        await handle.sync();
+      }finally{
+        await handle.close();
+      }
+      const persisted=await readFile(filename);
+      if(persisted.length!==data.length||
+         createHash("sha256").update(persisted).digest("hex")!==expectedSha){
+        throw new Error("M4 staged Incoming copy failed disk recheck");
+      }
+    };
+    await stageFile(target,Buffer.from(markdown,"utf8"),d.expectedRemoteSha);
+    if(localCopyPath&&localBytes){
+      await stageFile(localCopyPath,localBytes,d.expectedLocalSha!);
     }
     return {
-      path:target,sha256:d.expectedRemoteSha,
+      path:target,localCopyPath,sha256:d.expectedRemoteSha,
       revision:d.expectedRemoteRevision,originalModified:false,
       baselineSaved:false,
     };

@@ -103,6 +103,47 @@ test("M4 copies exactly one Owner-RLS Sandbox note into a new temp Incoming dire
   }
 });
 
+test("M4/M5 keeps an independently hash-verified local+remote conflict pair without reading or writing a Vault",async()=>{
+  const localMarkdown="## Earlier local version\r\n\r\n保留本地版本\r\n";
+  const localSha=createHash("sha256").update(localMarkdown).digest("hex");
+  const decision={...choice,expectedLocalSha:localSha};
+  const payload={sandboxOwnerJwt:jwt,decision,
+    typedConfirmation:"SAVE SANDBOX INCOMING "+note.slug,localMarkdown};
+  const request=await readScratchIncomingRequest([JSON.stringify(payload)]);
+  const network=fakeNetwork();
+  const result=await stageOneReviewedSandboxIncoming(request,network.fetcher);
+  try{
+    assert.ok(result.localCopyPath,"manual M4 returns a second independently saved snapshot");
+    assert.equal(path.dirname(result.path),path.dirname(result.localCopyPath));
+    assert.equal(path.basename(result.path),note.slug+".md");
+    assert.equal(path.basename(result.localCopyPath),note.slug+"--local.md");
+    assert.equal(await readFile(result.path,"utf8"),portable(note));
+    assert.equal(await readFile(result.localCopyPath,"utf8"),localMarkdown);
+    assert.equal(createHash("sha256").update(await readFile(result.localCopyPath))
+      .digest("hex"),localSha);
+    assert.deepEqual({originalModified:result.originalModified,baselineSaved:result.baselineSaved},
+      {originalModified:false,baselineSaved:false});
+    assert.equal(network.calls.length,3);
+  }finally{
+    await rm(path.dirname(result.path),{recursive:true,force:true});
+  }
+
+  const badNetwork=fakeNetwork();
+  await assert.rejects(stageNeonSandboxIncoming({
+    ...options,decision,localMarkdown:localMarkdown+"changed",fetcher:badNetwork.fetcher,
+  }),/local conflict snapshot differs/);
+  assert.equal(badNetwork.calls.length,0,"mismatched local bytes must abort before GET");
+  await assert.rejects(readScratchIncomingRequest([JSON.stringify({
+    ...payload,decision:{...decision,choice:"review-download"},
+  })]),/only accepted for one reviewed conflict/);
+  await assert.rejects(readScratchIncomingRequest([JSON.stringify({
+    ...payload,localMarkdown:"x".repeat(250_001),
+  })]),/only accepted for one reviewed conflict/);
+  await assert.rejects(readScratchIncomingRequest([JSON.stringify({
+    ...payload,filename:"C:\\\\Naos\\\\Obsidian",
+  })]),/exactly one reviewed note/);
+});
+
 test("M4 rejects missing consent or upload direction before any network or filesystem work",async()=>{
   const n=fakeNetwork();
   await assert.rejects(stageNeonSandboxIncoming({
@@ -173,10 +214,10 @@ test("M4 MSI manual Incoming entry requires explicit flag, approved host and std
   const request={sandboxOwnerJwt:jwt,decision:choice,
     typedConfirmation:"SAVE SANDBOX INCOMING "+note.slug};
   await assert.rejects(readScratchIncomingRequest(["not-json"]),/must be JSON/);
-  await assert.rejects(readScratchIncomingRequest(["x".repeat(12_001)]),/too large/);
+  await assert.rejects(readScratchIncomingRequest(["x".repeat(500_001)]),/too large/);
   await assert.rejects(readScratchIncomingRequest([JSON.stringify({
     ...request,destination:"C:\\Naos\\Obsidian\\Naosledge",
-  })]),/exactly one reviewed note/);
+  })]),/local snapshot|exactly one reviewed note/);
   await assert.rejects(readScratchIncomingRequest([JSON.stringify({
     ...request,decision:{...choice,path:"untrusted"},
   })]),/input is invalid/);
