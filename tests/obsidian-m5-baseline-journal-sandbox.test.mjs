@@ -396,6 +396,27 @@ test("M5 read-only journal rejects forged checkpoint IDs and oversized slugs",as
   });
 });
 
+test("M5 journal refuses non-canonical checkpoint timestamps",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("timestamp-guard","approved");
+    const consent=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:consent.slug,confirmation:consent.confirmation});
+    const record=(await box.listConfirmedSyntheticBaselines())[0];
+    const location=path.join(journal(box),record.id+".json");
+    for(const createdAt of [
+      "0","2026-10-26T08:05:00Z","Wed, 21 Oct 2026 08:05:00 GMT",
+      "2026-02-30T08:05:00.000Z",
+    ]){
+      await writeFile(location,JSON.stringify({...record,createdAt}));
+      await assert.rejects(box.listConfirmedSyntheticBaselines(),
+        /Invalid M5 checkpoint evidence/,
+        "M5 must require the exact UTC millisecond format emitted by new Date().toISOString()");
+    }
+    await writeFile(location,JSON.stringify(record));
+    assert.equal((await box.listConfirmedSyntheticBaselines())[0].createdAt,record.createdAt);
+  });
+});
+
 test("M5 reload refuses corrupt journal and does not invent a new baseline",async()=>{
   await withScratch(async box=>{
     await box.seedLocal("corrupt-reload","content");

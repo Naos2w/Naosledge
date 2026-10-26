@@ -811,7 +811,10 @@ export async function createDurableSyntheticObsidianWorkspace(){
            !HASH.test(value.sha256)||
            !/^synthetic-r[1-9][0-9]*$/.test(value.remoteRevision)||
            !["approved-upload","approved-download","approved-restore"].includes(value.action)||
-           typeof value.createdAt!=="string"||!Number.isFinite(Date.parse(value.createdAt))||
+           typeof value.createdAt!=="string"||
+           !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value.createdAt)||
+           !Number.isFinite(Date.parse(value.createdAt))||
+           new Date(value.createdAt).toISOString()!==value.createdAt||
            value.syntheticOnly!==true||value.deleteAllowed!==false||
            Object.keys(value).sort().join(",")!==
              "action,createdAt,deleteAllowed,id,remoteRevision,sha256,slug,syntheticOnly"){
