@@ -46,9 +46,11 @@ const asJson=(value,range=null)=>new Response(JSON.stringify(value),{
 });
 
 function mockNetwork({granted=true,race=false,failPostVerify=false,
-  oldContent=old.content_md,outgoingLinks=[],linkRangeUnknown=false}={}){
+  oldContent=old.content_md,outgoingLinks=[],linkRangeUnknown=false,
+  rpcUnavailable=false,rpcRace=false,corruptPostLinks=false}={}){
   const calls=[];
   let remote={...old,content_md:oldContent};
+  let currentLinks=[...outgoingLinks];
   let postVerified=false;
   async function fetcher(raw,options){
     const u=new URL(raw);
@@ -80,10 +82,30 @@ function mockNetwork({granted=true,race=false,failPostVerify=false,
     if(u.pathname.endsWith("/knowledge_links")&&options.method==="GET"){
       assert.equal(u.searchParams.get("source_note_id"),"eq."+rowId);
       assert.equal(u.searchParams.get("select"),"target_key");
-      assert.equal(u.searchParams.get("limit"),"1");
       assert.equal(options.headers.Prefer,"count=exact");
-      return asJson(outgoingLinks.slice(0,1),
-        linkRangeUnknown?null:outgoingLinks.length?`0-0/${outgoingLinks.length}`:"*/0");
+      const full=u.searchParams.get("limit")==="81";
+      assert.ok(full||u.searchParams.get("limit")==="1");
+      const rows=[...currentLinks].sort().map(target_key=>({target_key}));
+      const visible=full?rows:rows.slice(0,1);
+      return asJson(visible,linkRangeUnknown?null:!rows.length?"*/0":
+        `0-${visible.length-1}/${rows.length}`);
+    }
+    if(u.pathname.endsWith("/rpc/update_knowledge_note_cas_with_links")&&options.method==="POST"){
+      if(rpcUnavailable)return new Response("not installed",{status:404});
+      const body=JSON.parse(options.body);
+      assert.equal(body.p_id,rowId);
+      assert.equal(body.p_slug,old.slug);
+      assert.equal(body.p_expected_updated_at,oldStamp);
+      assert.deepEqual([...body.p_expected_links].sort(),[...currentLinks].sort());
+      assert.equal(typeof body.p_content_md,"string");
+      assert.equal(options.headers["Content-Type"],"application/json");
+      if(rpcRace)return new Response("stale",{status:409});
+      remote={...remote,title:body.p_title,summary:body.p_summary,
+        content_md:body.p_content_md,category:body.p_category,tags:body.p_tags,
+        learned_on:body.p_learned_on,updated_at:newStamp};
+      currentLinks=corruptPostLinks?[]:body.p_links;
+      postVerified=true;
+      return asJson(rowId);
     }
     if(u.pathname.endsWith("/knowledge_notes")&&options.method==="PATCH"){
       assert.equal(u.searchParams.get("id"),"eq."+rowId);
@@ -168,27 +190,55 @@ test("M3 refuses changed local note after remote verification and before PATCH",
   assert.equal(mock.getRemote().content_md,old.content_md);
 });
 
-test("M3 rejects new active WikiLinks before PATCH to protect the backlink index",async()=>{
+test("M3 adds WikiLinks with a single CAS RPC, rechecks live index and note revision",async()=>{
   const note=portable({...latest,content_md:"Updated with [[linked-note]]"});
   const mock=mockNetwork();
-  await assert.rejects(updateNeonSandboxNoteIfUnchanged({
+  const verified=await updateNeonSandboxNoteIfUnchanged({
     ...args,decision:{...decision,expectedLocalSha:digest(note)},
     readMarkdown:async()=>note,fetcher:mock.fetcher,
-  }),/cannot maintain WikiLinks atomically/);
+  });
+  assert.equal(verified.sha256,digest(note));
+  assert.equal(verified.baselineSaved,false);
+  assert.equal(mock.calls.filter(s=>s.includes("/rpc/update_knowledge_note_cas_with_links")).length,1);
   assert.equal(mock.calls.some(s=>s.startsWith("PATCH ")),false);
-  assert.equal(mock.getRemote().content_md,old.content_md);
+  assert.equal(mock.getRemote().content_md,"Updated with [[linked-note]]");
 });
 
-test("M3 rejects removal of existing WikiLinks even when the new note is link-free",async()=>{
+test("M3 removes existing WikiLinks atomically without leaving stale backlinks",async()=>{
   const existing="Previous [[linked-note]]";
-  const mock=mockNetwork({oldContent:existing});
-  await assert.rejects(updateNeonSandboxNoteIfUnchanged({
+  const mock=mockNetwork({oldContent:existing,outgoingLinks:["linked-note"]});
+  const verified=await updateNeonSandboxNoteIfUnchanged({
     ...args,decision:{...decision,expectedRemoteSha:digest(portable({
       ...old,content_md:existing,
     }))},fetcher:mock.fetcher,
-  }),/cannot maintain existing WikiLinks atomically/);
+  });
+  assert.equal(verified.sha256,newSha);
+  assert.equal(verified.baselineSaved,false);
+  assert.equal(mock.calls.filter(s=>s.includes("/rpc/update_knowledge_note_cas_with_links")).length,1);
   assert.equal(mock.calls.some(s=>s.startsWith("PATCH ")),false);
-  assert.equal(mock.getRemote().content_md,existing);
+});
+
+test("M3 linked update fails closed if RPC is missing, races, index drifts or cannot be reverified",async()=>{
+  const note=portable({...latest,content_md:"Updated with [[linked-note]]"});
+  for(const options of [
+    {rpcUnavailable:true},{rpcRace:true},{corruptPostLinks:true},
+    {linkRangeUnknown:true},
+  ]){
+    const mock=mockNetwork(options);
+    await assert.rejects(updateNeonSandboxNoteIfUnchanged({
+      ...args,decision:{...decision,expectedLocalSha:digest(note)},
+      readMarkdown:async()=>note,fetcher:mock.fetcher,
+    }),/(reconciliation|inventory)/);
+    assert.equal(mock.calls.some(s=>s.startsWith("PATCH ")),false);
+    assert.ok(mock.calls.filter(s=>s.startsWith("POST ")).length<=1);
+  }
+  const mismatched=mockNetwork({oldContent:"Previous [[other-note]]",outgoingLinks:[]});
+  await assert.rejects(updateNeonSandboxNoteIfUnchanged({
+    ...args,decision:{...decision,expectedRemoteSha:digest(portable({
+      ...old,content_md:"Previous [[other-note]]",
+    }))},fetcher:mismatched.fetcher,
+  }),/index differs/);
+  assert.equal(mismatched.calls.some(s=>s.startsWith("POST ")),false);
 });
 
 test("M3 requires a proven empty RLS outgoing-link index before PATCH",async()=>{
@@ -271,6 +321,17 @@ test("M3 manual update passes the reviewed note through CAS and propagates a los
   const raced=mockNetwork({race:true});
   await assert.rejects(updateOneReviewedSandboxNote(request,raced.fetcher),/manual reconciliation/);
   assert.equal(raced.calls.filter(s=>s.startsWith("PATCH ")).length,1);
+});
+
+test("M3 MSI stdin update reaches the atomic WikiLink RPC without any PATCH fallback",async()=>{
+  const note=portable({...latest,content_md:"Reviewed [[linked-note]]"});
+  const request=await readManualUpdateRequest([JSON.stringify({
+    ...manualRequest,markdown:note,decision:{...decision,expectedLocalSha:digest(note)},
+  })]);
+  const mock=mockNetwork();
+  assert.deepEqual(await updateOneReviewedSandboxNote(request,mock.fetcher),{baselineSaved:false});
+  assert.equal(mock.calls.filter(x=>x.includes("/rpc/update_knowledge_note_cas_with_links")).length,1);
+  assert.equal(mock.calls.some(x=>x.startsWith("PATCH ")),false);
 });
 
 test("M3 actual CLI rejects malformed stdin without exposing input",async()=>{
