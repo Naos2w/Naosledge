@@ -45,7 +45,8 @@
       "feat/obsidian-m1-m2-finalize-20261026": false,
       "feat/obsidian-m3-m6-integration-20261026": false,
       "feat/obsidian-m3-wikilink-update-cas-20261026-12": false,
-      "feat/obsidian-m2-m4-intent-handoff-20261026-13": false
+      "feat/obsidian-m2-m4-intent-handoff-20261026-13": false,
+      "feat/obsidian-m5-crossprocess-persist-20261026-16": false
     }
   }
 }
