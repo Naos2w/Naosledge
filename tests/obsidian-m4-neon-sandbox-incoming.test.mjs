@@ -6,6 +6,8 @@ import {spawnSync} from "node:child_process";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
+import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
+import {chooseReviewIntent,serializeManualM4IncomingIntent} from "../lib/obsidian-m2-review-choices.ts";
 import {
   stageNeonSandboxIncoming,verifyStagedSandboxIncomingReceipt,
 } from "../lib/obsidian-neon-sandbox-incoming.ts";
@@ -234,6 +236,100 @@ test("M4 MSI manual Incoming entry requires explicit flag, approved host and std
   await assert.rejects(readScratchIncomingRequest([JSON.stringify({
     ...request,decision:{...choice,choice:"review-upload"},
   })]),/per-note read-only decision/);
+});
+
+test("M2 browser handoff is consumed intact by M4 MSI and stages a verified Incoming file",async()=>{
+  const preview=await previewManualObsidianSync({
+    baseline:[],
+    readLocal:async()=>({
+      fingerprints:[{slug:note.slug,sha256:"a".repeat(64)}],
+      unsupportedMarkdownFiles:0,otherFiles:0,directoriesNotScanned:0,
+      autoApplyAllowed:false,
+    }),
+    readRemote:async()=>({
+      fingerprints:[{slug:note.slug,sha256:digest,revision}],
+      numberOfNotes:1,sandboxOnly:true,rlsEnforcedByDataApi:true,
+      writeEnabled:false,fullInventory:true,
+    }),
+  });
+  const selected=chooseReviewIntent(preview,{},note.slug,"keep-both");
+  const handoff=JSON.parse(serializeManualM4IncomingIntent(preview,selected,note.slug));
+  const payload={sandboxOwnerJwt:jwt,handoff,
+    typedConfirmation:"SAVE SANDBOX INCOMING "+note.slug};
+  const request=await readScratchIncomingRequest([JSON.stringify(payload)]);
+  assert.deepEqual(request.decision,choice);
+  assert.equal(request.sandboxOwnerJwt,jwt);
+  const network=fakeNetwork();
+  const staged=await stageOneReviewedSandboxIncoming(request,network.fetcher);
+  try{
+    const bytes=await readFile(staged.path);
+    assert.equal(createHash("sha256").update(bytes).digest("hex"),digest);
+    assert.equal(bytes.toString("utf8"),portable(note));
+    assert.equal(staged.originalModified,false);
+    assert.equal(staged.baselineSaved,false);
+    assert.equal(network.calls.length,3);
+  }finally{
+    await rm(path.dirname(staged.path),{recursive:true,force:true});
+  }
+
+  for(const tampered of [
+    {...handoff,format:"wrong-format"},
+    {...handoff,markdown:"private"},
+    {...handoff,decision:{...handoff.decision,destination:"C:/Vault"}},
+    {...handoff,decision:{...handoff.decision,expectedRemoteSha:"0".repeat(64),
+      expectedLocalSha:"0".repeat(64)}},
+  ]){
+    await assert.rejects(readScratchIncomingRequest([
+      JSON.stringify({...payload,handoff:tampered}),
+    ]),/M4 Incoming/);
+  }
+  await assert.rejects(readScratchIncomingRequest([
+    JSON.stringify({...payload,decision:choice}),
+  ]),/exactly one reviewed note/);
+});
+
+test("M2 handoff plus conflict localMarkdown preserves both copies and a verified receipt",async()=>{
+  const localMarkdown="## Independently reviewed local version\n\nLocal edits kept.";
+  const localSha=createHash("sha256").update(localMarkdown).digest("hex");
+  const preview=await previewManualObsidianSync({
+    baseline:[],
+    readLocal:async()=>({
+      fingerprints:[{slug:note.slug,sha256:localSha}],
+      unsupportedMarkdownFiles:0,otherFiles:0,directoriesNotScanned:0,
+      autoApplyAllowed:false,
+    }),
+    readRemote:async()=>({
+      fingerprints:[{slug:note.slug,sha256:digest,revision}],
+      numberOfNotes:1,sandboxOnly:true,rlsEnforcedByDataApi:true,
+      writeEnabled:false,fullInventory:true,
+    }),
+  });
+  const selected=chooseReviewIntent(preview,{},note.slug,"keep-both");
+  const handoff=JSON.parse(serializeManualM4IncomingIntent(preview,selected,note.slug));
+  const payload={sandboxOwnerJwt:jwt,handoff,
+    typedConfirmation:"SAVE SANDBOX INCOMING "+note.slug,localMarkdown};
+  const request=await readScratchIncomingRequest([JSON.stringify(payload)]);
+  assert.equal(request.localMarkdown,localMarkdown);
+  assert.equal(request.decision.expectedLocalSha,localSha);
+  const network=fakeNetwork();
+  const staged=await stageOneReviewedSandboxIncoming(request,network.fetcher);
+  try{
+    assert.ok(staged.localCopyPath);
+    assert.equal(await readFile(staged.path,"utf8"),portable(note));
+    assert.equal(await readFile(staged.localCopyPath,"utf8"),localMarkdown);
+    const receipt=await verifyStagedSandboxIncomingReceipt(staged.receiptPath);
+    assert.equal(receipt.localCopyPath,staged.localCopyPath);
+    assert.equal(receipt.sha256,digest);
+    assert.equal(receipt.baselineSaved,false);
+    assert.equal(network.calls.length,3);
+  }finally{
+    await rm(path.dirname(staged.path),{recursive:true,force:true});
+  }
+  const rejected=fakeNetwork();
+  await assert.rejects(stageOneReviewedSandboxIncoming({
+    ...request,localMarkdown:localMarkdown+" altered",
+  },rejected.fetcher),/local conflict snapshot differs/);
+  assert.equal(rejected.calls.length,0);
 });
 
 test("M4 MSI manual request creates one private Scratch Incoming copy with no original write",async()=>{

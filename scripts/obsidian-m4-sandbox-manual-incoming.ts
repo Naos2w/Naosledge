@@ -9,6 +9,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {stageNeonSandboxIncoming} from "../lib/obsidian-neon-sandbox-incoming.ts";
 import {NEON_SYNC_SANDBOX_BRANCH} from "../lib/obsidian-neon-sandbox-readonly.ts";
+import {MANUAL_M4_INCOMING_INTENT_FORMAT} from "../lib/obsidian-m2-review-choices.ts";
 import type {SyncDecision} from "../lib/obsidian-sync-plan.ts";
 
 export const M4_SCRATCH_INCOMING_FLAG="--sandbox-scratch-incoming-only";
@@ -47,13 +48,26 @@ export async function readScratchIncomingRequest(
   catch{throw Error("M4 Incoming request must be JSON");}
   if(!parsed||typeof parsed!=="object"||Array.isArray(parsed)||
      ![3,4].includes(Object.keys(parsed).length)||
-     !["sandboxOwnerJwt","decision","typedConfirmation"].every(
+     !["sandboxOwnerJwt","typedConfirmation"].every(
        key=>Object.hasOwn(parsed,key)
-     )){
+     )||Object.hasOwn(parsed,"decision")===Object.hasOwn(parsed,"handoff")){
     throw Error("M4 Incoming requires exactly one reviewed note and confirmation");
   }
   const r=parsed as Record<string,unknown>;
-  const d=r.decision;
+  // M2's browser download can be passed as the entire handoff object, without
+  // manually copying fingerprints into a new decision. It is still untrusted
+  // metadata, never an approval or proof of current remote contents.
+  let d=r.decision;
+  if(Object.hasOwn(r,"handoff")){
+    const handoff=r.handoff;
+    if(!handoff||typeof handoff!=="object"||Array.isArray(handoff)||
+       Object.keys(handoff).length!==2||
+       !Object.hasOwn(handoff,"format")||!Object.hasOwn(handoff,"decision")||
+       (handoff as Record<string,unknown>).format!==MANUAL_M4_INCOMING_INTENT_FORMAT){
+      throw Error("M4 Incoming handoff must be the exact M2 single-note format");
+    }
+    d=(handoff as Record<string,unknown>).decision;
+  }
   if(typeof r.sandboxOwnerJwt!=="string"||r.sandboxOwnerJwt.length>8192||
      !JWT.test(r.sandboxOwnerJwt)||!d||typeof d!=="object"||
      Array.isArray(d)||Object.keys(d).length!==DECISION_FIELDS.length||
@@ -83,7 +97,9 @@ export async function readScratchIncomingRequest(
      r.typedConfirmation!=="SAVE SANDBOX INCOMING "+note.slug){
     throw Error("M4 Incoming requires an exact per-note read-only decision and confirmation");
   }
-  return r as {sandboxOwnerJwt:string;decision:SyncDecision;typedConfirmation:string;localMarkdown?:string};
+  return {sandboxOwnerJwt:r.sandboxOwnerJwt as string,
+    decision:note as SyncDecision,typedConfirmation:r.typedConfirmation as string,
+    ...(hasLocal?{localMarkdown:r.localMarkdown as string}:{})};
 }
 
 /** Save only a new OS scratch copy. Never write an Obsidian original. */
