@@ -87,6 +87,8 @@ try {
 - 合成遠端首次建立與更新皆可單獨驗收；**成功驗證兩端內容相同後**才更新合成 Baseline。失敗不更新 Baseline，不執行 DELETE；此項不代表 Neon Sandbox 真實寫入功能已完成。
 - 既有 `consents` 仍只供下載預演，新增的 `uploadConsents` **不能當作 M2 React 選擇、真實寫入授權、API 憑證或正式同步工作清單**。後續仍要補真正的 Owner Auth / RLS + Sandbox E2E，並確認遠端寫入有版本條件與恢復策略。
 
+- **2026-10-26 M3 WikiLink/backlink 防護（離線實作）**：發現現有 M3 固定 Sandbox 直接 `POST/PATCH knowledge_notes` 不會同步維護應用程式 `save_knowledge_note()` 管理的 `knowledge_links`，可能造成反向連結索引不一致。現在建立前拒絕正文中可作用的 `[[WikiLink]]`；條件式更新前還會核對**新版及遠端舊版**內容皆無作用中的 WikiLink，並以同一 Owner JWT/RLS GET 確認舊筆記 `knowledge_links` 出站索引總數確實為 0。若索引查詢缺失、非完整回應或有舊連結，一律**在 POST/PATCH 之前拒絕**；無連結筆記仍保留原單篇手動／CAS 路徑。M3 相關離線 HTTP／CLI 21/21 PASS，新增 4 項負向案例（新增／移除連結、索引非空／缺少完整性）。**沒有呼叫真實 Sandbox POST/PATCH，沒有 Production、Vault 或 Baseline 寫入。** 下一步在經批准的 Sandbox 隔離 schema 設計及驗收能**單一交易**同時維護 `knowledge_notes`、`knowledge_links` 與樂觀版本條件的寫入器；在那之前不開放帶 WikiLink 的直接上傳。這項受控隔離測試不授權任何正式 Migration。
+
 ## M4 Incoming 隔離預演與固定 Sandbox 讀取（2026-10-24）
 
 - **2026-10-25 M4 MSI 人工暫存下載入口**：新增 `scripts/obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only`，僅在 MSI 以人工管線輸入短效 Sandbox Owner JWT、單篇 M2 `SyncDecision`（完整兩端 SHA／Revision）、`SAVE SANDBOX INCOMING <slug>` 確認後，呼叫原有固定 Sandbox 逐篇 GET 與驗證。輸入長度限制、拒絕目的地／任意多餘欄位／非法方向、禁止讀寫 Obsidian 原稿；成功僅回報私人 OS 暫存 Incoming 路徑，不建立 Baseline，也不刪除。須由 Owner 自行保護與清理暫存副本；目前只通過離線模擬，不表示真人 JWT/Neon GET 成功。這是手動驗收工具，不是正式 UI 同步執行器。
