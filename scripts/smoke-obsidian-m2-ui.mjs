@@ -15,7 +15,7 @@ import path from "node:path";
 import os from "node:os";
 import {chromium} from "playwright-core";
 import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
-import {parseManualM2Handoff,serializeManualM2Handoff} from "../lib/obsidian-m2-review-choices.ts";
+import {parseManualM2Handoff,serializeManualM2Handoff,MANUAL_M4_INCOMING_INTENT_FORMAT} from "../lib/obsidian-m2-review-choices.ts";
 import {saveManualM2Handoff} from "./obsidian-msi-manual-preview.ts";
 import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 
@@ -71,7 +71,7 @@ try{
   const port=await freePort(),origin=`http://localhost:${port}`;
   server=spawn(process.execPath,[
     path.join(root,"node_modules","next","dist","bin","next"),
-    "dev","--hostname","localhost","--port",String(port),
+    "dev","--webpack","--hostname","localhost","--port",String(port),
   ],{
     cwd:root,windowsHide:true,stdio:["ignore","pipe","pipe"],
     env:{
@@ -132,7 +132,7 @@ try{
     readLocal:async()=>({fingerprints:[],unsupportedMarkdownFiles:0,otherFiles:0,
       directoriesNotScanned:0,autoApplyAllowed:false}),
     readRemote:async()=>({
-      fingerprints:[{slug:"m1m2-synthetic",sha256:"a".repeat(64),revision:"synthetic-r1"}],
+      fingerprints:[{slug:"m1m2-synthetic",sha256:"a".repeat(64),revision:"b".repeat(64)}],
       numberOfNotes:1,sandboxOnly:true,rlsEnforcedByDataApi:true,
       writeEnabled:false,fullInventory:true,
     }),
@@ -158,6 +158,22 @@ try{
     assert.equal(await page.locator(".vault-sync-note").count(),1);
     const action=page.getByRole("group",{name:row.slug+" 的審查意圖"});
     await action.getByRole("button",{name:"預定下載"}).click();
+    const [incomingHandoff]=await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button",{name:row.slug+" 的 M4 Incoming 交接 JSON"}).click(),
+    ]);
+    assert.equal(incomingHandoff.suggestedFilename(),
+      "naosledge-m4-incoming-"+row.slug+".json");
+    const exportedIntent=JSON.parse(await readFile(await incomingHandoff.path(),"utf8"));
+    assert.equal(exportedIntent.format,MANUAL_M4_INCOMING_INTENT_FORMAT);
+    assert.deepEqual(exportedIntent.decision,{
+      slug:row.slug,choice:row.choice,manualReview:true,
+      expectedLocalSha:row.expectedLocalSha,
+      expectedRemoteSha:row.expectedRemoteSha,
+      expectedRemoteRevision:row.expectedRemoteRevision,
+    });
+    assert.equal(Object.hasOwn(exportedIntent,"sandboxOwnerJwt"),false);
+    assert.equal(Object.hasOwn(exportedIntent,"typedConfirmation"),false);
     assert.equal(await action.getByRole("button",{name:"預定上傳"}).count(),0);
     assert.ok(await page.getByText("遠端版本",{exact:true}).first().isVisible());
     await page.getByRole("button",{name:"查看審查摘要"}).click();

@@ -56,6 +56,8 @@
 .vault-sync-options button[aria-pressed="true"]{border-color:var(--accent);color:var(--ink);background:var(--accent-tint);box-shadow:inset 0 0 0 1px var(--accent)}
 .vault-sync-options button:not([aria-pressed="true"]):hover{color:var(--ink);background:var(--field)}
 .vault-sync-note-actions small{display:block;margin-top:9px;font-size:10px;line-height:1.5;color:var(--muted)}
+.vault-sync-intent-export{display:block;margin-top:12px;min-height:44px;max-width:100%;padding:9px 12px;border:1px solid var(--accent);background:var(--accent-tint);color:var(--ink);font-size:12px;font-weight:700;text-align:center;cursor:pointer}
+.vault-sync-intent-export:hover{background:var(--field)}
 .vault-sync-inactive{display:flex;gap:7px;align-items:center;color:var(--ink-soft);font-size:12px;min-height:44px}
 .vault-sync-no-results{padding:40px 14px;font-size:13px;color:var(--muted);text-align:center}
 .vault-sync-bottom{display:flex;align-items:center;justify-content:space-between;gap:25px;padding:34px 0 17px}

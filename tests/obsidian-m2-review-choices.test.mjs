@@ -6,7 +6,9 @@ import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 import {
   chooseReviewIntent,reviewIntentOptions,summariseReviewIntents,
   serializeManualM2Handoff,parseManualM2Handoff,
+  serializeManualM4IncomingIntent,MANUAL_M4_INCOMING_INTENT_FORMAT,
 } from "../lib/obsidian-m2-review-choices.ts";
+import {readScratchIncomingRequest} from "../scripts/obsidian-m4-sandbox-manual-incoming.ts";
 
 test("M2 fixture uses M1's actual reconciliation engine with all necessary statuses",async()=>{
   const p=await makeSyntheticM2Preview();
@@ -124,6 +126,9 @@ test("M2 private route requires Vault owner and starts without synthetic notes o
   assert.match(ui,/未掃描的資料夾/);
   assert.match(ui,/role="group" aria-label="差異類型篩選"/);
   assert.match(ui,/Object\.hasOwn\(choices,row\.slug\)/);
+  assert.match(ui,/serializeManualM4IncomingIntent/);
+  assert.match(ui,/manualPreview&&preview\.previewStatus==="ready"/);
+  assert.match(ui,/URL\.createObjectURL/);
 });
 
 test("M2 refuses misleading inventory, coverage and inconsistent M1 totals",async()=>{
@@ -203,4 +208,51 @@ test("M2 manual JSON handoff carries only validated, non-executable metadata",as
   ]){
     assert.throws(()=>parseManualM2Handoff(bad),/M2|JSON/);
   }
+});
+
+test("M2 exports one downloaded/keep-both decision accepted by existing M4 MSI CLI",async()=>{
+  const demo=await makeSyntheticM2Preview();
+  // Real Sandbox revisions hash id + updated_at; display-only demo-r* does not.
+  const p={...demo,decisions:demo.decisions.map(r=>({
+    ...r,expectedRemoteRevision:r.expectedRemoteRevision===null?
+      null:"e".repeat(64),
+  }))};
+  const selected=chooseReviewIntent(p,{},"nextjs-routing","download");
+  const json=serializeManualM4IncomingIntent(p,selected,"nextjs-routing");
+  const exportFile=JSON.parse(json);
+  assert.deepEqual(Object.keys(exportFile),["format","decision"]);
+  assert.equal(exportFile.format,MANUAL_M4_INCOMING_INTENT_FORMAT);
+  assert.deepEqual(exportFile.decision,{
+    slug:"nextjs-routing",choice:"review-download",manualReview:true,
+    expectedLocalSha:p.decisions.find(r=>r.slug==="nextjs-routing").expectedLocalSha,
+    expectedRemoteSha:p.decisions.find(r=>r.slug==="nextjs-routing").expectedRemoteSha,
+    expectedRemoteRevision:p.decisions.find(r=>r.slug==="nextjs-routing").expectedRemoteRevision,
+  });
+  assert.equal(json.includes("sandboxOwnerJwt"),false);
+  assert.equal(json.includes("content_md"),false);
+  assert.equal(json.includes("typedConfirmation"),false);
+  assert.equal(json.includes("destination"),false);
+  const manualRequest=await readScratchIncomingRequest([JSON.stringify({
+    sandboxOwnerJwt:"a.b.c",
+    decision:exportFile.decision,
+    typedConfirmation:"SAVE SANDBOX INCOMING nextjs-routing",
+  })]);
+  assert.deepEqual(manualRequest.decision,exportFile.decision);
+
+  const conflict=chooseReviewIntent(p,selected,"typescript-notes","keep-both");
+  const keepBoth=JSON.parse(serializeManualM4IncomingIntent(
+    p,conflict,"typescript-notes",
+  )).decision;
+  assert.equal(keepBoth.choice,"conflict");
+  assert.ok(keepBoth.expectedLocalSha!==keepBoth.expectedRemoteSha);
+  const verified=await readScratchIncomingRequest([JSON.stringify({
+    sandboxOwnerJwt:"a.b.c",decision:keepBoth,
+    typedConfirmation:"SAVE SANDBOX INCOMING typescript-notes",
+  })]);
+  assert.equal(verified.decision.choice,"conflict");
+
+  assert.throws(()=>serializeManualM4IncomingIntent(p,selected,"react-hooks"),
+    /reviewed Incoming/);
+  assert.throws(()=>serializeManualM4IncomingIntent(p,selected,"remote-new"),
+    /reviewed Incoming/);
 });
