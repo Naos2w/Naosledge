@@ -7,6 +7,7 @@ import {
   GitCompareArrows,LockKeyhole,RotateCcw,Search,ShieldCheck,ShieldAlert,
 } from "lucide-react";
 import type {ManualReviewPreview} from "@/lib/obsidian-manual-sync-review";
+import VaultIncomingConflictReview from "@/components/vault-incoming-conflict-review";
 import type {SyncChoice} from "@/lib/obsidian-sync-plan";
 import {
   chooseReviewIntent,reviewIntentOptions,summariseReviewIntents,
@@ -267,5 +268,6 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
         這不是同步執行清單，也沒有「批准上傳」效力。離開或重新整理頁面後，選擇會消失；真正操作需在後續 M3／M4 重新核對兩端版本並取得本人確認。</p>
     </section>}
     </>}
+    <VaultIncomingConflictReview/>
   </section>;
 }

@@ -158,6 +158,8 @@ try {
 
 ## M5 Baseline 保留與合成成功證據（2026-10-24）
 
+- **2026-10-26 M5 私人審查頁雙版本實際接線（候選）**：`/vault/sync` 增加完全在瀏覽器本機執行的 M4 Incoming 衝突比對。人工同時選取同一筆 Incoming 的 `incoming-receipt.json`、`<slug>.md`、`<slug>--local.md`，按 M4 實際產出格式、slug／檔名及兩個**完整 SHA-256** 驗證後，並排顯示兩份原始 Markdown 純文字；驗證失敗不顯示正文，重新選取會清除先前內容，支援人工清除。已用 M4 實際暫存三檔→M5 匯入及改檔拒絕進行 Node 整合回歸，另在 MSI localhost Chrome 驗證三檔匯入、並排呈現、竄改拒絕、RWD，未產生外部網路請求；仍未接觸真正 Neon 或 Vault。**這是供 Owner 人工比較的前端候選功能，無瀏覽器網路請求、無 JWT、無自動合併/覆寫、無 Baseline 寫入；收據只自述 M4 暫存位元組，不能證明真正 Neon 當前狀態或曾完成可信同步。真正 Owner-RLS Sandbox E2E 及跨程序可信 Baseline 仍未完成。**
+
 - `lib/obsidian-durable-write-sandbox.ts` 在**當次隨機 Scratch** 新增 `baseline-journal/`：合成環境每次已批准的上傳、下載或復原，在再次確認兩端 SHA 相同、遠端 revision 未變後，才以新 UUID `.json` **追加**同步成功證據（無 Markdown 正文或憑證）；寫檔前先暫存、再次比對、提交並同步檔案與目錄（Windows 目錄同步僅 best-effort）。無任何正式 Obsidian／Neon 路徑參數，不能用於正式同步。
 - `listConfirmedSyntheticBaselines()` 僅供同一 Scratch 唯讀檢驗並嚴格拒絕遭改動或不合法的 checkpoint；**不會將檔案自動匯入 Baseline、重建現有記憶體狀態或觸發同步**。
 - 合成 Incoming 僅產生待檢視副本，**不記錄成功同步、不更新 Baseline**。若人工批准的 Restore 導致本機與遠端仍不相同，**保留既有 Baseline** 供重新比較，不得以 `baseline.delete()` 偷清除衝突依據；遠端也一致且重新驗證時才追加新證據。
