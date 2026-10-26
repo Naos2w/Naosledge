@@ -2,7 +2,7 @@
 
 更新：2026-10-26；M1/M2 已完成真實 Neon Integration Sandbox 合成 Owner JWT／RLS → MSI 唯讀掃描／JSON → 本機 Chrome 審查整合驗收。尚未部署 Production。
 
-**2026-10-26 實際基準更正**：PR #35–#40 已合併 main（`2cf082d6fbdbdc40e944e16e56027642584e9c53`；CI #157 SUCCESS），不可重做；PR #41 的 MSI M2→M4 交接已合併 main（`d551d86bfd11b8a863d8d74431fcee5bc7609b26`；CI #162 SUCCESS）。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
+**2026-10-26 實際基準更正**：PR #35–#40 已合併 main（`2cf082d6fbdbdc40e944e16e56027642584e9c53`；CI #157 SUCCESS），不可重做；PR #41 的 MSI M2→M4 交接已合併 main（`d551d86bfd11b8a863d8d74431fcee5bc7609b26`；CI #162 SUCCESS）；PR #42 的 Incoming 雙副本與 receipt 已合併 main（`7971fa486ef9fc8ef724493c90ba533c6ecb2b7a`；main CI #164 SUCCESS）。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
 
 ## 不得更改的產品契約
 
@@ -98,6 +98,8 @@ try {
 ## M4 Incoming 隔離預演與固定 Sandbox 讀取（2026-10-24）
 
 - **2026-10-26 M4/M5 Incoming 跨程序暫存副本重驗候選（依賴 PR #42）**：M4 手動 Incoming 在新建單篇遠端副本（或含本地衝突副本）後，於同一隨機 OS 暫存目錄額外排他寫入並 fsync 一份 `incoming-receipt.json`，只記錄 slug、決策、兩端 SHA 與遠端 revision，不含 JWT 或 Markdown。新增 MSI 本機唯讀入口 `scripts/obsidian-m4-sandbox-verify-receipt.ts --sandbox-scratch-verify-incoming-only`，由 stdin 傳入先前命令印出的私人 receipt 路徑，在**另一個 Node 程序**重新驗證該目錄內遠端及可選本地副本的完整位元組與 SHA；缺件或改動拒絕，保留人工檢視用途。**這只驗本機暫存副本與自述 metadata 相符，不具 MAC、可信寫入先後、Neon 重新 GET 或 Vault 現況證明，絕不可轉換為成功 Baseline、M6 真實 E2E 或正式同步授權**。路徑需本人保護與清理；本輪僅模擬 HTTP＋真正 OS Scratch + 新 Node 子程序驗證。
+
+- **2026-10-26 M4→M5 真正 Owner-RLS 來源新鮮度預檢（候選，未做真實 GET）**：既有跨程序 `incoming-receipt.json` 唯讀驗證現在可選擇 MSI 手動 `scripts/obsidian-m4-sandbox-verify-receipt.ts --sandbox-scratch-verify-incoming-live-readonly`，由 stdin 一次帶入 `{receiptPath,sandboxOwnerJwt,typedConfirmation:"VERIFY SANDBOX INCOMING <slug>"}`；只允許固定 Integration Sandbox、短效 Owner JWT、本人 `blog_admins` RLS 驗證、完整清單與同一篇精確 SHA/revision 的 GET，完成後**再次驗證**暫存遠端副本、可選本地衝突副本及 receipt 未遭修改。任何版本變動、撤銷 Owner、無授權或暫存檔遭修改都停止，不能自動重試、寫入 Baseline 或處理原 Vault。這是 M4 實際落盤副本到 M5 恢復決策的唯讀接線，**不能憑自述 receipt 證明歷史同步成功**，也不驗證真實 Vault 此刻內容。只用模擬 Owner GET 與隔離 OS 暫存檔測試；**真正 MSI Sandbox GET/E2E 仍需 Owner 當次個別授權**，不得把此候選當成已驗收。
 
 - **2026-10-26 M4/M5 兩端衝突實體副本候選**：原有 M4 MSI 人工單篇管線可**選擇性**加上 `localMarkdown`（只允許 `conflict`，需恰符審查的 `expectedLocalSha`，限 250 KiB）；先在記憶體驗 SHA，再以原有固定 Sandbox Owner-RLS GET 驗證並取得遠端 Markdown。成功時同一個全新 OS 暫存 Incoming 內以排他 `wx` + `fsync` + 回讀 SHA 建立 `<slug>.md`（遠端）及 `<slug>--local.md`（使用者透過 stdin 提供的本地快照）；任一寫入失敗清除本次暫存目錄。既有無 `localMarkdown` 的單篇流程不變；**不讀寫真實 Vault、不存 Baseline、不推斷雙方勝者，不能證明提交快照後 Vault 未再次變更**。目前僅合成 HTTP + 真實 OS 暫存檔離線驗證；仍無真實 Owner JWT／Neon GET 驗收。
 
