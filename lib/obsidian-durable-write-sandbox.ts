@@ -820,6 +820,12 @@ export async function createDurableSyntheticObsidianWorkspace(){
              "action,createdAt,deleteAllowed,id,remoteRevision,sha256,slug,syntheticOnly"){
           throw Error("Invalid M5 checkpoint evidence");
         }
+        // These scratch receipts are emitted only as JSON.stringify(item).
+        // Exact bytes reject duplicate keys or alternate parses that otherwise
+        // appear identical after JSON.parse. This is not authentication.
+        if(!bytes.equals(Buffer.from(JSON.stringify(value),"utf8"))){
+          throw Error("Invalid M5 checkpoint evidence");
+        }
         events.push({...value});
       }
       return events;

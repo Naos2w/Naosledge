@@ -487,6 +487,34 @@ test("M5 journal refuses non-canonical checkpoint timestamps",async()=>{
   });
 });
 
+test("M5 journal rejects ambiguous duplicate keys and noncanonical checkpoint bytes",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("canonical-guard","approved");
+    const approval=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:approval.slug,confirmation:approval.confirmation});
+    const record=(await box.listConfirmedSyntheticBaselines())[0];
+    const location=path.join(journal(box),record.id+".json");
+    const original=await readFile(location,"utf8");
+    const duplicated=original.replace(
+      '"sha256":"'+record.sha256+'"',
+      '"sha256":"'+("0".repeat(64))+'","sha256":"'+record.sha256+'"',
+    );
+    assert.notEqual(duplicated,original);
+    assert.equal(JSON.parse(duplicated).sha256,record.sha256,
+      "ordinary JSON.parse silently accepts the last of two duplicate keys");
+    await writeFile(location,duplicated);
+    await assert.rejects(box.listConfirmedSyntheticBaselines(),
+      /Invalid M5 checkpoint evidence/,
+      "ambiguous property duplicates cannot be accepted as persisted success evidence");
+    await writeFile(location,"\n"+original);
+    await assert.rejects(box.listConfirmedSyntheticBaselines(),
+      /Invalid M5 checkpoint evidence/,
+      "the scratch writer emits exact canonical bytes, not padded or reformatted JSON");
+    await writeFile(location,original);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[record]);
+  });
+});
+
 test("M5 reload refuses corrupt journal and does not invent a new baseline",async()=>{
   await withScratch(async box=>{
     await box.seedLocal("corrupt-reload","content");

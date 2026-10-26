@@ -117,6 +117,8 @@ try {
 
 - **2026-10-26 M5 合成筆記根目錄覆蓋漏洞（同一候選 PR）**：新增先失敗後通過的回歸測試：共用的 Vault 唯讀掃描器會合理忽略 `.obsidian/` 設定目錄，但 M5 的隨機 Scratch `notes/` 根目錄並不是 Vault，不應允許這個排除規則隱藏額外 Markdown。`inspectSyntheticBaselineReload()` 現在在初次及最後清單驗證時拒絕出現 `.obsidian` 的合成 notes 根目錄，避免在不完整來源下回報 `matches-current-pair`。只修改隔離 Scratch 的唯讀預檢，不更動正式 Vault 掃描規則或授權寫入；M5 跨程序可信恢復與 M6 真實 E2E 仍未完成。
 
+- **2026-10-26 M5 Checkpoint 重複鍵與非標準 JSON 拒絕（同一候選 PR）**：先失敗後通過的回歸測試發現 `JSON.parse()` 對同一欄位出現兩次採最後值，讓含互相矛盾 `sha256` 的合成成功證據通過原本的值／欄位檢查。`listConfirmedSyntheticBaselines()` 現在要求檔案位元組與 writer 使用的 `JSON.stringify(item)` 完全相同，拒絕重複鍵、非標準空白及不同序列化表示；合法原始 Checkpoint 可照常唯讀。**此格式正規化不是身分認證、MAC、可信排序或跨程序持久恢復**，沒有任何正式 Vault／Neon 寫入、Baseline 匯入或 M6 真實 Sandbox E2E。
+
 ## M6 合成跨階段安全回歸（2026-10-24，非真實 E2E）
 
 - `tests/obsidian-m6-synthetic-cross-stage.test.mjs` 把既有 M1 唯讀組合器、M2 審查意圖、M3 合成上傳、M4 Incoming 副本與 M5 唯讀證據檢查串成**單一 Scratch 隔離測試**；模擬 Remote 只存在記憶體，沒有真正 Neon HTTP、Owner JWT、Production、真實 Obsidian Vault 或傳輸授權。
