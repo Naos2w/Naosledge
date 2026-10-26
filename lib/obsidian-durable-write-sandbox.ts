@@ -184,6 +184,47 @@ async function syncDirectoryBestEffort(dirname:string):Promise<void>{
   }
 }
 
+/** Validate persisted synthetic journal receipts without relying on process memory. */
+export async function readSyntheticBaselineJournalDirectory(
+  journalDirectory:string,
+):Promise<SyntheticBaselineCheckpoint[]>{
+  await ensureRealDirectory(journalDirectory);
+  const names=(await readdir(journalDirectory)).sort();
+  const events:SyntheticBaselineCheckpoint[]=[];
+  for(const name of names){
+    if(!name.endsWith(".json")||
+       !CHECKPOINT_UUID_V4.test(name.slice(0,-5))){
+      throw Error("Unexpected M5 checkpoint file");
+    }
+    const bytes=await stableBytes(path.join(journalDirectory,name));
+    if(!bytes)throw Error("M5 checkpoint vanished");
+    let value:SyntheticBaselineCheckpoint;
+    try{value=JSON.parse(bytes.toString("utf8")) as SyntheticBaselineCheckpoint;}
+    catch{throw Error("Invalid M5 checkpoint JSON");}
+    if(!value||typeof value!=="object"||
+       value.id+".json"!==name||typeof value.slug!=="string"||
+       value.slug.length<3||value.slug.length>120||!SAFE.test(value.slug)||
+       !HASH.test(value.sha256)||
+       !/^synthetic-r[1-9][0-9]*$/.test(value.remoteRevision)||
+       !["approved-upload","approved-download","approved-restore"].includes(value.action)||
+       typeof value.createdAt!=="string"||
+       !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value.createdAt)||
+       !Number.isFinite(Date.parse(value.createdAt))||
+       new Date(value.createdAt).toISOString()!==value.createdAt||
+       value.syntheticOnly!==true||value.deleteAllowed!==false||
+       Object.keys(value).sort().join(",")!==
+         "action,createdAt,deleteAllowed,id,remoteRevision,sha256,slug,syntheticOnly"){
+      throw Error("Invalid M5 checkpoint evidence");
+    }
+    // Reject duplicate JSON keys and noncanonical encoding; not authentication.
+    if(!bytes.equals(Buffer.from(JSON.stringify(value),"utf8"))){
+      throw Error("Invalid M5 checkpoint evidence");
+    }
+    events.push({...value});
+  }
+  return events;
+}
+
 export async function createDurableSyntheticObsidianWorkspace(){
   const folder=await mkdtemp(path.join(tmpdir(),PREFIX));
   const resolved=path.resolve(folder);
@@ -793,42 +834,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
     /** Read-only inspection of M5 scratch evidence (never imports/applies it). */
     async listConfirmedSyntheticBaselines():Promise<SyntheticBaselineCheckpoint[]>{
       await ensureActive();
-      const names=(await readdir(baselineJournal)).sort();
-      const events:SyntheticBaselineCheckpoint[]=[];
-      for(const name of names){
-        if(!name.endsWith(".json")||
-           !CHECKPOINT_UUID_V4.test(name.slice(0,-5))){
-          throw Error("Unexpected M5 checkpoint file");
-        }
-        const bytes=await stableBytes(path.join(baselineJournal,name));
-        if(!bytes)throw Error("M5 checkpoint vanished");
-        let value:SyntheticBaselineCheckpoint;
-        try{value=JSON.parse(bytes.toString("utf8")) as SyntheticBaselineCheckpoint;}
-        catch{throw Error("Invalid M5 checkpoint JSON");}
-        if(!value||typeof value!=="object"||
-           value.id+".json"!==name||typeof value.slug!=="string"||
-           value.slug.length<3||value.slug.length>120||!SAFE.test(value.slug)||
-           !HASH.test(value.sha256)||
-           !/^synthetic-r[1-9][0-9]*$/.test(value.remoteRevision)||
-           !["approved-upload","approved-download","approved-restore"].includes(value.action)||
-           typeof value.createdAt!=="string"||
-           !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value.createdAt)||
-           !Number.isFinite(Date.parse(value.createdAt))||
-           new Date(value.createdAt).toISOString()!==value.createdAt||
-           value.syntheticOnly!==true||value.deleteAllowed!==false||
-           Object.keys(value).sort().join(",")!==
-             "action,createdAt,deleteAllowed,id,remoteRevision,sha256,slug,syntheticOnly"){
-          throw Error("Invalid M5 checkpoint evidence");
-        }
-        // These scratch receipts are emitted only as JSON.stringify(item).
-        // Exact bytes reject duplicate keys or alternate parses that otherwise
-        // appear identical after JSON.parse. This is not authentication.
-        if(!bytes.equals(Buffer.from(JSON.stringify(value),"utf8"))){
-          throw Error("Invalid M5 checkpoint evidence");
-        }
-        events.push({...value});
-      }
-      return events;
+      return readSyntheticBaselineJournalDirectory(baselineJournal);
     },
     /**
      * M5 dry-run reload validation from persisted scratch journal evidence.
