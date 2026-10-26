@@ -2,9 +2,9 @@
 
 更新：2026-10-26；M1/M2 已完成真實 Neon Integration Sandbox 合成 Owner JWT／RLS → MSI 唯讀掃描／JSON → 本機 Chrome 審查整合驗收。尚未部署 Production。
 
-**2026-10-26 實際基準更正**：PR #35–#40 已合併 main（`2cf082d6fbdbdc40e944e16e56027642584e9c53`；CI #157 SUCCESS），不可重做；PR #41 的 MSI M2→M4 交接已合併 main（`d551d86bfd11b8a863d8d74431fcee5bc7609b26`；CI #162 SUCCESS）。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
+**2026-10-26 實際基準更正**：PR #35–#40 已合併 main（`2cf082d6fbdbdc40e944e16e56027642584e9c53`；CI #157 SUCCESS），不可重做；PR #41 的 MSI M2→M4 交接已合併 main（`d551d86bfd11b8a863d8d74431fcee5bc7609b26`；CI #162 SUCCESS），PR #42 的 Incoming 雙版本／持久 receipt 已合併 main（`7971fa486ef9fc8ef724493c90ba533c6ecb2b7a`；main CI #164 SUCCESS）。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
 
-## 不得更改的產品契約
+**2026-10-26 M5 待驗候選**：新 MSI 手動入口 `scripts/obsidian-m5-manual-equality.ts` 可呼叫既有已註冊 Obsidian Vault 雙次唯讀掃描與固定 Neon Integration Sandbox Owner-RLS 完整 GET，將當下兩端 **SHA 相同且有遠端 revision** 的筆記保存為 OS Scratch 中獨立、metadata-only、排他建立的「觀察收據」，並供新程序以新的 Owner JWT 再次重新掃描兩端驗證。它**不是可信的已完成同步證據、沒有驗證過人工上／下載完成、不會載入／儲存正式 Baseline，也不會覆寫任何資料**。本輪本機 HTTP 部分僅使用合成 Reader；真正 Sandbox 身分／Owner GET 與正式持久 Baseline 完成仍受授權限制。PR #43–#47 為另外未合併的候選，不能當成 main 既有功能。\n\n## 不得更改的產品契約
 
 - **Obsidian 與 NaosLedge 都是正式編輯入口**，任何一邊編輯都不構成對另一邊的覆寫授權。
 - **預設手動觸發，同步前逐篇確認**；沒有自動同步、背景輪詢或自動套用。
