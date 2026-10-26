@@ -15,6 +15,7 @@ import {parseObsidianMarkdown,serializeObsidianMarkdown} from "../lib/obsidian-m
 import {planObsidianReconciliation} from "../lib/obsidian-sync-plan.ts";
 import {parseManualM3UploadIntent} from "../lib/obsidian-m2-review-choices.ts";
 import {createNeonSandboxNoteOnly} from "../lib/obsidian-neon-sandbox-create.ts";
+import {storeVerifiedM3SandboxWitness} from "../lib/obsidian-m5-sandbox-transfer-witness.ts";
 import {NEON_SYNC_SANDBOX_BRANCH} from "../lib/obsidian-neon-sandbox-readonly.ts";
 
 export const M3_SCRATCH_ONLY_FLAG="--sandbox-scratch-create-only";
@@ -75,7 +76,8 @@ export async function readScratchCreateRequest(
 export async function createOneReviewedScratchNote(
   request:Awaited<ReturnType<typeof readScratchCreateRequest>>,
   fetcher?:typeof fetch,
-):Promise<{baselineSaved:false}>{
+  persistWitness=false,
+):Promise<{baselineSaved:false;receiptPath?:string}>{
   const parsed=parseObsidianMarkdown(request.markdown,"scratch.md","1970-01-01");
   if(!parsed||serializeObsidianMarkdown({
     ...parsed.metadata,content_md:parsed.content_md,
@@ -107,6 +109,13 @@ export async function createOneReviewedScratchNote(
     decision,typedConfirmation:request.typedConfirmation,
     readMarkdown:async()=>request.markdown,fetcher,
   });
+  if(persistWitness){
+    const evidence=await storeVerifiedM3SandboxWitness({
+      action:"manual-create",slug:result.slug,
+      sha256:result.sha256,revision:result.revision,
+    });
+    return {baselineSaved:false,receiptPath:evidence.receiptPath};
+  }
   return {baselineSaved:result.baselineSaved};
 }
 
@@ -118,9 +127,10 @@ if(invoked){
       process.platform,hostname(),process.argv.slice(2),!!process.stdin.isTTY,
     );
     const request=await readScratchCreateRequest(process.stdin);
-    const result=await createOneReviewedScratchNote(request);
-    if(result.baselineSaved!==false)throw Error("Unexpected Baseline write");
+    const result=await createOneReviewedScratchNote(request,undefined,true);
+    if(result.baselineSaved!==false||!result.receiptPath)throw Error("M5 witness unavailable");
     console.log("M3_SANDBOX_SCRATCH_CREATE_VERIFIED; BASELINE_NOT_SAVED");
+    console.log("M5_PRIVATE_SCRATCH_WITNESS "+result.receiptPath);
   }catch{
     // POST may already have committed even if later GET verification failed.
     // Never leak JWT, Markdown, note identifiers or server bodies; no retry.

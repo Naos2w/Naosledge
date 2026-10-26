@@ -329,6 +329,24 @@ test("M3 scratch-only stdin carries one human-approved note to live-shaped Sandb
   assert.deepEqual(await createOneReviewedScratchNote(request,n.fetcher),
     {baselineSaved:false});
   assert.equal(n.calls.filter(c=>c.startsWith("POST ")).length,1);
+  // The real MSI CLI opts into a separate durable Scratch-only witness only
+  // AFTER the transport's post-write RLS GET has verified the result.
+  const witnessNetwork=fakeNetwork();
+  const stored=await createOneReviewedScratchNote(request,witnessNetwork.fetcher,true);
+  try{
+    assert.equal(stored.baselineSaved,false);
+    assert.ok(stored.receiptPath);
+    const {readFile,rm}=await import("node:fs/promises");
+    const path=await import("node:path");
+    const item=JSON.parse(await readFile(stored.receiptPath,"utf8"));
+    assert.deepEqual({action:item.action,sha256:item.sha256,revision:item.revision},
+      {action:"manual-create",sha256:digest,revision:item.revision});
+    assert.match(item.revision,/^[a-f0-9]{64}$/);
+  }finally{
+    const {rm}=await import("node:fs/promises");
+    const path=await import("node:path");
+    await rm(path.dirname(stored.receiptPath),{recursive:true,force:true});
+  }
 
   const blocked=fakeNetwork();
   await assert.rejects(createOneReviewedScratchNote({
