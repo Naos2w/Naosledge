@@ -317,6 +317,23 @@ test("M3 manual update passes the reviewed note through CAS and propagates a los
   const mock=mockNetwork();
   assert.deepEqual(await updateOneReviewedSandboxNote(request,mock.fetcher),{baselineSaved:false});
   assert.equal(mock.calls.length,9);
+  const witnessNetwork=mockNetwork();
+  const stored=await updateOneReviewedSandboxNote(
+    request,witnessNetwork.fetcher,true,
+  );
+  try{
+    assert.equal(stored.baselineSaved,false);
+    const {readFile,rm}=await import("node:fs/promises");
+    const path=await import("node:path");
+    const item=JSON.parse(await readFile(stored.receiptPath,"utf8"));
+    assert.equal(item.action,"manual-update");
+    assert.equal(item.sha256,newSha);
+    assert.match(item.revision,/^[a-f0-9]{64}$/);
+  }finally{
+    const {rm}=await import("node:fs/promises");
+    const path=await import("node:path");
+    await rm(path.dirname(stored.receiptPath),{recursive:true,force:true});
+  }
   assert.equal(mock.getRemote().content_md,latest.content_md);
   const raced=mockNetwork({race:true});
   await assert.rejects(updateOneReviewedSandboxNote(request,raced.fetcher),/manual reconciliation/);

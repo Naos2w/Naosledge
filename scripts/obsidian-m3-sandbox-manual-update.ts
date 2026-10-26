@@ -9,6 +9,7 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {parseObsidianMarkdown,serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
 import {updateNeonSandboxNoteIfUnchanged} from "../lib/obsidian-neon-sandbox-update.ts";
+import {storeVerifiedM3SandboxWitness} from "../lib/obsidian-m5-sandbox-transfer-witness.ts";
 import {NEON_SYNC_SANDBOX_BRANCH} from "../lib/obsidian-neon-sandbox-readonly.ts";
 import type {SyncDecision} from "../lib/obsidian-sync-plan.ts";
 
@@ -78,13 +79,20 @@ export async function readManualUpdateRequest(
 }
 
 export async function updateOneReviewedSandboxNote(
-  request:UpdateRequest,fetcher?:typeof fetch,
-):Promise<{baselineSaved:false}>{
+  request:UpdateRequest,fetcher?:typeof fetch,persistWitness=false,
+):Promise<{baselineSaved:false;receiptPath?:string}>{
   const {sandboxOwnerJwt,markdown,decision,typedConfirmation}=request;
   const result=await updateNeonSandboxNoteIfUnchanged({
     branchId:NEON_SYNC_SANDBOX_BRANCH,sandboxOwnerJwt,decision,typedConfirmation,
     readMarkdown:async()=>markdown,fetcher,
   });
+  if(persistWitness){
+    const evidence=await storeVerifiedM3SandboxWitness({
+      action:"manual-update",slug:result.slug,
+      sha256:result.sha256,revision:result.revision,
+    });
+    return {baselineSaved:false,receiptPath:evidence.receiptPath};
+  }
   return {baselineSaved:result.baselineSaved};
 }
 
@@ -96,9 +104,10 @@ if(invoked){
       process.platform,hostname(),process.argv.slice(2),!!process.stdin.isTTY,
     );
     const request=await readManualUpdateRequest(process.stdin);
-    const result=await updateOneReviewedSandboxNote(request);
-    if(result.baselineSaved!==false)throw Error("Unexpected Baseline write");
+    const result=await updateOneReviewedSandboxNote(request,undefined,true);
+    if(result.baselineSaved!==false||!result.receiptPath)throw Error("M5 witness unavailable");
     console.log("M3_SANDBOX_UPDATE_VERIFIED; BASELINE_NOT_SAVED");
+    console.log("M5_PRIVATE_SCRATCH_WITNESS "+result.receiptPath);
   }catch{
     // PATCH may already have committed: no retry, private data or server body.
     console.error("M3_SANDBOX_UPDATE_NOT_VERIFIED; inspect Sandbox manually before any retry");

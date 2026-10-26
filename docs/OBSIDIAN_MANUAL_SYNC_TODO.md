@@ -4,6 +4,8 @@
 
 **2026-10-26 實際基準更正**：PR #35–#40 已合併 main（`2cf082d6fbdbdc40e944e16e56027642584e9c53`；CI #157 SUCCESS），不可重做；PR #41 的 MSI M2→M4 交接已合併 main（`d551d86bfd11b8a863d8d74431fcee5bc7609b26`；CI #162 SUCCESS）。Owner 先前單次核准的 SQL003 已以單交易安裝到 Neon `bitter-silence-36632892` **Integration Sandbox** `br-quiet-sunset-b4xx4pnx` / `neondb`，`update_knowledge_note_cas_with_links` 存在且 `SECURITY INVOKER`、authenticated 可執行／anonymous 不可執行，合成 notes／links／admins／Auth user 均 0；Production `br-aged-sound-b43h5r2c` **沒有 SQL003**。**這不代表 M3 Owner JWT／POST／PATCH／CAS 真實 E2E 成功**，也不能在日後排程重用當次核准進行寫入。
 
+**2026-10-26 晚間 main/候選再核對**：PR #41/#42 已合併，main 現為 `7971fa486ef9fc8ef724493c90ba533c6ecb2b7a`，CI #164 SUCCESS；PR #43（M5 Scratch 跨程序預檢）、#44（M4 Incoming Owner-RLS 唯讀重驗）、#45（本機雙版本 UI）、#46（M2→M3 人工上傳意圖）各自仍為未合併候選、exact-head CI 已成功；不得重開重做。下述里程碑表為既有基準敘述，尚未包含這些未合併候選。SQL003 僅已安裝 Integration Sandbox，Production 未安裝；未取得本輪真正 Owner JWT/M3 寫入及 M6 Sandbox E2E 授權。
+
 ## 不得更改的產品契約
 
 - **Obsidian 與 NaosLedge 都是正式編輯入口**，任何一邊編輯都不構成對另一邊的覆寫授權。
@@ -153,6 +155,8 @@ try {
 - **仍未接入真實 NaosLedge、Neon 或 MSI Obsidian Vault**；`syntheticWorkspacePath` 僅供測試，絕不可把本工廠當正式寫入適配器。真實下載前需完成 Owner／Sandbox 驗收與獨立 Inbox 路徑安全設計。
 
 ## M5 Baseline 保留與合成成功證據（2026-10-24）
+
+- **2026-10-26 M3→M5 跨程序交接候選（本分支）**：M3 MSI 單篇 create/update 僅在其原有 Owner-RLS POST/PATCH+事後 GET／索引驗證**已成功返回**時，將 SHA／Revision／方向保存至新建 OS Scratch `transfer-witness.json`（嚴格單篇、`wx`/fsync/回讀，**不含 JWT／Markdown**）；有獨立 MSI 手動 `--sandbox-scratch-reverify-m3-witness-only` 入口，重新以 stdin 的當前 Scratch Markdown SHA 與短效 Sandbox Owner JWT 執行 Owner-RLS 完整清單及單篇 GET 後再核對檔案。遺失／遭竄改／遠端更新／非 Owner 均拒絕；**自陳式 OS 暫存收據可偽造，不能證明實際 Vault 原稿、授權行為或安全事件順序，也不是可信正式 Baseline。** 本分支只跑離線 HTTP 模擬＋真實 OS 檔案驗證，不會自動寫入 Baseline、啟動 Sandbox POST/PATCH、認證、Production 或 Vault。真正 Sandbox 寫入驗收另需當輪 Owner 授權；M5 可信來源證據及正式 Baseline 仍未完成。
 
 - `lib/obsidian-durable-write-sandbox.ts` 在**當次隨機 Scratch** 新增 `baseline-journal/`：合成環境每次已批准的上傳、下載或復原，在再次確認兩端 SHA 相同、遠端 revision 未變後，才以新 UUID `.json` **追加**同步成功證據（無 Markdown 正文或憑證）；寫檔前先暫存、再次比對、提交並同步檔案與目錄（Windows 目錄同步僅 best-effort）。無任何正式 Obsidian／Neon 路徑參數，不能用於正式同步。
 - `listConfirmedSyntheticBaselines()` 僅供同一 Scratch 唯讀檢驗並嚴格拒絕遭改動或不合法的 checkpoint；**不會將檔案自動匯入 Baseline、重建現有記憶體狀態或觸發同步**。
