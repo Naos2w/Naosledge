@@ -238,6 +238,55 @@ test("M5 rejects corrupt or redirected scratch journal instead of treating it as
   });
 });
 
+test("M5 reload exposes unjournaled local and remote sources even with no memory baseline",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("local-only","local");
+    await box.seedRemote("remote-only","remote");
+    await box.seedLocal("both-only","matching");
+    await box.seedRemote("both-only","matching");
+    const report=await box.inspectSyntheticBaselineReload();
+    assert.deepEqual(report.notes.map(({slug,status,checkpointCount})=>({
+      slug,status,checkpointCount,
+    })),[
+      {slug:"both-only",status:"missing-journal-evidence",checkpointCount:0},
+      {slug:"local-only",status:"missing-journal-evidence",checkpointCount:0},
+      {slug:"remote-only",status:"missing-journal-evidence",checkpointCount:0},
+    ],"matching bytes or an unpaired source must not become invisible during recovery");
+    assert.equal(report.autoImportAllowed,false);
+    assert.equal(report.writeAllowed,false);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[]);
+  });
+});
+
+test("M5 reload rejects a new unjournaled remote during final inventory verification",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("first-note","local");
+    await assert.rejects(box.inspectSyntheticBaselineReload({
+      beforeFinalJournalRecheckForSyntheticTest:async()=>{
+        await box.seedRemote("late-remote","new remote source");
+      },
+    }),/M5 reload source inventory changed during inspection/);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[],
+      "a failed reload cannot invent a baseline checkpoint");
+  });
+});
+
+test("M5 reload refuses changed uncheckpointed local content and incomplete coverage",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("unchecked-local","original");
+    await assert.rejects(box.inspectSyntheticBaselineReload({
+      beforeFinalJournalRecheckForSyntheticTest:async()=>{
+        await writeFile(path.join(box.syntheticWorkspacePath,"notes","unchecked-local.md"),"edited");
+      },
+    }),/M5 reload source inventory changed during inspection/);
+    await writeFile(path.join(box.syntheticWorkspacePath,"notes","unindexed.txt"),"unknown");
+    await assert.rejects(box.inspectSyntheticBaselineReload(),
+      /M5 reload local inventory is incomplete/,
+      "unknown files must not disappear from a recovery inventory");
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[]);
+  });
+});
+
 test("M5 reload identifies a memory baseline with no persisted journal evidence",async()=>{
   await withScratch(async box=>{
     await box.seedLocal("memory-only","same content");

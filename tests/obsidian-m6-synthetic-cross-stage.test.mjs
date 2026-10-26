@@ -113,8 +113,11 @@ test("M6 synthetic cross-stage: M1 + M2 intents do not execute; M3 uploads, M4 I
     assert.equal(checkpoints.length,1,"Incoming and conflict copies are NOT successful sync");
     assert.equal(checkpoints[0].slug,"local-only");
     const inspection=await box.inspectSyntheticBaselineReload();
-    assert.equal(inspection.notes.length,1);
-    assert.equal(inspection.notes[0].status,"matches-current-pair");
+    assert.deepEqual(inspection.notes.map(({slug,status})=>({slug,status})),[
+      {slug:"local-only",status:"matches-current-pair"},
+      {slug:"remote-only",status:"missing-journal-evidence"},
+      {slug:"shared-conflict",status:"missing-journal-evidence"},
+    ],"Incoming copies and unresolved conflicts still lack a confirmed checkpoint");
     assert.equal(inspection.autoImportAllowed,false);
     assert.equal(inspection.deleteAllowed,false);
     const final=await box.preview();

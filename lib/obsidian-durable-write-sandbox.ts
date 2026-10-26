@@ -839,6 +839,19 @@ export async function createDurableSyntheticObsidianWorkspace(){
     }={}):Promise<SyntheticBaselineReloadPreview>{
       const events=await this.listConfirmedSyntheticBaselines();
       await ensureActive();
+      // Recovery must inventory both sources, not only checkpointed or
+      // memory-baselined slugs. A never-synchronized note still needs review.
+      const captureSourceInventory=async()=>{
+        const local=await readObsidianLocalManifest(notes);
+        if(local.unsupportedMarkdownFiles||local.otherFiles||local.directoriesNotScanned){
+          throw Error("M5 reload local inventory is incomplete");
+        }
+        return {
+          local:local.fingerprints.map(item=>({slug:item.slug,sha256:item.sha256})),
+          remote:[...remote.keys()].sort().map(slug=>remoteFp(slug)!),
+        };
+      };
+      const originalInventory=await captureSourceInventory();
       // A live memory baseline with no checkpoint must be visible as missing
       // evidence, never silently omitted from a seemingly empty reload report.
       const memorySnapshot=new Map([...baseline.entries()].map(
@@ -853,21 +866,24 @@ export async function createDurableSyntheticObsidianWorkspace(){
       for(const slug of memorySnapshot.keys()){
         if(!grouped.has(slug))grouped.set(slug,[]);
       }
-      const notes:SyntheticBaselineReloadPreview["notes"]=[];
+      for(const item of [...originalInventory.local,...originalInventory.remote]){
+        if(!grouped.has(item.slug))grouped.set(item.slug,[]);
+      }
+      const reportNotes:SyntheticBaselineReloadPreview["notes"]=[];
       const inspectedSources:Array<{
         slug:string;localSha:string|null;remoteSha:string|null;
         remoteRevision:string|null;baselineSha:string|null;
       }>=[];
       for(const [slug,records] of [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0],"en"))){
         if(records.length===0){
-          notes.push({
+          reportNotes.push({
             slug,checkpointCount:0,checkpointId:null,
             status:"missing-journal-evidence",
           });
           continue;
         }
         if(records.length!==1){
-          notes.push({
+          reportNotes.push({
             slug,checkpointCount:records.length,checkpointId:null,
             status:"ambiguous-history",
           });
@@ -903,7 +919,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
            (baseline.get(slug)?.sha256??null)!==initialMemory){
           throw Error("M5 reload source changed during inspection");
         }
-        notes.push({slug,checkpointCount:1,checkpointId:checkpoint.id,status});
+        reportNotes.push({slug,checkpointCount:1,checkpointId:checkpoint.id,status});
       }
       // Re-read every validated checkpoint, not only its filename: an
       // existing .json can be replaced without changing the directory listing.
@@ -932,8 +948,11 @@ export async function createDurableSyntheticObsidianWorkspace(){
            memorySnapshot.get(slug)!==value.sha256)){
         throw Error("M5 reload memory baseline changed during inspection");
       }
+      if(JSON.stringify(await captureSourceInventory())!==JSON.stringify(originalInventory)){
+        throw Error("M5 reload source inventory changed during inspection");
+      }
       return {
-        notes,syntheticOnly:true,autoImportAllowed:false,
+        notes:reportNotes,syntheticOnly:true,autoImportAllowed:false,
         writeAllowed:false,deleteAllowed:false,manualReviewRequired:true,
       };
     },
