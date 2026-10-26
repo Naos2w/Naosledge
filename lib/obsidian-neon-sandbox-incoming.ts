@@ -7,7 +7,7 @@
  * This module is not invoked from web routes or background automation.
  */
 import {createHash} from "node:crypto";
-import {mkdtemp,open,readFile,realpath,rm} from "node:fs/promises";
+import {lstat,mkdtemp,open,readFile,realpath,rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import type {SyncDecision} from "./obsidian-sync-plan.ts";
@@ -27,6 +27,8 @@ export async function stageNeonSandboxIncoming(args:{
   path:string;
   /** Independent local conflict snapshot, never the Vault original. */
   localCopyPath:string|null;
+  /** Self-describing, file-only verification metadata (NOT a sync Baseline). */
+  receiptPath:string;
   sha256:string;
   revision:string;
   originalModified:false;
@@ -115,8 +117,17 @@ export async function stageNeonSandboxIncoming(args:{
     if(localCopyPath&&localBytes){
       await stageFile(localCopyPath,localBytes,d.expectedLocalSha!);
     }
+    // Receipt contains metadata only, never credentials or Markdown. It is
+    // NOT proof of an authorized sync or a trusted Baseline checkpoint.
+    const receiptPath=path.join(incoming,"incoming-receipt.json");
+    const receipt={format:"naosledge.m4.incoming-copy.v1",slug:d.slug,
+      choice:d.choice,remoteSha256:d.expectedRemoteSha,
+      remoteRevision:d.expectedRemoteRevision,
+      localSha256:localBytes?d.expectedLocalSha:null};
+    const bytes=Buffer.from(JSON.stringify(receipt),"utf8");
+    await stageFile(receiptPath,bytes,createHash("sha256").update(bytes).digest("hex"));
     return {
-      path:target,localCopyPath,sha256:d.expectedRemoteSha,
+      path:target,localCopyPath,receiptPath,sha256:d.expectedRemoteSha,
       revision:d.expectedRemoteRevision,originalModified:false,
       baselineSaved:false,
     };
@@ -125,4 +136,77 @@ export async function stageNeonSandboxIncoming(args:{
     await rm(incoming,{recursive:true,force:true}).catch(()=>{});
     throw new Error("M4 failed to stage a new Incoming copy");
   }
+}
+
+/**
+ * Reinspect one staged M4 Incoming bundle after a Node restart. Only verifies
+ * local scratch bytes against their self-reported receipt; does NOT attest to
+ * Neon authorization, the current remote revision, or successful sync.
+ */
+export async function verifyStagedSandboxIncomingReceipt(receiptPath:string):Promise<{
+  remoteCopyPath:string;localCopyPath:string|null;sha256:string;revision:string;
+  baselineSaved:false;verificationScope:"staged-files-only";
+}>{
+  const root=await realpath(tmpdir());
+  const file=path.resolve(receiptPath);
+  const directory=path.dirname(file);
+  const folder=path.basename(directory);
+  if(path.basename(file)!=="incoming-receipt.json"||
+     path.dirname(directory).toLowerCase()!==root.toLowerCase()||
+     !/^naosledge-sandbox-incoming-[a-zA-Z0-9_-]{6}$/.test(folder)||
+     (await realpath(directory)).toLowerCase()!==directory.toLowerCase()){
+    throw new Error("M4 receipt must belong to a separate OS scratch Incoming");
+  }
+  const info=await lstat(file);
+  if(!info.isFile()||info.isSymbolicLink()||info.size>2048){
+    throw new Error("M4 Incoming receipt file is invalid");
+  }
+  const raw=await readFile(file);
+  let receipt:unknown;
+  try{receipt=JSON.parse(raw.toString("utf8")) as unknown;}
+  catch{throw new Error("M4 Incoming receipt JSON is invalid");}
+  if(!receipt||typeof receipt!=="object"||Array.isArray(receipt)){
+    throw new Error("M4 Incoming receipt shape is invalid");
+  }
+  const r=receipt as Record<string,unknown>;
+  const keys=["format","slug","choice","remoteSha256",
+    "remoteRevision","localSha256"];
+  const sha=/^[0-9a-f]{64}$/;
+  if(Object.keys(r).length!==keys.length||
+     !keys.every(key=>Object.hasOwn(r,key))||
+     r.format!=="naosledge.m4.incoming-copy.v1"||
+     typeof r.slug!=="string"||r.slug.length<3||r.slug.length>120||
+     !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(r.slug)||
+     !["review-download","review-missing-local","conflict"].includes(String(r.choice))||
+     typeof r.remoteSha256!=="string"||!sha.test(r.remoteSha256)||
+     typeof r.remoteRevision!=="string"||!sha.test(r.remoteRevision)||
+     (r.localSha256!==null&&
+      (r.choice!=="conflict"||typeof r.localSha256!=="string"||
+       !sha.test(r.localSha256)))||
+     JSON.stringify(r)!==raw.toString("utf8")){
+    throw new Error("M4 Incoming receipt metadata is invalid");
+  }
+  const verifyCopy=async(filename:string,expected:string)=>{
+    const stat=await lstat(filename);
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>250_000){
+      throw new Error("M4 Incoming copy is not an ordinary bounded file");
+    }
+    const bytes=await readFile(filename);
+    if(createHash("sha256").update(bytes).digest("hex")!==expected){
+      throw new Error("M4 Incoming copy no longer matches its receipt");
+    }
+  };
+  const remoteCopyPath=path.join(directory,r.slug+".md");
+  const localCopyPath=r.localSha256?
+    path.join(directory,r.slug+"--local.md"):null;
+  await verifyCopy(remoteCopyPath,r.remoteSha256 as string);
+  if(localCopyPath){
+    await verifyCopy(localCopyPath,r.localSha256 as string);
+  }
+  if(!(await readFile(file)).equals(raw)){
+    throw new Error("M4 Incoming receipt changed during inspection");
+  }
+  return {remoteCopyPath,localCopyPath,sha256:r.remoteSha256 as string,
+    revision:r.remoteRevision as string,baselineSaved:false,
+    verificationScope:"staged-files-only"};
 }

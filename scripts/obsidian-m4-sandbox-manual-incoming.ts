@@ -90,7 +90,7 @@ export async function readScratchIncomingRequest(
 export async function stageOneReviewedSandboxIncoming(
   request:Awaited<ReturnType<typeof readScratchIncomingRequest>>,
   fetcher?:typeof fetch,
-):Promise<{path:string;localCopyPath:string|null;originalModified:false;baselineSaved:false}>{
+):Promise<{path:string;localCopyPath:string|null;receiptPath:string;originalModified:false;baselineSaved:false}>{
   const result=await stageNeonSandboxIncoming({
     branchId:NEON_SYNC_SANDBOX_BRANCH,
     sandboxOwnerJwt:request.sandboxOwnerJwt,
@@ -100,7 +100,7 @@ export async function stageOneReviewedSandboxIncoming(
     fetcher,
   });
   return {path:result.path,localCopyPath:result.localCopyPath,
-    originalModified:result.originalModified,
+    receiptPath:result.receiptPath,originalModified:result.originalModified,
     baselineSaved:result.baselineSaved};
 }
 
@@ -121,6 +121,7 @@ if(invoked){
     if(result.localCopyPath){
       console.log("M4_SANDBOX_LOCAL_CONFLICT_COPY_SAVED "+result.localCopyPath);
     }
+    console.log("M4_SANDBOX_LOCAL_RECEIPT_SAVED "+result.receiptPath);
     console.log("PRIVATE_SCRATCH_COPY_ONLY; ORIGINAL_AND_BASELINE_UNCHANGED");
   }catch{
     // Never echo JWT, note content, server response, or note identifiers.

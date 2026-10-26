@@ -1,11 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {readFile,rm} from "node:fs/promises";
+import {readFile,rm,writeFile} from "node:fs/promises";
+import {spawnSync} from "node:child_process";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
-import {stageNeonSandboxIncoming} from "../lib/obsidian-neon-sandbox-incoming.ts";
+import {
+  stageNeonSandboxIncoming,verifyStagedSandboxIncomingReceipt,
+} from "../lib/obsidian-neon-sandbox-incoming.ts";
+import {
+  assertM4ReceiptVerificationInvocation,M4_VERIFY_RECEIPT_FLAG,
+  verifyManualIncomingReceipt,
+} from "../scripts/obsidian-m4-sandbox-verify-receipt.ts";
 import {
   M4_SCRATCH_INCOMING_FLAG,assertManualM4Invocation,
   readScratchIncomingRequest,stageOneReviewedSandboxIncoming,
@@ -253,6 +260,64 @@ test("M4 MSI manual request creates one private Scratch Incoming copy with no or
   assert.deepEqual(denied.calls,[]);
 });
 
+
+test("M4 Incoming writes a self-described receipt and independently checks scratch bytes after process exit",async()=>{
+  assertM4ReceiptVerificationInvocation("win32","MSI",[M4_VERIFY_RECEIPT_FLAG],false);
+  assert.throws(()=>assertM4ReceiptVerificationInvocation(
+    "linux","MSI",[M4_VERIFY_RECEIPT_FLAG],false,
+  ),/MSI-only/);
+  const network=fakeNetwork();
+  const staged=await stageNeonSandboxIncoming({...options,fetcher:network.fetcher});
+  try{
+    assert.equal(path.basename(staged.receiptPath),"incoming-receipt.json");
+    const saved=await readFile(staged.receiptPath,"utf8");
+    assert.equal(saved.includes(jwt),false,"no credential in local receipt");
+    assert.equal(saved.includes(note.content_md),false,"no Markdown in receipt");
+    const inspected=await verifyStagedSandboxIncomingReceipt(staged.receiptPath);
+    assert.deepEqual(inspected,{
+      remoteCopyPath:staged.path,localCopyPath:null,
+      sha256:digest,revision,baselineSaved:false,
+      verificationScope:"staged-files-only",
+    });
+    assert.deepEqual(await verifyManualIncomingReceipt([staged.receiptPath]),{
+      localCopyIncluded:false,baselineSaved:false,
+      verificationScope:"staged-files-only",
+    });
+    const moduleUrl=new URL("../lib/obsidian-neon-sandbox-incoming.ts",import.meta.url).href;
+    const code=`import {verifyStagedSandboxIncomingReceipt as verify} from ${JSON.stringify(moduleUrl)}; const result=await verify(process.argv[1]); if(result.baselineSaved!==false||result.verificationScope!=="staged-files-only")process.exit(2);`;
+    const child=spawnSync(process.execPath,[
+      "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
+      "--input-type=module","-e",code,staged.receiptPath,
+    ],{encoding:"utf8",timeout:20000});
+    assert.equal(child.status,0,child.stderr,"a fresh Node process can recheck persisted copy bytes");
+    assert.equal(network.calls.length,3,"reinspection never performs another Owner GET");
+    await writeFile(staged.path,portable(note)+"modified");
+    await assert.rejects(verifyStagedSandboxIncomingReceipt(staged.receiptPath),
+      /no longer matches/);
+  }finally{
+    await rm(path.dirname(staged.path),{recursive:true,force:true});
+  }
+});
+
+test("M4 receipt reinspection checks both conflict snapshots and detects missing evidence",async()=>{
+  const localMarkdown="## Local independently preserved\\n";
+  const localSha=createHash("sha256").update(localMarkdown).digest("hex");
+  const staged=await stageNeonSandboxIncoming({
+    ...options,decision:{...choice,expectedLocalSha:localSha},localMarkdown,
+    fetcher:fakeNetwork().fetcher,
+  });
+  try{
+    const result=await verifyStagedSandboxIncomingReceipt(staged.receiptPath);
+    assert.equal(result.localCopyPath,staged.localCopyPath);
+    assert.equal((await verifyManualIncomingReceipt([staged.receiptPath])).localCopyIncluded,true);
+    await writeFile(staged.localCopyPath,"changed");
+    await assert.rejects(verifyStagedSandboxIncomingReceipt(staged.receiptPath),
+      /no longer matches/);
+  }finally{
+    await rm(path.dirname(staged.path),{recursive:true,force:true});
+  }
+  await assert.rejects(verifyManualIncomingReceipt(["C:\\\\Naos\\\\Obsidian\\\\Naosledge\\\\x.json"]));
+});
 
 test("M4 keeps the approved filename and fingerprints when the caller mutates its decision during GET",async()=>{
   const decision={...choice};
