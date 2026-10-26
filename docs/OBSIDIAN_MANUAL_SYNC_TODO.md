@@ -116,6 +116,15 @@ try {
 
 - **2026-10-24 M5 合成 Checkpoint 格式拒絕**：唯讀日誌讀取器現在只接受 `randomUUID()` 產生的標準小寫 UUID v4 檔名（不再接受任意 36 字元十六進位／連字號排列），並驗證證據 slug 長度為 3–120 字元；在任何 Baseline 恢復預覽之前拒絕造假格式。新增先失敗後修正通過的合成 Scratch 回歸案例，M5 專項測試共 17 項通過。**這仍不是對持久日誌的身分認證、可信排序或正式同步授權**。
 
+- **2026-10-26 M5 唯讀重載缺少證據防誤判（候選 PR）**：原本日誌為空，但記憶體 Baseline 有筆記時，`inspectSyntheticBaselineReload()` 會回傳 `notes=[]`，未顯示缺少成功 checkpoint。現在把每筆未出現在日誌的記憶體 Baseline 列為 `missing-journal-evidence`（`checkpointCount=0`、`checkpointId=null`）；即使雙邊現有 SHA 相同，也**不代表曾完成經批准同步**。同時在最後重新檢查所有記憶體 Baseline 的 slug／SHA 集合，拒絕檢查期間新增或改動的無日誌項目；新增無日誌、混合日誌與最終競態的確定性回歸測試。這是隔離 Scratch 的 read-only fail-closed 修正，**不是跨程序可信重載、真正持久化、簽章、正式資料寫入或 M6 真實 E2E**。
+- **2026-10-26 M5 checkpoint 時間戳嚴格驗證（同一候選 PR）**：先失敗後修正的 Scratch 測試證實，原本只使用 `Date.parse()` 會把 `"0"`、RFC 文字日期和缺少毫秒的時間戳當成合格 M5 證據。現在唯讀 Journal 僅接受 writer 實際產出的 `YYYY-MM-DDTHH:mm:ss.sssZ` 標準 UTC 時間，並以 ISO 往返驗證拒絕日曆溢位或非標準輸入；不改變合成 checkpoint 寫入與 Baseline 狀態。時間戳**仍不可用來證明日誌身分或選擇多筆歷史順序**，真正跨程序可信恢復／正式資料層接線仍未完成。
+
+- **2026-10-26 M5 未建檔來源覆蓋驗證（同一候選 PR）**：修正 `inspectSyntheticBaselineReload()` 原本只列出 Journal／記憶體 Baseline 已知 slug，導致新出現、尚無任何同步證據的本地或遠端合成筆記在重載報告中直接消失。現在先做完整合成 Scratch 本地指紋與 Remote Map 清單，將沒有 Checkpoint 的來源列為 `missing-journal-evidence`；末段再次比對整份本地 SHA／遠端 SHA+Revision 清單，新增、修改或移除即拒絕過期預檢，未索引的本地檔案亦 fail-closed。M5、M6 定向回歸已更新；**仍僅限合成 Scratch 的唯讀預檢，不會自動匯入 Baseline、確認同步成功、存取真實 Vault 或對 Neon 寫入**。
+
+- **2026-10-26 M5 合成筆記根目錄覆蓋漏洞（同一候選 PR）**：新增先失敗後通過的回歸測試：共用的 Vault 唯讀掃描器會合理忽略 `.obsidian/` 設定目錄，但 M5 的隨機 Scratch `notes/` 根目錄並不是 Vault，不應允許這個排除規則隱藏額外 Markdown。`inspectSyntheticBaselineReload()` 現在在初次及最後清單驗證時拒絕出現 `.obsidian` 的合成 notes 根目錄，避免在不完整來源下回報 `matches-current-pair`。只修改隔離 Scratch 的唯讀預檢，不更動正式 Vault 掃描規則或授權寫入；M5 跨程序可信恢復與 M6 真實 E2E 仍未完成。
+
+- **2026-10-26 M5 Checkpoint 重複鍵與非標準 JSON 拒絕（同一候選 PR）**：先失敗後通過的回歸測試發現 `JSON.parse()` 對同一欄位出現兩次採最後值，讓含互相矛盾 `sha256` 的合成成功證據通過原本的值／欄位檢查。`listConfirmedSyntheticBaselines()` 現在要求檔案位元組與 writer 使用的 `JSON.stringify(item)` 完全相同，拒絕重複鍵、非標準空白及不同序列化表示；合法原始 Checkpoint 可照常唯讀。**此格式正規化不是身分認證、MAC、可信排序或跨程序持久恢復**，沒有任何正式 Vault／Neon 寫入、Baseline 匯入或 M6 真實 Sandbox E2E。
+
 ## M6 合成跨階段安全回歸（2026-10-24，非真實 E2E）
 
 - `tests/obsidian-m6-synthetic-cross-stage.test.mjs` 把既有 M1 唯讀組合器、M2 審查意圖、M3 合成上傳、M4 Incoming 副本與 M5 唯讀證據檢查串成**單一 Scratch 隔離測試**；模擬 Remote 只存在記憶體，沒有真正 Neon HTTP、Owner JWT、Production、真實 Obsidian Vault 或傳輸授權。

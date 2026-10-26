@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {readFile,readdir,writeFile,rm} from "node:fs/promises";
+import {mkdir,readFile,readdir,writeFile,rm} from "node:fs/promises";
 import path from "node:path";
 import {tmpdir} from "node:os";
 import {createDurableSyntheticObsidianWorkspace} from "../lib/obsidian-durable-write-sandbox.ts";
@@ -238,6 +238,134 @@ test("M5 rejects corrupt or redirected scratch journal instead of treating it as
   });
 });
 
+test("M5 reload exposes unjournaled local and remote sources even with no memory baseline",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("local-only","local");
+    await box.seedRemote("remote-only","remote");
+    await box.seedLocal("both-only","matching");
+    await box.seedRemote("both-only","matching");
+    const report=await box.inspectSyntheticBaselineReload();
+    assert.deepEqual(report.notes.map(({slug,status,checkpointCount})=>({
+      slug,status,checkpointCount,
+    })),[
+      {slug:"both-only",status:"missing-journal-evidence",checkpointCount:0},
+      {slug:"local-only",status:"missing-journal-evidence",checkpointCount:0},
+      {slug:"remote-only",status:"missing-journal-evidence",checkpointCount:0},
+    ],"matching bytes or an unpaired source must not become invisible during recovery");
+    assert.equal(report.autoImportAllowed,false);
+    assert.equal(report.writeAllowed,false);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[]);
+  });
+});
+
+test("M5 reload rejects a new unjournaled remote during final inventory verification",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("first-note","local");
+    await assert.rejects(box.inspectSyntheticBaselineReload({
+      beforeFinalJournalRecheckForSyntheticTest:async()=>{
+        await box.seedRemote("late-remote","new remote source");
+      },
+    }),/M5 reload source inventory changed during inspection/);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[],
+      "a failed reload cannot invent a baseline checkpoint");
+  });
+});
+
+test("M5 reload refuses changed uncheckpointed local content and incomplete coverage",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("unchecked-local","original");
+    await assert.rejects(box.inspectSyntheticBaselineReload({
+      beforeFinalJournalRecheckForSyntheticTest:async()=>{
+        await writeFile(path.join(box.syntheticWorkspacePath,"notes","unchecked-local.md"),"edited");
+      },
+    }),/M5 reload source inventory changed during inspection/);
+    await writeFile(path.join(box.syntheticWorkspacePath,"notes","unindexed.txt"),"unknown");
+    await assert.rejects(box.inspectSyntheticBaselineReload(),
+      /M5 reload local inventory is incomplete/,
+      "unknown files must not disappear from a recovery inventory");
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[]);
+  });
+});
+
+test("M5 reload refuses an ignored Obsidian config directory inside synthetic notes",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("config-coverage","approved");
+    const consent=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:consent.slug,confirmation:consent.confirmation});
+    assert.equal((await box.inspectSyntheticBaselineReload()).notes[0].status,
+      "matches-current-pair");
+    // The shared Vault scanner intentionally ignores .obsidian, but this
+    // synthetic notes root has no allowed configuration directory. An
+    // untracked Markdown there must invalidate a complete M5 recovery scan.
+    const config=path.join(box.syntheticWorkspacePath,"notes",".obsidian");
+    await mkdir(config);
+    await writeFile(path.join(config,"untracked.md"),"hidden source");
+    await assert.rejects(box.inspectSyntheticBaselineReload(),
+      /M5 reload local inventory is incomplete/,
+      "an ignored folder cannot be silently omitted from recovery");
+    assert.equal((await box.listConfirmedSyntheticBaselines()).length,1,
+      "a refused inspection must not delete or rewrite evidence");
+  });
+});
+
+test("M5 reload identifies a memory baseline with no persisted journal evidence",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("memory-only","same content");
+    await box.seedRemote("memory-only","same content");
+    await box.setBaseline([{slug:"memory-only",sha256:sha("same content")}]);
+    assert.equal((await box.preview()).plan.decisions[0].choice,"unchanged");
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[]);
+    const report=await box.inspectSyntheticBaselineReload();
+    assert.deepEqual(report.notes,[{
+      slug:"memory-only",checkpointCount:0,checkpointId:null,
+      status:"missing-journal-evidence",
+    }],"matching current bytes cannot substitute for persisted sync evidence");
+    assert.equal(report.autoImportAllowed,false);
+    assert.equal(report.writeAllowed,false);
+    assert.equal(report.deleteAllowed,false);
+    assert.equal(report.manualReviewRequired,true);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[],
+      "read-only inspection must not fabricate a checkpoint");
+  });
+});
+
+test("M5 reload keeps a recorded note distinct from an unrecorded memory baseline",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("recorded-note","recorded");
+    const consent=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:consent.slug,confirmation:consent.confirmation});
+    await box.seedLocal("unrecorded-note","unrecorded");
+    await box.seedRemote("unrecorded-note","unrecorded");
+    await box.setBaseline([
+      {slug:"recorded-note",sha256:sha("recorded")},
+      {slug:"unrecorded-note",sha256:sha("unrecorded")},
+    ]);
+    const report=await box.inspectSyntheticBaselineReload();
+    assert.deepEqual(report.notes.map(({slug,status,checkpointCount})=>({
+      slug,status,checkpointCount,
+    })),[
+      {slug:"recorded-note",status:"matches-current-pair",checkpointCount:1},
+      {slug:"unrecorded-note",status:"missing-journal-evidence",checkpointCount:0},
+    ]);
+    assert.equal((await box.listConfirmedSyntheticBaselines()).length,1,
+      "read-only reload never appends evidence for the memory-only note");
+  });
+});
+
+test("M5 reload rejects an unrecorded memory baseline added during final inspection",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("late-memory-only","same");
+    await box.seedRemote("late-memory-only","same");
+    await assert.rejects(box.inspectSyntheticBaselineReload({
+      beforeFinalJournalRecheckForSyntheticTest:async()=>{
+        await box.setBaseline([{slug:"late-memory-only",sha256:sha("same")}]);
+      },
+    }),/M5 reload memory baseline changed during inspection/);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[],
+      "a transient memory change cannot manufacture a disk checkpoint");
+  });
+});
+
 test("M5 reload inspection is read-only even for a matching synthetic pair",async()=>{
   await withScratch(async box=>{
     assert.deepEqual((await box.inspectSyntheticBaselineReload()).notes,[],
@@ -335,6 +463,55 @@ test("M5 read-only journal rejects forged checkpoint IDs and oversized slugs",as
       /Invalid M5 checkpoint evidence/,
       "a structurally valid JSON record may still exceed the slug contract");
     assert.equal(await box.readLocalForSyntheticTest("format-guard"),"approved");
+  });
+});
+
+test("M5 journal refuses non-canonical checkpoint timestamps",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("timestamp-guard","approved");
+    const consent=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:consent.slug,confirmation:consent.confirmation});
+    const record=(await box.listConfirmedSyntheticBaselines())[0];
+    const location=path.join(journal(box),record.id+".json");
+    for(const createdAt of [
+      "0","2026-10-26T08:05:00Z","Wed, 21 Oct 2026 08:05:00 GMT",
+      "2026-02-30T08:05:00.000Z",
+    ]){
+      await writeFile(location,JSON.stringify({...record,createdAt}));
+      await assert.rejects(box.listConfirmedSyntheticBaselines(),
+        /Invalid M5 checkpoint evidence/,
+        "M5 must require the exact UTC millisecond format emitted by new Date().toISOString()");
+    }
+    await writeFile(location,JSON.stringify(record));
+    assert.equal((await box.listConfirmedSyntheticBaselines())[0].createdAt,record.createdAt);
+  });
+});
+
+test("M5 journal rejects ambiguous duplicate keys and noncanonical checkpoint bytes",async()=>{
+  await withScratch(async box=>{
+    await box.seedLocal("canonical-guard","approved");
+    const approval=(await box.preview()).uploadConsents[0];
+    await box.approvedUpload({slug:approval.slug,confirmation:approval.confirmation});
+    const record=(await box.listConfirmedSyntheticBaselines())[0];
+    const location=path.join(journal(box),record.id+".json");
+    const original=await readFile(location,"utf8");
+    const duplicated=original.replace(
+      '"sha256":"'+record.sha256+'"',
+      '"sha256":"'+("0".repeat(64))+'","sha256":"'+record.sha256+'"',
+    );
+    assert.notEqual(duplicated,original);
+    assert.equal(JSON.parse(duplicated).sha256,record.sha256,
+      "ordinary JSON.parse silently accepts the last of two duplicate keys");
+    await writeFile(location,duplicated);
+    await assert.rejects(box.listConfirmedSyntheticBaselines(),
+      /Invalid M5 checkpoint evidence/,
+      "ambiguous property duplicates cannot be accepted as persisted success evidence");
+    await writeFile(location,"\n"+original);
+    await assert.rejects(box.listConfirmedSyntheticBaselines(),
+      /Invalid M5 checkpoint evidence/,
+      "the scratch writer emits exact canonical bytes, not padded or reformatted JSON");
+    await writeFile(location,original);
+    assert.deepEqual(await box.listConfirmedSyntheticBaselines(),[record]);
   });
 });
 

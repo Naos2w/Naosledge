@@ -90,7 +90,7 @@ export type SyntheticBaselineReloadPreview={
     slug:string;
     checkpointCount:number;
     checkpointId:string|null;
-    status:"matches-current-pair"|"ambiguous-history"|
+    status:"matches-current-pair"|"ambiguous-history"|"missing-journal-evidence"|
       "memory-baseline-disagrees"|"changed-local"|"changed-remote"|"changed-both";
   }>;
   syntheticOnly:true;
@@ -811,10 +811,19 @@ export async function createDurableSyntheticObsidianWorkspace(){
            !HASH.test(value.sha256)||
            !/^synthetic-r[1-9][0-9]*$/.test(value.remoteRevision)||
            !["approved-upload","approved-download","approved-restore"].includes(value.action)||
-           typeof value.createdAt!=="string"||!Number.isFinite(Date.parse(value.createdAt))||
+           typeof value.createdAt!=="string"||
+           !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value.createdAt)||
+           !Number.isFinite(Date.parse(value.createdAt))||
+           new Date(value.createdAt).toISOString()!==value.createdAt||
            value.syntheticOnly!==true||value.deleteAllowed!==false||
            Object.keys(value).sort().join(",")!==
              "action,createdAt,deleteAllowed,id,remoteRevision,sha256,slug,syntheticOnly"){
+          throw Error("Invalid M5 checkpoint evidence");
+        }
+        // These scratch receipts are emitted only as JSON.stringify(item).
+        // Exact bytes reject duplicate keys or alternate parses that otherwise
+        // appear identical after JSON.parse. This is not authentication.
+        if(!bytes.equals(Buffer.from(JSON.stringify(value),"utf8"))){
           throw Error("Invalid M5 checkpoint evidence");
         }
         events.push({...value});
@@ -836,20 +845,57 @@ export async function createDurableSyntheticObsidianWorkspace(){
     }={}):Promise<SyntheticBaselineReloadPreview>{
       const events=await this.listConfirmedSyntheticBaselines();
       await ensureActive();
+      // Recovery must inventory both sources, not only checkpointed or
+      // memory-baselined slugs. A never-synchronized note still needs review.
+      const captureSourceInventory=async()=>{
+        // The shared Vault scanner correctly ignores .obsidian configuration,
+        // but this isolated synthetic notes directory has no config folder.
+        // Ignoring one here would make a partial recovery inventory look complete.
+        if((await readdir(notes)).some(name=>name.toLowerCase()===".obsidian")){
+          throw Error("M5 reload local inventory is incomplete");
+        }
+        const local=await readObsidianLocalManifest(notes);
+        if(local.unsupportedMarkdownFiles||local.otherFiles||local.directoriesNotScanned){
+          throw Error("M5 reload local inventory is incomplete");
+        }
+        return {
+          local:local.fingerprints.map(item=>({slug:item.slug,sha256:item.sha256})),
+          remote:[...remote.keys()].sort().map(slug=>remoteFp(slug)!),
+        };
+      };
+      const originalInventory=await captureSourceInventory();
+      // A live memory baseline with no checkpoint must be visible as missing
+      // evidence, never silently omitted from a seemingly empty reload report.
+      const memorySnapshot=new Map([...baseline.entries()].map(
+        ([slug,value])=>[slug,value.sha256],
+      ));
       const grouped=new Map<string,SyntheticBaselineCheckpoint[]>();
       for(const item of events){
         const prior=grouped.get(item.slug)??[];
         prior.push(item);
         grouped.set(item.slug,prior);
       }
-      const notes:SyntheticBaselineReloadPreview["notes"]=[];
+      for(const slug of memorySnapshot.keys()){
+        if(!grouped.has(slug))grouped.set(slug,[]);
+      }
+      for(const item of [...originalInventory.local,...originalInventory.remote]){
+        if(!grouped.has(item.slug))grouped.set(item.slug,[]);
+      }
+      const reportNotes:SyntheticBaselineReloadPreview["notes"]=[];
       const inspectedSources:Array<{
         slug:string;localSha:string|null;remoteSha:string|null;
         remoteRevision:string|null;baselineSha:string|null;
       }>=[];
       for(const [slug,records] of [...grouped.entries()].sort((a,b)=>a[0].localeCompare(b[0],"en"))){
+        if(records.length===0){
+          reportNotes.push({
+            slug,checkpointCount:0,checkpointId:null,
+            status:"missing-journal-evidence",
+          });
+          continue;
+        }
         if(records.length!==1){
-          notes.push({
+          reportNotes.push({
             slug,checkpointCount:records.length,checkpointId:null,
             status:"ambiguous-history",
           });
@@ -885,7 +931,7 @@ export async function createDurableSyntheticObsidianWorkspace(){
            (baseline.get(slug)?.sha256??null)!==initialMemory){
           throw Error("M5 reload source changed during inspection");
         }
-        notes.push({slug,checkpointCount:1,checkpointId:checkpoint.id,status});
+        reportNotes.push({slug,checkpointCount:1,checkpointId:checkpoint.id,status});
       }
       // Re-read every validated checkpoint, not only its filename: an
       // existing .json can be replaced without changing the directory listing.
@@ -907,8 +953,18 @@ export async function createDurableSyntheticObsidianWorkspace(){
           throw Error("M5 reload source changed during inspection");
         }
       }
+      // Include journal-less memory entries in the consistency check, even
+      // when no persisted records exist at all.
+      if(baseline.size!==memorySnapshot.size||
+         [...baseline.entries()].some(([slug,value])=>
+           memorySnapshot.get(slug)!==value.sha256)){
+        throw Error("M5 reload memory baseline changed during inspection");
+      }
+      if(JSON.stringify(await captureSourceInventory())!==JSON.stringify(originalInventory)){
+        throw Error("M5 reload source inventory changed during inspection");
+      }
       return {
-        notes,syntheticOnly:true,autoImportAllowed:false,
+        notes:reportNotes,syntheticOnly:true,autoImportAllowed:false,
         writeAllowed:false,deleteAllowed:false,manualReviewRequired:true,
       };
     },
