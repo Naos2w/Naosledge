@@ -13,7 +13,8 @@ import {MANUAL_M4_INCOMING_INTENT_FORMAT} from "../lib/obsidian-m2-review-choice
 import type {SyncDecision} from "../lib/obsidian-sync-plan.ts";
 
 export const M4_SCRATCH_INCOMING_FLAG="--sandbox-scratch-incoming-only";
-const MAX_REQUEST_BYTES=12_000;
+// Optional local conflict snapshot may carry up to 250 KiB of UTF-8 Markdown.
+const MAX_REQUEST_BYTES=500_000;
 const JWT=/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 const SHA=/^[0-9a-f]{64}$/;
 const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -33,7 +34,7 @@ export function assertManualM4Invocation(
 
 export async function readScratchIncomingRequest(
   source:AsyncIterable<string|Uint8Array>,
-):Promise<{sandboxOwnerJwt:string;decision:SyncDecision;typedConfirmation:string}>{
+):Promise<{sandboxOwnerJwt:string;decision:SyncDecision;typedConfirmation:string;localMarkdown?:string}>{
   const chunks:Buffer[]=[];
   let total=0;
   for await(const part of source){
@@ -46,7 +47,7 @@ export async function readScratchIncomingRequest(
   try{parsed=JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;}
   catch{throw Error("M4 Incoming request must be JSON");}
   if(!parsed||typeof parsed!=="object"||Array.isArray(parsed)||
-     Object.keys(parsed).length!==3||
+     ![3,4].includes(Object.keys(parsed).length)||
      !["sandboxOwnerJwt","typedConfirmation"].every(
        key=>Object.hasOwn(parsed,key)
      )||Object.hasOwn(parsed,"decision")===Object.hasOwn(parsed,"handoff")){
@@ -75,6 +76,13 @@ export async function readScratchIncomingRequest(
     throw Error("M4 Incoming input is invalid");
   }
   const note=d as Record<string,unknown>;
+  const hasLocal=Object.hasOwn(r,"localMarkdown");
+  if((Object.keys(r).length===4&&!hasLocal)||
+     (hasLocal&&(note.choice!=="conflict"||
+       typeof r.localMarkdown!=="string"||
+       Buffer.byteLength(r.localMarkdown,"utf8")>250_000))){
+    throw Error("M4 local snapshot is only accepted for one reviewed conflict");
+  }
   if(typeof note.slug!=="string"||note.slug.length<3||note.slug.length>120||
      !SLUG.test(note.slug)||
      (typeof note.choice!=="string"||
@@ -90,22 +98,25 @@ export async function readScratchIncomingRequest(
     throw Error("M4 Incoming requires an exact per-note read-only decision and confirmation");
   }
   return {sandboxOwnerJwt:r.sandboxOwnerJwt as string,
-    decision:note as SyncDecision,typedConfirmation:r.typedConfirmation as string};
+    decision:note as SyncDecision,typedConfirmation:r.typedConfirmation as string,
+    ...(hasLocal?{localMarkdown:r.localMarkdown as string}:{})};
 }
 
 /** Save only a new OS scratch copy. Never write an Obsidian original. */
 export async function stageOneReviewedSandboxIncoming(
   request:Awaited<ReturnType<typeof readScratchIncomingRequest>>,
   fetcher?:typeof fetch,
-):Promise<{path:string;originalModified:false;baselineSaved:false}>{
+):Promise<{path:string;localCopyPath:string|null;receiptPath:string;originalModified:false;baselineSaved:false}>{
   const result=await stageNeonSandboxIncoming({
     branchId:NEON_SYNC_SANDBOX_BRANCH,
     sandboxOwnerJwt:request.sandboxOwnerJwt,
     decision:request.decision,
     typedConfirmation:request.typedConfirmation,
+    localMarkdown:request.localMarkdown,
     fetcher,
   });
-  return {path:result.path,originalModified:result.originalModified,
+  return {path:result.path,localCopyPath:result.localCopyPath,
+    receiptPath:result.receiptPath,originalModified:result.originalModified,
     baselineSaved:result.baselineSaved};
 }
 
@@ -123,6 +134,10 @@ if(invoked){
     }
     // Private path is shown only to the person running this manual command.
     console.log("M4_SANDBOX_INCOMING_SAVED "+result.path);
+    if(result.localCopyPath){
+      console.log("M4_SANDBOX_LOCAL_CONFLICT_COPY_SAVED "+result.localCopyPath);
+    }
+    console.log("M4_SANDBOX_LOCAL_RECEIPT_SAVED "+result.receiptPath);
     console.log("PRIVATE_SCRATCH_COPY_ONLY; ORIGINAL_AND_BASELINE_UNCHANGED");
   }catch{
     // Never echo JWT, note content, server response, or note identifiers.
