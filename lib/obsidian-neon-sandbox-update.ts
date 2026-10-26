@@ -7,9 +7,11 @@
 import {createHash} from "node:crypto";
 import {parseObsidianMarkdown,serializeObsidianMarkdown}
   from "./obsidian-markdown.ts";
+import {extractWikiReferences} from "./wiki-links.ts";
 import {
   NEON_SYNC_SANDBOX_BRANCH,NEON_SYNC_SANDBOX_DATA_API,
   fetchVerifiedNeonSandboxOwnerFingerprints,fetchNeonSandboxFingerprints,
+  fetchVerifiedNeonSandboxMarkdown,
 } from "./obsidian-neon-sandbox-readonly.ts";
 import type {SyncDecision} from "./obsidian-sync-plan.ts";
 
@@ -121,6 +123,38 @@ export async function updateNeonSandboxNoteIfUnchanged(args:{
      serializeObsidianMarkdown({...parsed.metadata,content_md:parsed.content_md})!==markdown||
      digest(markdown)!==d.expectedLocalSha){
     throw Error("M3 local Markdown changed since individual review");
+  }
+
+  // Direct PATCH bypasses save_knowledge_note(), which atomically refreshes
+  // the separate knowledge_links table. Do not silently corrupt backlinks:
+  // forbid either an old or a new link, including removing a former link.
+  if(extractWikiReferences(parsed.content_md).length>0){
+    throw Error("M3 Sandbox update cannot maintain WikiLinks atomically");
+  }
+  const originalMarkdown=await fetchVerifiedNeonSandboxMarkdown({
+    branchId:args.branchId,jwt:args.sandboxOwnerJwt,slug:d.slug,
+    expectedSha256:d.expectedRemoteSha,
+    expectedRevision:d.expectedRemoteRevision,fetcher:request,
+  });
+  const original=parseObsidianMarkdown(originalMarkdown,d.slug+".md","1970-01-01");
+  if(!original||extractWikiReferences(original.content_md).length>0){
+    throw Error("M3 Sandbox update cannot maintain existing WikiLinks atomically");
+  }
+  // Even a link-free original could have an inconsistent stored index. Check
+  // the RLS-filtered outgoing index before attempting the version-CAS PATCH.
+  const linksUrl=new URL(NEON_SYNC_SANDBOX_DATA_API.replace(/\/$/,"")+"/knowledge_links");
+  linksUrl.searchParams.set("select","target_key");
+  linksUrl.searchParams.set("source_note_id","eq."+identity.id);
+  linksUrl.searchParams.set("limit","1");
+  const linksResponse=await request(linksUrl.href,{
+    method:"GET",redirect:"manual",credentials:"omit",cache:"no-store",
+    headers:{Authorization:"Bearer "+args.sandboxOwnerJwt,Accept:"application/json",
+      "Cache-Control":"no-store",Prefer:"count=exact"},
+    signal:AbortSignal.timeout(16000),
+  });
+  const links=await smallJsonRows(linksResponse,false);
+  if(links.length!==0||linksResponse.headers.get("content-range")?.trim()!=="*/0"){
+    throw Error("M3 Sandbox update cannot preserve the outgoing WikiLink index");
   }
 
   // True compare-and-swap: the UPDATE is conditional on the database's

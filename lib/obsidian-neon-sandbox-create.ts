@@ -10,6 +10,7 @@
 import {createHash} from "node:crypto";
 import {parseObsidianMarkdown,serializeObsidianMarkdown}
   from "./obsidian-markdown.ts";
+import {extractWikiReferences} from "./wiki-links.ts";
 import {
   NEON_SYNC_SANDBOX_BRANCH,NEON_SYNC_SANDBOX_DATA_API,
   fetchVerifiedNeonSandboxOwnerFingerprints,fetchNeonSandboxFingerprints,
@@ -63,6 +64,11 @@ export async function createNeonSandboxNoteOnly(args:{
      serializeObsidianMarkdown({...parsed.metadata,content_md:parsed.content_md})!==markdown||
      createHash("sha256").update(markdown,"utf8").digest("hex")!==d.expectedLocalSha){
     throw Error("M3 Markdown is not the exact reviewed portable note");
+  }
+  // This direct POST does not maintain the separate knowledge_links index.
+  // Reject notes with active WikiLinks until a single-transaction writer exists.
+  if(extractWikiReferences(parsed.content_md).length>0){
+    throw Error("M3 Sandbox create cannot maintain WikiLinks atomically");
   }
 
   // Only INSERT; (owner_id,slug) is UNIQUE in the existing Neon schema.

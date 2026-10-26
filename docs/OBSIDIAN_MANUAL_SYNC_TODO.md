@@ -87,6 +87,8 @@ try {
 - 合成遠端首次建立與更新皆可單獨驗收；**成功驗證兩端內容相同後**才更新合成 Baseline。失敗不更新 Baseline，不執行 DELETE；此項不代表 Neon Sandbox 真實寫入功能已完成。
 - 既有 `consents` 仍只供下載預演，新增的 `uploadConsents` **不能當作 M2 React 選擇、真實寫入授權、API 憑證或正式同步工作清單**。後續仍要補真正的 Owner Auth / RLS + Sandbox E2E，並確認遠端寫入有版本條件與恢復策略。
 
+- **2026-10-26 M3 WikiLink/backlink 防護（離線實作）**：發現現有 M3 固定 Sandbox 直接 `POST/PATCH knowledge_notes` 不會同步維護應用程式 `save_knowledge_note()` 管理的 `knowledge_links`，可能造成反向連結索引不一致。現在建立前拒絕正文中可作用的 `[[WikiLink]]`；條件式更新前還會核對**新版及遠端舊版**內容皆無作用中的 WikiLink，並以同一 Owner JWT/RLS GET 確認舊筆記 `knowledge_links` 出站索引總數確實為 0。若索引查詢缺失、非完整回應或有舊連結，一律**在 POST/PATCH 之前拒絕**；無連結筆記仍保留原單篇手動／CAS 路徑。M3 相關離線 HTTP／CLI 21/21 PASS，新增 4 項負向案例（新增／移除連結、索引非空／缺少完整性）。**沒有呼叫真實 Sandbox POST/PATCH，沒有 Production、Vault 或 Baseline 寫入。** 下一步在經批准的 Sandbox 隔離 schema 設計及驗收能**單一交易**同時維護 `knowledge_notes`、`knowledge_links` 與樂觀版本條件的寫入器；在那之前不開放帶 WikiLink 的直接上傳。這項受控隔離測試不授權任何正式 Migration。
+
 ## M4 Incoming 隔離預演與固定 Sandbox 讀取（2026-10-24）
 
 - **2026-10-26 M4 暫存副本落盤驗證（PR #36 追加）**：對經 Owner-RLS 唯讀驗證的單篇 Markdown，於全新隨機 OS 暫存 Incoming 以 `wx`／私人檔案權限建立後，先對已開啟檔案 `fsync`、關閉，再重新讀取實際檔案位元組計算 SHA-256；只有與事前審核的遠端 SHA 完全一致才回傳成功收據。寫入、同步、關閉、回讀或 SHA 不符一律清理本次新建的 Incoming 目錄並回報失敗。這僅降低暫存副本部分寫入或落盤錯誤被誤報成功的風險，**不保證斷電後目錄持久性**、不認證真正 MSI／Neon E2E、不修改 Vault 或 Baseline、也不構成自動同步授權。

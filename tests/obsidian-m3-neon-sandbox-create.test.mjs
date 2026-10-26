@@ -112,6 +112,22 @@ test("M3 refuses missing individual consent, modified content, and existing remo
     "GET /neondb/rest/v1/blog_admins","GET /neondb/rest/v1/knowledge_notes",
   ]);
 });
+test("M3 refuses to create a WikiLinked note without atomic backlink maintenance",async()=>{
+  const linkedMarkdown=serializeObsidianMarkdown({
+    ...draft,content_md:"A reference to [[another-note]]",
+  });
+  const n=fakeNetwork();
+  await assert.rejects(createNeonSandboxNoteOnly({
+    ...options,decision:{...decision,
+      expectedLocalSha:createHash("sha256").update(linkedMarkdown).digest("hex"),
+    },readMarkdown:async()=>linkedMarkdown,fetcher:n.fetcher,
+  }),/cannot maintain WikiLinks atomically/);
+  assert.deepEqual(n.calls,[
+    "GET /neondb/rest/v1/blog_admins",
+    "GET /neondb/rest/v1/knowledge_notes",
+  ],"unsupported linked note must not reach POST");
+});
+
 test("M3 reads local source only after fresh Owner inventory, never from cached M1 text",async()=>{
   const n=fakeNetwork();
   const events=[];
