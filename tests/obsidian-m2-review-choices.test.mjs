@@ -7,6 +7,8 @@ import {
   chooseReviewIntent,reviewIntentOptions,summariseReviewIntents,
   serializeManualM2Handoff,parseManualM2Handoff,
   serializeManualM4IncomingIntent,MANUAL_M4_INCOMING_INTENT_FORMAT,
+  serializeManualM3UploadIntent,parseManualM3UploadIntent,
+  MANUAL_M3_UPLOAD_INTENT_FORMAT,
 } from "../lib/obsidian-m2-review-choices.ts";
 import {readScratchIncomingRequest} from "../scripts/obsidian-m4-sandbox-manual-incoming.ts";
 
@@ -127,6 +129,8 @@ test("M2 private route requires Vault owner and starts without synthetic notes o
   assert.match(ui,/role="group" aria-label="差異類型篩選"/);
   assert.match(ui,/Object\.hasOwn\(choices,row\.slug\)/);
   assert.match(ui,/serializeManualM4IncomingIntent/);
+  assert.match(ui,/serializeManualM3UploadIntent/);
+  assert.match(ui,/匯出單篇上傳交接 JSON/);
   assert.match(ui,/manualPreview&&preview\.previewStatus==="ready"/);
   assert.match(ui,/URL\.createObjectURL/);
 });
@@ -207,6 +211,55 @@ test("M2 manual JSON handoff carries only validated, non-executable metadata",as
         {...d,expectedRemoteRevision:null}:d)}}),
   ]){
     assert.throws(()=>parseManualM2Handoff(bad),/M2|JSON/);
+  }
+});
+
+test("M2 exports one validated non-executable M3 upload handoff for create or update",async()=>{
+  const demo=await makeSyntheticM2Preview();
+  const preview={...demo,decisions:demo.decisions.map(row=>({
+    ...row,expectedRemoteRevision:row.expectedRemoteRevision===null?
+      null:"e".repeat(64),
+  }))};
+  const selected=chooseReviewIntent(preview,{},"local-new","upload");
+  const createJson=serializeManualM3UploadIntent(preview,selected,"local-new");
+  const create=JSON.parse(createJson);
+  assert.equal(create.format,MANUAL_M3_UPLOAD_INTENT_FORMAT);
+  assert.deepEqual(Object.keys(create),["format","decision"]);
+  assert.equal(create.decision.choice,"review-missing-remote");
+  assert.equal(create.decision.expectedRemoteSha,null);
+  assert.equal(create.decision.expectedRemoteRevision,null);
+  assert.deepEqual(parseManualM3UploadIntent(create),create.decision);
+  assert.doesNotMatch(createJson,/content_md|sandboxOwnerJwt|markdown|typedConfirmation|destination/);
+
+  const both=chooseReviewIntent(preview,selected,"react-hooks","upload");
+  const update=JSON.parse(serializeManualM3UploadIntent(preview,both,"react-hooks"));
+  assert.equal(update.decision.choice,"review-upload");
+  assert.match(update.decision.expectedRemoteRevision,/^[0-9a-f]{64}$/);
+  assert.deepEqual(parseManualM3UploadIntent(update),update.decision);
+  assert.throws(()=>serializeManualM3UploadIntent(preview,selected,"react-hooks"),
+    /reviewed upload/);
+  assert.throws(()=>serializeManualM3UploadIntent(preview,both,"nextjs-routing"),
+    /reviewed upload/);
+
+  const partial={...preview,previewStatus:"partial-local-coverage",
+    inventory:{...preview.inventory,localDirectoriesNotScanned:1,
+      localCoverageNeedsReview:true}};
+  assert.throws(()=>serializeManualM3UploadIntent(partial,selected,"local-new"),
+    /full local inventory/);
+  const unrevised={...preview,decisions:preview.decisions.map(row=>
+    row.slug==="react-hooks"?{...row,expectedRemoteRevision:"demo-r1"}:row)};
+  assert.throws(()=>serializeManualM3UploadIntent(unrevised,both,"react-hooks"),
+    /reviewed upload/);
+  for(const bad of [
+    {...create,format:"unexpected"},
+    {...create,jwt:"credential"},
+    {...create,decision:{...create.decision,choice:"conflict"}},
+    {...create,decision:{...create.decision,expectedRemoteSha:"1".repeat(64)}},
+    {...update,decision:{...update.decision,expectedRemoteRevision:null}},
+    {...update,decision:{...update.decision,expectedLocalSha:update.decision.expectedRemoteSha}},
+    {...update,decision:{...update.decision,filename:"C:/Vault/original.md"}},
+  ]){
+    assert.throws(()=>parseManualM3UploadIntent(bad),/M3 upload handoff/);
   }
 });
 

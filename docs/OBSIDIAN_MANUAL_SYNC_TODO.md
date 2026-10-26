@@ -25,6 +25,8 @@
 
 **本輪 M5 可執行交付（候選，待 CI／合併）**：新增 `scripts/obsidian-m5-scratch-recovery.ts --synthetic-readonly <OS-temp-scratch-path>`，讓**不同 Node 程序**透過 stdin 接受明確完整的合成遠端指紋清單，唯讀重新開啟上一程序的 OS 暫存 Scratch `baseline-journal` 與本地筆記，逐篇輸出匹配／本地改變／遠端改變／雙邊改變／缺少日誌／多筆歷史不明。共用既有日誌的嚴格 JSON 與 SHA 驗證；拒絕非 OS 暫存、漏掃與損毀來源；不還原、匯入 Baseline、刪除或寫入。新增真正子程序執行回歸測試。**遠端快照仍是呼叫者提供的離線資料，沒有驗證真人 RLS 身分、不可當作正式可信 Baseline 或真正 Neon E2E**；正式持久證據認證、整合及 M6 真正 Sandbox 寫入驗收仍待授權與實作。**PR #41（M4 handoff）及 #42（M4 conflict pair／跨程序 Incoming receipt）已經 Owner 個別批准並合併 `main`，合併後 `7971fa486ef9fc8ef724493c90ba533c6ecb2b7a` 的 CI #164 SUCCESS。** PR #43 已在全新隔離 worktree 整合此 main，保留 M4 完整交接／雙副本收據和原本 M5 Scratch 恢復預檢；41 項 M4/M5 定向測試通過。此候選仍只具備離線跨程序預檢，不是正式可信 Baseline；尚未取得 #43 合併或真實 Sandbox 寫入授權。
 
+**2026-10-26 M2→M3 單篇上傳交接（新增候選，尚未合併）**：私人 M2 審查頁在本人匯入完整 MSI Sandbox 唯讀快照、逐篇選「預定上傳」且本機清單無漏掃後，可透過瀏覽器 Blob 下載該篇 `naosledge.m3.sandbox-upload-intent.v1` JSON。僅含 slug、`review-upload`／`review-missing-remote` 方向與兩端 SHA/revision，不含 JWT、Markdown、Vault 路徑或執行授權。MSI M3 create-only Scratch／conditional UPDATE CLI 另以 stdin 接受完整 `handoff`（仍相容既有 `decision` 或無 handoff 的 Scratch 建立），嚴格驗證六欄方向及所有 SHA、當次重新取得的 canonical Markdown 位元組與 slug；此外仍需另行輸入短效 Sandbox Owner JWT 及 `CREATE SANDBOX <slug>`／`UPDATE SANDBOX <slug>` 明確文字確認，對真正遠端版本再次 Owner-RLS GET／CAS。缺欄位、修改後的本地 SHA、缺少修訂、錯誤方向、混入其他欄位、部分本地掃描均拒絕，不會有自動傳輸／重試／Baseline／刪除。僅離線 HTTP 模擬與本機 Node 測試，**不是**真實 Sandbox Owner E2E 或 Vault 正式上傳；M3 真實寫入仍須新的單次 Owner 批准。
+
 **暫緩**：PR #21–25 安全研究整合、TPM/DPAPI、企業級 AES 備份輪換、強制斷電實驗、Cron 自動同步及自動覆寫。這些不是 M2／M3 一般開發前置條件。
 
 ## 正式里程碑

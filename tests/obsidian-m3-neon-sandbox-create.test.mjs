@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
 import {createNeonSandboxNoteOnly} from "../lib/obsidian-neon-sandbox-create.ts";
+import {MANUAL_M3_UPLOAD_INTENT_FORMAT} from "../lib/obsidian-m2-review-choices.ts";
 import {
   NEON_SYNC_SANDBOX_BRANCH,NEON_SYNC_SANDBOX_DATA_API,
 } from "../lib/obsidian-neon-sandbox-readonly.ts";
@@ -179,6 +180,42 @@ function fakeLinkedNetwork({ownerGranted=true,rpcStatus=200,rpcId=row().id,
   }
   return {fetcher,calls};
 }
+
+test("M3 CREATE accepts only the exact M2 single-note handoff and Scratch SHA",async()=>{
+  const handoff={format:MANUAL_M3_UPLOAD_INTENT_FORMAT,decision};
+  const request=await readScratchCreateRequest([JSON.stringify({
+    sandboxOwnerJwt:jwt,markdown,
+    typedConfirmation:"CREATE SANDBOX "+draft.slug,handoff,
+  })]);
+  const mock=fakeNetwork();
+  assert.deepEqual(await createOneReviewedScratchNote(request,mock.fetcher),
+    {baselineSaved:false});
+  assert.equal(mock.calls.filter(x=>x.startsWith("POST ")).length,1);
+
+  for(const bad of [
+    {...handoff,decision:{...decision,expectedLocalSha:"0".repeat(64)}},
+    {...handoff,decision:{...decision,slug:"another-note"}},
+    {...handoff,decision:{...decision,choice:"review-upload",
+      expectedRemoteSha:"a".repeat(64),expectedRemoteRevision:"b".repeat(64)}},
+  ]){
+    const input={sandboxOwnerJwt:jwt,markdown,
+      typedConfirmation:"CREATE SANDBOX "+draft.slug,handoff:bad};
+    if(bad.decision.choice==="review-upload"){
+      await assert.rejects(readScratchCreateRequest([JSON.stringify(input)]),
+        /CREATE accepts only/);
+    }else{
+      const parsed=await readScratchCreateRequest([JSON.stringify(input)]);
+      const denied=fakeNetwork();
+      await assert.rejects(createOneReviewedScratchNote(parsed,denied.fetcher),
+        /no longer matches Scratch Markdown/);
+      assert.deepEqual(denied.calls,[],"mismatched handoff must fail before Owner GET");
+    }
+  }
+  await assert.rejects(readScratchCreateRequest([JSON.stringify({
+    sandboxOwnerJwt:jwt,markdown,typedConfirmation:"CREATE SANDBOX "+draft.slug,
+    handoff:{...handoff,filename:"original.md"},
+  })]),/handoff format/);
+});
 
 test("M3 WikiLinked scratch create uses single-transaction Owner-RLS RPC and verifies backlinks",async()=>{
   const n=fakeLinkedNetwork();

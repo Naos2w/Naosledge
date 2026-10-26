@@ -12,7 +12,7 @@ import type {SyncChoice} from "@/lib/obsidian-sync-plan";
 import {
   chooseReviewIntent,reviewIntentOptions,summariseReviewIntents,
   parseManualM2Handoff,MANUAL_M2_HANDOFF_MAX_BYTES,
-  serializeManualM4IncomingIntent,
+  serializeManualM4IncomingIntent,serializeManualM3UploadIntent,
   type ReviewIntent,type ReviewIntentSelections,
 } from "@/lib/obsidian-m2-review-choices";
 
@@ -57,18 +57,28 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
     setShowSummary(false);
   }
 
-  function exportIncomingIntent(slug:string){
-    if(!manualPreview)return;
-    // A local, non-executable ONE-note metadata file. No network or JWT.
-    const json=serializeManualM4IncomingIntent(manualPreview,choices,slug);
+  function downloadIntentJson(json:string,filename:string){
+    // Browser-local Blob only. This does not transmit note metadata.
     const url=URL.createObjectURL(new Blob([json],{type:"application/json"}));
     const link=document.createElement("a");
     link.href=url;
-    link.download="naosledge-m4-incoming-"+slug+".json";
+    link.download=filename;
     document.body.append(link);
     link.click();
     link.remove();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+
+  function exportIncomingIntent(slug:string){
+    if(!manualPreview)return;
+    const json=serializeManualM4IncomingIntent(manualPreview,choices,slug);
+    downloadIntentJson(json,"naosledge-m4-incoming-"+slug+".json");
+  }
+
+  function exportUploadIntent(slug:string){
+    if(!manualPreview)return;
+    const json=serializeManualM3UploadIntent(manualPreview,choices,slug);
+    downloadIntentJson(json,"naosledge-m3-upload-"+slug+".json");
   }
 
   async function importLocalHandoff(file:File|undefined){
@@ -213,6 +223,15 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
                 })}
               </div>
               <small aria-live="polite">{selected?"已記下選擇："+INTENT_LABEL[selected]:"尚未選擇，不會進行任何動作"}</small>
+              {manualPreview&&preview.previewStatus==="ready"&&selected==="upload"&&
+                (row.choice==="review-upload"||row.choice==="review-missing-remote")&&
+                (row.choice==="review-missing-remote"||
+                  /^[0-9a-f]{64}$/.test(row.expectedRemoteRevision??""))&&
+                <button type="button" className="vault-sync-intent-export"
+                  aria-label={row.slug+" 的 M3 上傳交接 JSON"}
+                  onClick={()=>exportUploadIntent(row.slug)}>
+                  匯出單篇上傳交接 JSON（不執行）
+                </button>}
               {manualPreview&&preview.previewStatus==="ready"&&
                 /^[0-9a-f]{64}$/.test(row.expectedRemoteRevision??"")&&
                 (selected==="download"||selected==="keep-both")&&
