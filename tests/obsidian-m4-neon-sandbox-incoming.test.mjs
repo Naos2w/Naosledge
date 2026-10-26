@@ -75,7 +75,10 @@ test("M4 copies exactly one Owner-RLS Sandbox note into a new temp Incoming dire
   const n=fakeNetwork();
   const first=await stageNeonSandboxIncoming({...options,fetcher:n.fetcher});
   try{
-    assert.equal(await readFile(first.path,"utf8"),portable(note));
+    const staged=await readFile(first.path);
+    assert.equal(staged.toString("utf8"),portable(note));
+    assert.equal(createHash("sha256").update(staged).digest("hex"),digest,
+      "success receipt must describe the persisted Incoming bytes");
     assert.equal(path.basename(first.path),note.slug+".md");
     assert.ok(first.path.startsWith(tmpdir()));
     assert.deepEqual({originalModified:first.originalModified,baselineSaved:first.baselineSaved},
@@ -112,6 +115,39 @@ test("M4 rejects missing consent or upload direction before any network or files
     ...options,decision:{...choice,expectedRemoteRevision:null},fetcher:n.fetcher,
   }),/per-note Incoming confirmation/);
   assert.equal(n.calls.length,0);
+});
+
+test("M4 staging independently rejects contradictory M2 decisions before Owner GET",async()=>{
+  const network=fakeNetwork();
+  const invalid=[
+    {...choice,expectedLocalSha:null}, // conflict requires two present versions
+    {...choice,expectedLocalSha:"not-a-sha"},
+    {...choice,expectedLocalSha:digest}, // equal SHA belongs to unchanged
+    {...choice,choice:"review-download",expectedLocalSha:null},
+    {...choice,choice:"review-missing-local",expectedLocalSha:"a".repeat(64)},
+    {...choice,choice:"review-missing-local",expectedLocalSha:null,path:"injected"},
+  ];
+  for(const decision of invalid){
+    await assert.rejects(stageNeonSandboxIncoming({
+      ...options,decision,fetcher:network.fetcher,
+    }),/per-note Incoming confirmation/);
+  }
+  assert.equal(network.calls.length,0);
+});
+
+test("M4 stage accepts consistent reviewed download and missing-local decisions",async()=>{
+  const network=fakeNetwork();
+  for(const decision of [
+    {...choice,choice:"review-download"},
+    {...choice,choice:"review-missing-local",expectedLocalSha:null},
+  ]){
+    const result=await stageNeonSandboxIncoming({
+      ...options,decision,fetcher:network.fetcher,
+    });
+    try{assert.equal(await readFile(result.path,"utf8"),portable(note));}
+    finally{await rm(path.dirname(result.path),{recursive:true,force:true});}
+  }
+  assert.equal(network.calls.length,6);
 });
 
 test("M4 rejects absent Owner grant and stale remote content before staging",async()=>{
