@@ -163,6 +163,44 @@ export function chooseReviewIntent(
   return {...current,[slug]:intent};
 }
 
+export const MANUAL_M4_INCOMING_INTENT_FORMAT="naosledge.m4.sandbox-incoming-intent.v1";
+
+/**
+ * Browser-only M2 -> MSI M4 handoff for ONE selected download/keep-both.
+ * This is just a frozen, untrusted comparison hint: no JWT, Markdown,
+ * destination, approval, or command is included. MSI must independently
+ * authenticate, re-read the remote note, and request typed confirmation.
+ */
+export function serializeManualM4IncomingIntent(
+  preview:ManualReviewPreview,
+  selected:ReviewIntentSelections,
+  slug:string,
+):string{
+  summariseReviewIntents(preview,selected);
+  if(preview.previewStatus!=="ready"){
+    throw Error("M4 handoff needs full local inventory coverage");
+  }
+  const row=preview.decisions.find(d=>d.slug===slug);
+  const intent=Object.hasOwn(selected,slug)?selected[slug]:undefined;
+  if(!row||!row.manualReview||
+     !((intent==="download"&&
+         (row.choice==="review-download"||row.choice==="review-missing-local"))||
+       (intent==="keep-both"&&row.choice==="conflict"))||
+     row.expectedRemoteSha===null||row.expectedRemoteRevision===null||
+     !SHA.test(row.expectedRemoteRevision)){
+    throw Error("M4 handoff requires one reviewed Incoming decision");
+  }
+  return JSON.stringify({
+    format:MANUAL_M4_INCOMING_INTENT_FORMAT,
+    decision:{
+      slug:row.slug,choice:row.choice,manualReview:true,
+      expectedLocalSha:row.expectedLocalSha,
+      expectedRemoteSha:row.expectedRemoteSha,
+      expectedRemoteRevision:row.expectedRemoteRevision,
+    },
+  })+"\n";
+}
+
 export const MANUAL_M2_HANDOFF_FORMAT="naosledge.m2.sandbox-readonly.v1";
 export const MANUAL_M2_HANDOFF_MAX_BYTES=512_000;
 

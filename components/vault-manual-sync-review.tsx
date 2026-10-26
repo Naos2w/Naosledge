@@ -11,6 +11,7 @@ import type {SyncChoice} from "@/lib/obsidian-sync-plan";
 import {
   chooseReviewIntent,reviewIntentOptions,summariseReviewIntents,
   parseManualM2Handoff,MANUAL_M2_HANDOFF_MAX_BYTES,
+  serializeManualM4IncomingIntent,
   type ReviewIntent,type ReviewIntentSelections,
 } from "@/lib/obsidian-m2-review-choices";
 
@@ -53,6 +54,20 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
     if(!preview)return;
     setChoices(before=>chooseReviewIntent(preview,before,slug,intent));
     setShowSummary(false);
+  }
+
+  function exportIncomingIntent(slug:string){
+    if(!manualPreview)return;
+    // A local, non-executable ONE-note metadata file. No network or JWT.
+    const json=serializeManualM4IncomingIntent(manualPreview,choices,slug);
+    const url=URL.createObjectURL(new Blob([json],{type:"application/json"}));
+    const link=document.createElement("a");
+    link.href=url;
+    link.download="naosledge-m4-incoming-"+slug+".json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
 
   async function importLocalHandoff(file:File|undefined){
@@ -197,6 +212,14 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
                 })}
               </div>
               <small aria-live="polite">{selected?"已記下選擇："+INTENT_LABEL[selected]:"尚未選擇，不會進行任何動作"}</small>
+              {manualPreview&&preview.previewStatus==="ready"&&
+                /^[0-9a-f]{64}$/.test(row.expectedRemoteRevision??"")&&
+                (selected==="download"||selected==="keep-both")&&
+                <button type="button" className="vault-sync-intent-export"
+                  aria-label={row.slug+" 的 M4 Incoming 交接 JSON"}
+                  onClick={()=>exportIncomingIntent(row.slug)}>
+                  匯出單篇 Incoming 交接 JSON（不執行）
+                </button>}
             </> : <span className="vault-sync-inactive"><ShieldCheck size={16}/> 不執行任何操作</span>}
           </div>
         </li>;

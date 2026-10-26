@@ -95,6 +95,25 @@ try {
 
 ## M4 Incoming 隔離預演與固定 Sandbox 讀取（2026-10-24）
 
+- **2026-10-26 M2 → M4 瀏覽器選擇交接（獨立候選 PR，待合併）**：真正 MSI M1/M2 唯讀 JSON 匯入私有審查頁後，只有本人逐篇選「預定下載」（`review-download`／`review-missing-local`）或衝突「保留兩份」（`conflict`），且本機覆蓋完整、遠端 Revision 為真正 Sandbox 使用的 64 位 SHA 時，才顯示「匯出單篇 Incoming 交接 JSON」。瀏覽器只用 Blob 下載**一篇**僅含 slug／choice／兩端 SHA／revision 的六欄 `SyncDecision`，外層帶 `naosledge.m4.sandbox-incoming-intent.v1` 格式；無 JWT、正文、原稿路徑、目的地、授權或自動操作。MSI 人工將 `JSON.decision` 組入既有 `obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only` stdin，**另外**輸入短效 Sandbox Owner JWT 及逐篇 `SAVE SANDBOX INCOMING <slug>`；M4 會再次 Owner-RLS GET、比對版本，成功只寫新 OS 暫存 Incoming，**原稿及 Baseline 不變**。使用者應在本機保護並清除含私人筆記識別資訊的匯出檔。Node 定向測試與實體 Chrome 檔案下載測試使用**合成** M1 資料，並未執行真正 Neon GET、原稿存取或 Sandbox 寫入；實際 MSI／Owner 身分下載驗收仍需另行核准。手動 PowerShell 接線示例（**只供本人核准後在 MSI 執行，絕不可將 JWT 貼進檔案／argv／日誌**）：
+
+```powershell
+$handoffPath = 'C:\\Users\\Naos\\Downloads\\naosledge-m4-incoming-<slug>.json'
+$handoff = Get-Content -LiteralPath $handoffPath -Raw -Encoding UTF8 | ConvertFrom-Json -AsHashtable
+if ($handoff.Count -ne 2 -or $handoff.format -ne 'naosledge.m4.sandbox-incoming-intent.v1') { throw 'Not an M4 Incoming handoff' }
+$typed = Read-Host ("Type SAVE SANDBOX INCOMING " + $handoff.decision.slug)
+$secret = Read-Host 'Short-lived Sandbox OWNER JWT' -AsSecureString
+try {
+  @{ sandboxOwnerJwt = [System.Net.NetworkCredential]::new('', $secret).Password
+     decision = $handoff.decision
+     typedConfirmation = $typed } |
+    ConvertTo-Json -Compress -Depth 6 |
+    node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only
+} finally {
+  Remove-Variable secret,typed,handoff -ErrorAction SilentlyContinue
+}
+```
+
 - **2026-10-26 M4 暫存副本落盤驗證（PR #36 追加）**：對經 Owner-RLS 唯讀驗證的單篇 Markdown，於全新隨機 OS 暫存 Incoming 以 `wx`／私人檔案權限建立後，先對已開啟檔案 `fsync`、關閉，再重新讀取實際檔案位元組計算 SHA-256；只有與事前審核的遠端 SHA 完全一致才回傳成功收據。寫入、同步、關閉、回讀或 SHA 不符一律清理本次新建的 Incoming 目錄並回報失敗。這僅降低暫存副本部分寫入或落盤錯誤被誤報成功的風險，**不保證斷電後目錄持久性**、不認證真正 MSI／Neon E2E、不修改 Vault 或 Baseline、也不構成自動同步授權。
 
 - **2026-10-26 M4 低階 Incoming 決策一致性守門**：在 `stageNeonSandboxIncoming()` 本身驗證單篇 M2 `SyncDecision` 必須恰含 6 個規定欄位、合法本地 SHA／遠端 SHA／revision，`review-missing-local` 必須本地 SHA 為 null，`review-download`／`conflict` 必須有與遠端不同的本地 SHA。拒絕偽造衝突、已相同版本、遺漏本地版本與夾帶任意目的地，且在 Owner GET 或建立 Incoming 前拒絕；不再僅倚賴 MSI CLI 已做的同型驗證。新增紅燈→綠燈模擬 HTTP／Scratch 回歸，未執行真正 Neon GET 或任何 Vault 寫入，也未核准正式同步。
