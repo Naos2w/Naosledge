@@ -1,5 +1,12 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
+## 2026-10-28 最新進度與單一路徑（取代以下 10/26 的舊 PR 狀態）
+
+- **已合併**：#43–#48 與整合 #49 均已於 2026-10-27 合併 `main`，目前 `main` SHA `4f51fa41251312b2e2437116be27b0d7b8918b5e`，#49 exact-head CI `40354567245` SUCCESS。不得再以「#49 待合併」為阻礙，也不要重複開相同功能 PR。
+- **本次開發**：在新隔離分支 `feat/obsidian-m3-m6-e2e-fix-20261028` 建立 `scripts/obsidian-m3m4-sandbox-live-acceptance.ts`，以**實際 MSI 子程序與真實固定 Neon Integration Sandbox Owner-RLS API**串接 M2 上傳意圖 → M3 單篇 CREATE → M5 跨程序 witness 重驗 → M4 Incoming 實際暫存檔 → M3 CAS UPDATE → 拒絕舊 revision → M4 保留衝突雙版本 → 精確清理單一合成筆記。**僅新增可受控執行入口，尚未取得新的 Sandbox 寫入批准，尚未進行真實 live E2E；不得以離線測試取代驗收。**
+- **新的正式驗收前置條件**：使用者獨立指名允許本次合成 Sandbox M3/M4 操作；僅限 MSI、固定 `br-quiet-sunset-b4xx4pnx`，必須同時提供通用與本次專屬核准環境旗標，並在產生一次性合成 Auth ID 後由 Owner 於 Sandbox 單獨授權 `blog_admins`。完成時腳本驗證單筆測試筆記清除，另外輸出 Auth user／暫時授權的人工作業收尾 ID；不碰私人 Vault／Production、不同意自動刪除真實筆記。未核准時嚴格停止在第一次網路請求前。
+- **實際剩餘結案項**：本入口完成並跑過真實 Sandbox E2E 後，依真實 API 的失敗訊號修真正確 root cause；再解決 M5 正式可信 Baseline 的授權及持久化設計、M6 故障與恢復；M7 正式發布仍獨立核准。舊 Scratch witness 與 equality observation 僅屬自述紀錄，不代表可信同步完成。
+
 更新：2026-10-26；M1/M2 已完成真實 Neon Integration Sandbox 合成 Owner JWT／RLS → MSI 唯讀掃描／JSON → 本機 Chrome 審查整合驗收。尚未部署 Production。
 
 **2026-10-26 23:50 集中整合候選（尚未合併 main）**：目前正式 main 保持在 `7971fa486ef9fc8ef724493c90ba533c6ecb2b7a`（#42；CI #164 SUCCESS）。已在獨立 `integrate/obsidian-m3-m5-delivery-20261026-23` 分支以原 Git 提交歷史整合 #43（M5 Scratch 跨程序重啟檢查）、#44（M4 Incoming Owner-RLS 當下重驗）、#45（M5 雙版本 Browser 純本機比較）、#46（M2→M3 審查交接 JSON）、#47（M3 verified Scratch witness → M5 重驗）與 #48（已註冊 MSI Vault／Sandbox Owner-RLS 雙端 SHA 相同的觀察收據）。已將 6 個 PR 的 Vercel 禁用設定及整合分支一同保留，測試通過後仍需 Owner 授權才可合併到 main。**新增獨立整合測試** `tests/obsidian-m6-integrated-handoff-witness.test.mjs`，使用離線 Owner-RLS HTTP 模擬＋實際 OS Scratch，完成 M2 審查意圖 → M3 one-note CREATE → 自動輸出 metadata-only witness → 新 Node 程序重讀 → M5 Owner-RLS 重新確認；測試涵蓋已撤銷 Owner 授權及本地 SHA 被改動時拒絕，沒有真實 Neon 或 Vault 寫入。
