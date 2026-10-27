@@ -2,6 +2,14 @@
 
 ## 2026-10-28 正式發布與後續 M5 單一路徑
 
+### M5 下一階段實作：人工採認、可跨程序驗證的持久 Baseline（PR #51 續作）
+
+- **真正的兩種證據不能混淆**：已實作 **Owner 對「目前兩端相同內容」的逐篇人工採認** `manual-adopt-current-equality`，它建立日後三方差異比較所需的**初始 Baseline**，但**絕不證明過去執行過 M3/M4 傳輸**。既有 Scratch equality observation / M3 self-reported witness 不自動轉為可信基準，更不憑兩端 SHA 相同推定已完成傳輸。
+- **固定來源及最少人工權限**：`scripts/obsidian-m5-owner-baseline.ts` 僅允許 MSI Windows 上使用私人 stdin、明確 `--m5-adopt-current-equality` 或 `--m5-inspect-approved-baseline`，後端只使用已註冊的固定 Obsidian Vault **唯讀**掃描及固定 Neon Integration Sandbox 的短效 Owner JWT/RLS 完整清單。採認每篇需指定 slug、兩端 SHA、遠端 revision 及文字 `ADOPT M5 SANDBOX <slug> <sha前12字元>`，在取得明確確認前後各執行新鮮雙端掃描，任何來源缺漏／變更／撤權都中止；不允許自訂 Vault/Neon URL、不讀寫 Production、不寫原稿、不做 DELETE。
+- **真正持久記錄**：首次採認才於當前 Windows 使用者 `%LOCALAPPDATA%\\Naosledge\\m5-owner-baseline` 建立獨立金鑰／遞增事件日誌。金鑰以 Windows DPAPI CurrentUser 保護，採認事件附 HMAC-SHA256、Owner 身分、固定 Sandbox 分支、精確筆記 SHA/revision、嚴格連續 sequence 和 previous MAC；每次獨立程序重讀整條簽章鏈，再以短效 Owner-RLS 身分與新鮮註冊 Vault 掃描重建差異分類。中斷、竄改、歷史缺口、重複採認、跨帳號、不完整清單、非法 hardlink／reparse point 與不明併發鎖均拒絕，不自動修補日誌。
+- **保護界線與已知限制**：日誌在**同一個 Windows 使用者**身分下具有防意外竄改的 HMAC+DPAPI 證據能力，不是遠端公證、TPM 或抗惡意同使用者／整套 Profile 回滾保證。讀取成功僅可當作**人工審核的歷史基準**，M2 後續 `review-upload/download/conflict/both-removed` 仍全部不可自動執行；本模組明確報告 `possibleDeletionsNeverApplied`，從不刪筆記。
+- **執行範圍**：已在 MSI 以合成 Owner-RLS Reader、真實 OS Scratch、跨程序 Node 重啟與原生 DPAPI 進行離線驗證；**尚未使用真人短效 Owner JWT + 真實已註冊 Vault 非空相同筆記來建置第一份實際持久 Baseline**。真正 live 採認需要 Owner 再次個別核准與可用 Sandbox Auth 身分。接下來需擴充可信「逐篇傳輸成功」事件，將 M3/M4 完成結果、實際兩端版本及人工操作來源與既有簽章鏈串接；M6 真實斷線復原仍另待驗收。本分支不合併／不部署 Production。
+
 - **正式發布已驗證**：Owner 指名核准後，PR #50 已合併到 `main`（合併 Commit `776216f216736e69fb2850f12e0da358083a8a91`，main CI SUCCESS）。Vercel Production `dpl_FkX3DPxtYFGissEmQuiHEEaRQSkZ` 為 READY，正式 `https://naosledge.vercel.app` alias 直接指向該版，公開/登入/私人頁面/轉址/SEO 真實 GET 檢查 **14/14 PASS**。只更新 Vercel Production 核准 SHA，未執行 Neon Production Migration 或啟用 Vault 雙向同步。
 - **下一個 TODO：M5 保存前後雙端重新驗證（新獨立開發分支）**：在 `feat/obsidian-m5-approved-baseline-20261028` 改善 MSI 手動觀察：真正註冊 Vault + Sandbox Owner-RLS 完整清單在保存收據**前後各獨立重讀**，跨程序重新檢視也需先後兩次真實觀察；版本、權限、來源不一致就拒絕及清理本次新產生的 OS Scratch 收據。收據硬連結／讀取中遭修改也應拒絕。這不是新的一份正式權威 Baseline：`baselineSaved=false`、不匯入、不碰原稿、不允許自動寫入或刪除。正式可信授權來源、持久化及 M6 故障復原仍按下面既有 TODO 前進；本分支不自動發布。
 

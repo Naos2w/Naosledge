@@ -28,6 +28,8 @@
     "verify:obsidian:m3m4:sandbox:owner:e2e": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m3m4-sandbox-live-acceptance.ts --m3-m4-sandbox-synthetic-acceptance",
     "verify:obsidian:m3:wikilink:sandbox:owner:e2e": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m3m4-sandbox-live-acceptance.ts --m3-m4-sandbox-wikilink-acceptance",
     "verify:obsidian:m6:uncertain:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m6-sandbox-uncertain-recovery.ts --sandbox-inspect-uncertain-m3-readonly",
+    "verify:obsidian:m5:adopt:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-adopt-current-equality",
+    "verify:obsidian:m5:inspect:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-inspect-approved-baseline",
     "test:release:closed:local": "node scripts/smoke-production-closed.mjs",
     "verify:health:manual": "node scripts/live-readonly-health.mjs",
     "verify:owner-email:sandbox:manual": "node scripts/verify-owner-email-sandbox.mjs",
