@@ -135,6 +135,7 @@ export async function reverifyM3SandboxWitness(args:{
   fetcher?:typeof fetch;
 }):Promise<{
   matchesCurrentScratchPair:true;baselineSaved:false;
+  transferConfirmed:false;trustedBaselineEligible:false;
   provenance:"self-reported-m3-witness";
 }>{
   const {witness,raw}=await readScratchWitness(args.receiptPath);
@@ -160,7 +161,21 @@ export async function reverifyM3SandboxWitness(args:{
      !(await readFile(args.receiptPath)).equals(raw)){
     throw Error("M5 witness or remote changed during cross-process recheck");
   }
+  // Reauthenticate Owner and reread the WHOLE remote inventory after the
+  // per-note GET and witness checks. A note can change during network I/O;
+  // the first good GET alone must not authorize even a current observation.
+  const final=await fetchVerifiedNeonSandboxOwnerFingerprints({
+    branchId:NEON_SYNC_SANDBOX_BRANCH,jwt:args.sandboxOwnerJwt,
+    fetcher:args.fetcher,
+  });
+  const latest=final.fingerprints.find(item=>item.slug===witness.slug);
+  if(!latest||latest.sha256!==witness.sha256||
+     latest.revision!==witness.revision||
+     !(await readFile(args.receiptPath)).equals(raw)){
+    throw Error("M5 witness or remote changed during cross-process recheck");
+  }
   return {matchesCurrentScratchPair:true,baselineSaved:false,
+    transferConfirmed:false,trustedBaselineEligible:false,
     provenance:"self-reported-m3-witness"};
 }
 
@@ -178,9 +193,13 @@ export async function inspectUncertainM3SandboxOutcome(args:{
   localMarkdown:string;
   /** The SHA from the prior manually reviewed M2 decision, not a trust token. */
   reviewedLocalSha:string;
+  /** Null pair for reviewed CREATE; exact prior SHA/revision for UPDATE. */
+  reviewedRemoteSha:string|null;
+  reviewedRemoteRevision:string|null;
   fetcher?:typeof fetch;
 }):Promise<{
-  currentRemoteState:"matches-supplied-scratch"|"different-now"|"absent-now";
+  currentRemoteState:"matches-supplied-scratch"|"different-now"|"absent-now"|
+    "reviewed-remote-still-present";
   ownerRlsReadOnly:true;
   transferConfirmed:false;
   baselineSaved:false;
@@ -202,6 +221,13 @@ export async function inspectUncertainM3SandboxOutcome(args:{
      localHash!==args.reviewedLocalSha){
     throw Error("M6 requires canonical portable Scratch Markdown matching its reviewed SHA");
   }
+  const priorSha=args.reviewedRemoteSha,priorRevision=args.reviewedRemoteRevision;
+  if(!((priorSha===null&&priorRevision===null)||
+       (typeof priorSha==="string"&&HASH.test(priorSha)&&
+        typeof priorRevision==="string"&&HASH.test(priorRevision)&&
+        priorSha!==localHash))){
+    throw Error("M6 requires exact reviewed remote SHA/revision or both null for CREATE");
+  }
   // Verify Owner-RLS independently for each complete inventory; a 200 + []
   // by itself could be a revoked grant, a partial listing, or a denied user.
   const read=()=>fetchVerifiedNeonSandboxOwnerFingerprints({
@@ -217,7 +243,10 @@ export async function inspectUncertainM3SandboxOutcome(args:{
   const current=second.fingerprints.find(note=>note.slug===slug);
   return {
     currentRemoteState:!current?"absent-now":
-      current.sha256===localHash?"matches-supplied-scratch":"different-now",
+      current.sha256===localHash?"matches-supplied-scratch":
+      priorSha!==null&&current.sha256===priorSha&&
+        current.revision===priorRevision?"reviewed-remote-still-present":
+      "different-now",
     ownerRlsReadOnly:true,transferConfirmed:false,
     baselineSaved:false,automaticRetryAllowed:false,
   };

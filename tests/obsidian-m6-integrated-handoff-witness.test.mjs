@@ -119,6 +119,8 @@ test("M6 offline bridge: reviewed M2 upload -> MSI M3 create -> persisted M5 wit
     });
     assert.equal(verified.matchesCurrentScratchPair,true);
     assert.equal(verified.baselineSaved,false);
+    assert.equal(verified.transferConfirmed,false);
+    assert.equal(verified.trustedBaselineEligible,false);
     assert.equal(verified.provenance,"self-reported-m3-witness");
 
     const before=network.calls.length;

@@ -76,7 +76,8 @@ function fakeSandbox({commitBeforeTimeout=false,initial=null,ownerGranted=true,
 
 const observationInput=fetcher=>({
   sandboxOwnerJwt:token,localMarkdown:portable,
-  reviewedLocalSha:sha(portable),fetcher,
+  reviewedLocalSha:sha(portable),
+  reviewedRemoteSha:null,reviewedRemoteRevision:null,fetcher,
 });
 
 test("M6 POST committed but its acknowledgement was lost: read-only recheck never retries or certifies Baseline",async()=>{
@@ -112,6 +113,53 @@ test("M6 read-only reconciliation distinguishes missing and divergent current re
   assert.equal(different.calls.every(s=>s.startsWith("GET ")),true);
 });
 
+test("M6 uncertain UPDATE distinguishes unchanged reviewed revision from another editor and a matching new note",async()=>{
+  const updatedContent="## New edited version\n\nNot a trusted sync baseline";
+  const updatedMarkdown=serializeObsidianMarkdown({
+    slug:original.slug,title:original.title,excerpt:original.summary,
+    content_md:updatedContent,category:original.category,
+    tags:original.tags,learned_on:original.learned_on,
+  });
+  const reviewedBefore=sha(portable);
+  const reviewedRevision=sha(original.id+":"+original.updated_at);
+  const intent={
+    sandboxOwnerJwt:token,localMarkdown:updatedMarkdown,
+    reviewedLocalSha:sha(updatedMarkdown),
+    reviewedRemoteSha:reviewedBefore,
+    reviewedRemoteRevision:reviewedRevision,
+  };
+  const unchanged=fakeSandbox({initial:original});
+  const before=await inspectUncertainM3SandboxOutcome({
+    ...intent,fetcher:unchanged.fetcher,
+  });
+  assert.equal(before.currentRemoteState,"reviewed-remote-still-present");
+  assert.deepEqual({confirmed:before.transferConfirmed,retry:before.automaticRetryAllowed,
+    baseline:before.baselineSaved},{confirmed:false,retry:false,baseline:false});
+  assert.ok(unchanged.calls.every(s=>s.startsWith("GET ")));
+
+  const after=fakeSandbox({initial:{...original,
+    content_md:updatedContent,updated_at:"2026-10-28T01:04:00.000Z"}});
+  const equal=await inspectUncertainM3SandboxOutcome({...intent,fetcher:after.fetcher});
+  assert.equal(equal.currentRemoteState,"matches-supplied-scratch");
+  assert.equal(equal.transferConfirmed,false);
+  assert.equal(equal.baselineSaved,false);
+
+  const another=fakeSandbox({initial:{...original,
+    content_md:"Other editor change",updated_at:"2026-10-28T01:05:00.000Z"}});
+  assert.equal((await inspectUncertainM3SandboxOutcome({
+    ...intent,fetcher:another.fetcher,
+  })).currentRemoteState,"different-now");
+
+  const revisionOnly=fakeSandbox({initial:{...original,
+    updated_at:"2026-10-28T01:06:00.000Z"}});
+  assert.equal((await inspectUncertainM3SandboxOutcome({
+    ...intent,fetcher:revisionOnly.fetcher,
+  })).currentRemoteState,"different-now");
+  await assert.rejects(inspectUncertainM3SandboxOutcome({
+    ...intent,reviewedRemoteRevision:null,fetcher:unchanged.fetcher,
+  }),/exact reviewed remote SHA\/revision/);
+});
+
 test("M6 lost Owner grant, second-read outage, or remote drift never returns false success",async()=>{
   for(const env of [
     fakeSandbox({initial:original,ownerGranted:false}),
@@ -140,11 +188,15 @@ test("M6 recovery CLI requires MSI, a pipe and exact nonexecutable read-only fie
     assert.throws(()=>assertManualM6Invocation(...input),/MSI, explicit read-only/);
   }
   const valid={sandboxOwnerJwt:token,localMarkdown:portable,
-    reviewedLocalSha:sha(portable)};
+    reviewedLocalSha:sha(portable),
+    reviewedRemoteSha:null,reviewedRemoteRevision:null};
   assert.deepEqual(await readM6UncertainRequest([JSON.stringify(valid)]),valid);
   for(const bad of [
     {...valid,destination:"C:\\\\Naos\\\\Obsidian"},
     {...valid,reviewedLocalSha:"0".repeat(62)},
+    {...valid,reviewedRemoteSha:sha(portable),reviewedRemoteRevision:null},
+    {...valid,reviewedRemoteSha:null,reviewedRemoteRevision:"f".repeat(64)},
+    {...valid,reviewedRemoteSha:sha(portable),reviewedRemoteRevision:"f".repeat(64)},
     {...valid,sandboxOwnerJwt:"not-a-token"},
     {...valid,localMarkdown:portable+"x".repeat(300_000)},
   ]){

@@ -13,6 +13,7 @@ import {inspectUncertainM3SandboxOutcome}
 export const M6_UNCERTAIN_READONLY_FLAG="--sandbox-inspect-uncertain-m3-readonly";
 type M6Request={
   sandboxOwnerJwt:string;localMarkdown:string;reviewedLocalSha:string;
+  reviewedRemoteSha:string|null;reviewedRemoteRevision:string|null;
 };
 const INPUT_LIMIT=1_520_000;
 
@@ -43,8 +44,9 @@ export async function readM6UncertainRequest(
     throw Error("M6 request shape invalid");
   }
   const r=parsed as Record<string,unknown>;
-  if(Object.keys(r).length!==3||
-     !["sandboxOwnerJwt","localMarkdown","reviewedLocalSha"].every(key=>
+  if(Object.keys(r).length!==5||
+     !["sandboxOwnerJwt","localMarkdown","reviewedLocalSha",
+       "reviewedRemoteSha","reviewedRemoteRevision"].every(key=>
        Object.hasOwn(r,key)
      )||
      typeof r.sandboxOwnerJwt!=="string"||r.sandboxOwnerJwt.length>8192||
@@ -52,7 +54,13 @@ export async function readM6UncertainRequest(
      typeof r.localMarkdown!=="string"||
      Buffer.byteLength(r.localMarkdown,"utf8")>250_000||
      typeof r.reviewedLocalSha!=="string"||
-     !/^[0-9a-f]{64}$/.test(r.reviewedLocalSha)){
+     !/^[0-9a-f]{64}$/.test(r.reviewedLocalSha)||
+     !((r.reviewedRemoteSha===null&&r.reviewedRemoteRevision===null)||
+       (typeof r.reviewedRemoteSha==="string"&&
+        /^[0-9a-f]{64}$/.test(r.reviewedRemoteSha)&&
+        typeof r.reviewedRemoteRevision==="string"&&
+        /^[0-9a-f]{64}$/.test(r.reviewedRemoteRevision)&&
+        r.reviewedRemoteSha!==r.reviewedLocalSha))){
     throw Error("M6 request fields invalid");
   }
   return r as M6Request;
