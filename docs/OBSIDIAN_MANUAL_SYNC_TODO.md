@@ -3,9 +3,9 @@
 ## 2026-10-28 最新進度與單一路徑（取代以下 10/26 的舊 PR 狀態）
 
 - **已合併**：#43–#48 與整合 #49 均已於 2026-10-27 合併 `main`，目前 `main` SHA `4f51fa41251312b2e2437116be27b0d7b8918b5e`，#49 exact-head CI `40354567245` SUCCESS。不得再以「#49 待合併」為阻礙，也不要重複開相同功能 PR。
-- **本次開發**：在新隔離分支 `feat/obsidian-m3-m6-e2e-fix-20261028` 建立 `scripts/obsidian-m3m4-sandbox-live-acceptance.ts`，以**實際 MSI 子程序與真實固定 Neon Integration Sandbox Owner-RLS API**串接 M2 上傳意圖 → M3 單篇 CREATE → M5 跨程序 witness 重驗 → M4 Incoming 實際暫存檔 → M3 CAS UPDATE → 拒絕舊 revision → M4 保留衝突雙版本 → 精確清理單一合成筆記。**僅新增可受控執行入口，尚未取得新的 Sandbox 寫入批准，尚未進行真實 live E2E；不得以離線測試取代驗收。**
-- **新的正式驗收前置條件**：使用者獨立指名允許本次合成 Sandbox M3/M4 操作；僅限 MSI、固定 `br-quiet-sunset-b4xx4pnx`，必須同時提供通用與本次專屬核准環境旗標，並在產生一次性合成 Auth ID 後由 Owner 於 Sandbox 單獨授權 `blog_admins`。完成時腳本驗證單筆測試筆記清除，另外輸出 Auth user／暫時授權的人工作業收尾 ID；不碰私人 Vault／Production、不同意自動刪除真實筆記。未核准時嚴格停止在第一次網路請求前。
-- **實際剩餘結案項**：本入口完成並跑過真實 Sandbox E2E 後，依真實 API 的失敗訊號修真正確 root cause；再解決 M5 正式可信 Baseline 的授權及持久化設計、M6 故障與恢復；M7 正式發布仍獨立核准。舊 Scratch witness 與 equality observation 僅屬自述紀錄，不代表可信同步完成。
+- **2026-10-28 真實 E2E 已通過（PR #50）**：Owner 本次單次核准後，在 MSI 上以 `scripts/obsidian-m3m4-sandbox-live-acceptance.ts` 實際連線固定 Neon Integration Sandbox `br-quiet-sunset-b4xx4pnx`，合成 Owner JWT/`blog_admins` RLS → M2 上傳意圖 → M3 `CREATE` → M5 新 Node 程序 witness/Owner-RLS GET → M4 獨立 Incoming 真實落盤 → M3 `id+updated_at` CAS `UPDATE` → M4/M5 過期版本拒絕 → M4 conflict 雙版本保留 → 精確刪除該篇合成筆記，**腳本 Exit 0**。本輪未驗真實 WikiLink CAS RPC、正式可信 Baseline、網路故障復原或正式 Vault；不是 Production 已上線。
+- **權限與清理實際結果**：本次依 Owner 授權建立一個臨時測試身分，完成後已以 API 刪除合成筆記，且已在固定 Sandbox 精確撤銷該身分 `blog_admins`。唯讀 SQL 後驗：`knowledge_notes=0`、`knowledge_links=0`、`blog_admins=0`，原合成 slug 與身分授權均為 0。**仍剩一筆合成 Neon Auth user 及一筆對應 account**：Neon `delete_auth_user` 操作遭平台安全檢查封鎖，沒有改走其他刪除途徑，須由 Owner 在 Neon Console 中指定該臨時身分人工清除，之後以唯讀 SQL 再核對。既有一次性授權不得用於重跑其他 E2E。
+- **實際剩餘結案項**：先清理本輪剩餘 1 個合成 Auth user/account；M3 WikiLink SQL003 CAS RPC 尚缺真實 Sandbox 路徑驗收；M5 正式可信 Baseline 的授權來源、持久化與可證明的恢復鏈，及 M6 真實網路中斷／復原／清理驗收仍未完成。M7 Production 發布與真實 Obsidian Vault 變更一律另行授權。舊 Scratch witness 與 equality observation 僅屬自述紀錄，不代表可信正式同步成功。
 
 更新：2026-10-26；M1/M2 已完成真實 Neon Integration Sandbox 合成 Owner JWT／RLS → MSI 唯讀掃描／JSON → 本機 Chrome 審查整合驗收。尚未部署 Production。
 
