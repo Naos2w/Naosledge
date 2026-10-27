@@ -4,8 +4,8 @@
 
 - **已合併**：#43–#48 與整合 #49 均已於 2026-10-27 合併 `main`，目前 `main` SHA `4f51fa41251312b2e2437116be27b0d7b8918b5e`，#49 exact-head CI `40354567245` SUCCESS。不得再以「#49 待合併」為阻礙，也不要重複開相同功能 PR。
 - **2026-10-28 真實 E2E 已通過（PR #50）**：Owner 本次單次核准後，在 MSI 上以 `scripts/obsidian-m3m4-sandbox-live-acceptance.ts` 實際連線固定 Neon Integration Sandbox `br-quiet-sunset-b4xx4pnx`，合成 Owner JWT/`blog_admins` RLS → M2 上傳意圖 → M3 `CREATE` → M5 新 Node 程序 witness/Owner-RLS GET → M4 獨立 Incoming 真實落盤 → M3 `id+updated_at` CAS `UPDATE` → M4/M5 過期版本拒絕 → M4 conflict 雙版本保留 → 精確刪除該篇合成筆記，**腳本 Exit 0**。本輪未驗真實 WikiLink CAS RPC、正式可信 Baseline、網路故障復原或正式 Vault；不是 Production 已上線。
-- **權限與清理實際結果**：本次依 Owner 授權建立一個臨時測試身分，完成後已以 API 刪除合成筆記，且已在固定 Sandbox 精確撤銷該身分 `blog_admins`。唯讀 SQL 後驗：`knowledge_notes=0`、`knowledge_links=0`、`blog_admins=0`，原合成 slug 與身分授權均為 0。**仍剩一筆合成 Neon Auth user 及一筆對應 account**：Neon `delete_auth_user` 操作遭平台安全檢查封鎖，沒有改走其他刪除途徑，須由 Owner 在 Neon Console 中指定該臨時身分人工清除，之後以唯讀 SQL 再核對。既有一次性授權不得用於重跑其他 E2E。
-- **實際剩餘結案項**：先清理本輪剩餘 1 個合成 Auth user/account；M3 WikiLink SQL003 CAS RPC 尚缺真實 Sandbox 路徑驗收；M5 正式可信 Baseline 的授權來源、持久化與可證明的恢復鏈，及 M6 真實網路中斷／復原／清理驗收仍未完成。M7 Production 發布與真實 Obsidian Vault 變更一律另行授權。舊 Scratch witness 與 equality observation 僅屬自述紀錄，不代表可信正式同步成功。
+- **2026-10-28 臨時身分清理已全部核實**：M3–M5 真實 E2E 後，曾剩餘 1 個臨時 Auth user/account；Owner 已在 Neon Console 清理。本輪直接用 Neon Integration Sandbox 唯讀 SQL 驗證指定合成身分 `9b57b299-b625-4469-bfc5-90ea83416c6d`：`neon_auth.user=0`、`neon_auth.account=0`、對應 `blog_admins=0`、指定合成 slug `m3m4-acceptance-cd7ce830e09740=0`；全分支 `knowledge_notes=0`、`knowledge_links=0`、`blog_admins=0`、`neon_auth.user=0`、`neon_auth.account=0`。本次驗證僅讀取資料、沒有重新執行任何寫入 E2E，先前一次性授權不再延用。
+- **實際剩餘結案項**：臨時 Auth user/account 清理已完成，不再列為阻礙。M3 WikiLink SQL003 CAS RPC 尚缺真實 Sandbox 路徑驗收；M5 正式可信 Baseline 的授權來源、持久化與可證明的恢復鏈，及 M6 真實網路中斷／復原／清理驗收仍未完成。M7 Production 發布與真實 Obsidian Vault 變更一律另行授權。舊 Scratch witness 與 equality observation 僅屬自述紀錄，不代表可信正式同步成功。
 
 更新：2026-10-26；M1/M2 已完成真實 Neon Integration Sandbox 合成 Owner JWT／RLS → MSI 唯讀掃描／JSON → 本機 Chrome 審查整合驗收。尚未部署 Production。
 
