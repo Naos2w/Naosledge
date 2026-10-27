@@ -34,8 +34,10 @@ const json=(items,includeRange=true)=>new Response(JSON.stringify(items),{
   status:200,headers:{"content-type":"application/json",
     ...(includeRange?{"content-range":items.length?"0-"+(items.length-1)+"/"+items.length:"*/0"}:{})},
 });
-function fakeNetwork({grant=true,changed=false,revisionChanged=false}={}){
+function fakeNetwork({grant=true,changed=false,revisionChanged=false,
+  changeAfterNoteGet=false,revokeAfterNoteGet=false}={}){
   const calls=[];
+  let singleRead=false;
   const fetcher=async(url,opts)=>{
     const target=new URL(url);
     calls.push(opts.method+" "+target.pathname);
@@ -46,13 +48,15 @@ function fakeNetwork({grant=true,changed=false,revisionChanged=false}={}){
     assert.equal(opts.credentials,"omit");
     assert.equal(opts.headers.Authorization,"Bearer "+jwt);
     if(target.pathname.endsWith("/blog_admins")){
-      return json(grant?[{user_id:owner}]:[],false);
+      return json(grant&&!(revokeAfterNoteGet&&singleRead)?[{user_id:owner}]:[],false);
     }
     assert.ok(target.pathname.endsWith("/knowledge_notes"));
     assert.equal(opts.headers.Prefer,"count=exact");
     const row={...note,
       ...(changed?{content_md:note.content_md+" changed"}:{}),
-      ...(revisionChanged?{updated_at:"2026-10-26T07:01:00.000Z"}:{})};
+      ...(revisionChanged?{updated_at:"2026-10-26T07:01:00.000Z"}:{}),
+      ...(changeAfterNoteGet&&singleRead?{updated_at:"2026-10-26T07:02:00.000Z"}:{})};
+    if(target.searchParams.has("slug"))singleRead=true;
     return json([row]);
   };
   return {fetcher,calls};
@@ -79,10 +83,13 @@ test("M3 verified Scratch witness persists across a separate Node process; live 
       sandboxOwnerJwt:jwt,localMarkdown:markdown,receiptPath:evidence.receiptPath,
     })]);
     const result=await reverifyManualM5Witness(request,network.fetcher);
-    assert.deepEqual(result,{matchesCurrentScratchPair:true,baselineSaved:false});
+    assert.deepEqual(result,{matchesCurrentScratchPair:true,baselineSaved:false,
+      transferConfirmed:false,trustedBaselineEligible:false});
     assert.deepEqual(network.calls,[
       "GET /neondb/rest/v1/blog_admins",
       "GET /neondb/rest/v1/knowledge_notes",
+      "GET /neondb/rest/v1/knowledge_notes",
+      "GET /neondb/rest/v1/blog_admins",
       "GET /neondb/rest/v1/knowledge_notes",
     ]);
   }finally{
@@ -121,6 +128,32 @@ test("M5 missing Owner grant, stale remote revision and edited local scratch fai
     assert.equal((await readFile(evidence.receiptPath,"utf8")).includes(jwt),false);
   }finally{
     await rm(path.dirname(evidence.receiptPath),{recursive:true,force:true});
+  }
+});
+
+test("M5 final Owner-RLS recheck catches a late remote edit or revoked grant before declaring current equality",async()=>{
+  const saved=await storeVerifiedM3SandboxWitness({
+    action:"manual-update",slug:note.slug,sha256:sha,revision,
+  });
+  try{
+    const args={receiptPath:saved.receiptPath,localMarkdown:markdown,sandboxOwnerJwt:jwt};
+    const drift=fakeNetwork({changeAfterNoteGet:true});
+    await assert.rejects(reverifyM3SandboxWitness({...args,fetcher:drift.fetcher}),
+      /remote changed during cross-process recheck/);
+    assert.deepEqual(drift.calls,[
+      "GET /neondb/rest/v1/blog_admins",
+      "GET /neondb/rest/v1/knowledge_notes",
+      "GET /neondb/rest/v1/knowledge_notes",
+      "GET /neondb/rest/v1/blog_admins",
+      "GET /neondb/rest/v1/knowledge_notes",
+    ]);
+    const revoke=fakeNetwork({revokeAfterNoteGet:true});
+    await assert.rejects(reverifyM3SandboxWitness({...args,fetcher:revoke.fetcher}),
+      /Owner RLS grant/);
+    assert.equal(revoke.calls.filter(x=>x.includes("blog_admins")).length,2);
+    assert.equal((await readFile(saved.receiptPath,"utf8")).includes(jwt),false);
+  }finally{
+    await rm(path.dirname(saved.receiptPath),{recursive:true,force:true});
   }
 });
 

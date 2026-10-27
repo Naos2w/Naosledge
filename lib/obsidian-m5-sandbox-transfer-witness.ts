@@ -13,7 +13,8 @@ import {tmpdir} from "node:os";
 import path from "node:path";
 import {parseObsidianMarkdown,serializeObsidianMarkdown} from "./obsidian-markdown.ts";
 import {
-  fetchVerifiedNeonSandboxMarkdown,NEON_SYNC_SANDBOX_BRANCH,
+  fetchVerifiedNeonSandboxMarkdown,fetchVerifiedNeonSandboxOwnerFingerprints,
+  NEON_SYNC_SANDBOX_BRANCH,
 } from "./obsidian-neon-sandbox-readonly.ts";
 
 const PREFIX="naosledge-sandbox-m3-witness-";
@@ -134,6 +135,7 @@ export async function reverifyM3SandboxWitness(args:{
   fetcher?:typeof fetch;
 }):Promise<{
   matchesCurrentScratchPair:true;baselineSaved:false;
+  transferConfirmed:false;trustedBaselineEligible:false;
   provenance:"self-reported-m3-witness";
 }>{
   const {witness,raw}=await readScratchWitness(args.receiptPath);
@@ -159,6 +161,93 @@ export async function reverifyM3SandboxWitness(args:{
      !(await readFile(args.receiptPath)).equals(raw)){
     throw Error("M5 witness or remote changed during cross-process recheck");
   }
+  // Reauthenticate Owner and reread the WHOLE remote inventory after the
+  // per-note GET and witness checks. A note can change during network I/O;
+  // the first good GET alone must not authorize even a current observation.
+  const final=await fetchVerifiedNeonSandboxOwnerFingerprints({
+    branchId:NEON_SYNC_SANDBOX_BRANCH,jwt:args.sandboxOwnerJwt,
+    fetcher:args.fetcher,
+  });
+  const latest=final.fingerprints.find(item=>item.slug===witness.slug);
+  if(!latest||latest.sha256!==witness.sha256||
+     latest.revision!==witness.revision||
+     !(await readFile(args.receiptPath)).equals(raw)){
+    throw Error("M5 witness or remote changed during cross-process recheck");
+  }
   return {matchesCurrentScratchPair:true,baselineSaved:false,
+    transferConfirmed:false,trustedBaselineEligible:false,
     provenance:"self-reported-m3-witness"};
+}
+
+/**
+ * M6 failure recovery: POST/PATCH may commit and then lose its response,
+ * including a lost M5 witness. There is NO safe automatic retry.
+ *
+ * This only observes the currently RLS-visible remote bytes relative to a
+ * separately supplied canonical Scratch note. Even an equal SHA cannot prove
+ * the uncertain transfer happened, who approved it, or that the real Vault is
+ * equal. Consequently it NEVER creates/imports a Baseline or authorizes retry.
+ */
+export async function inspectUncertainM3SandboxOutcome(args:{
+  sandboxOwnerJwt:string;
+  localMarkdown:string;
+  /** The SHA from the prior manually reviewed M2 decision, not a trust token. */
+  reviewedLocalSha:string;
+  /** Null pair for reviewed CREATE; exact prior SHA/revision for UPDATE. */
+  reviewedRemoteSha:string|null;
+  reviewedRemoteRevision:string|null;
+  fetcher?:typeof fetch;
+}):Promise<{
+  currentRemoteState:"matches-supplied-scratch"|"different-now"|"absent-now"|
+    "reviewed-remote-still-present";
+  ownerRlsReadOnly:true;
+  transferConfirmed:false;
+  baselineSaved:false;
+  automaticRetryAllowed:false;
+}>{
+  if(!args||typeof args.localMarkdown!=="string"||
+     Buffer.byteLength(args.localMarkdown,"utf8")>250_000){
+    throw Error("M6 requires canonical portable Scratch Markdown");
+  }
+  const parsed=parseObsidianMarkdown(args.localMarkdown,"scratch.md","1970-01-01");
+  if(!parsed||serializeObsidianMarkdown({
+    ...parsed.metadata,content_md:parsed.content_md,
+  })!==args.localMarkdown){
+    throw Error("M6 requires canonical portable Scratch Markdown");
+  }
+  const slug=parsed.metadata.slug;
+  const localHash=digest(args.localMarkdown);
+  if(typeof args.reviewedLocalSha!=="string"||!HASH.test(args.reviewedLocalSha)||
+     localHash!==args.reviewedLocalSha){
+    throw Error("M6 requires canonical portable Scratch Markdown matching its reviewed SHA");
+  }
+  const priorSha=args.reviewedRemoteSha,priorRevision=args.reviewedRemoteRevision;
+  if(!((priorSha===null&&priorRevision===null)||
+       (typeof priorSha==="string"&&HASH.test(priorSha)&&
+        typeof priorRevision==="string"&&HASH.test(priorRevision)&&
+        priorSha!==localHash))){
+    throw Error("M6 requires exact reviewed remote SHA/revision or both null for CREATE");
+  }
+  // Verify Owner-RLS independently for each complete inventory; a 200 + []
+  // by itself could be a revoked grant, a partial listing, or a denied user.
+  const read=()=>fetchVerifiedNeonSandboxOwnerFingerprints({
+    branchId:NEON_SYNC_SANDBOX_BRANCH,jwt:args.sandboxOwnerJwt,
+    fetcher:args.fetcher,
+  });
+  const first=await read();
+  const second=await read();
+  if(first.numberOfNotes!==second.numberOfNotes||
+     JSON.stringify(first.fingerprints)!==JSON.stringify(second.fingerprints)){
+    throw Error("M6 remote inventory changed during uncertain-write reinspection");
+  }
+  const current=second.fingerprints.find(note=>note.slug===slug);
+  return {
+    currentRemoteState:!current?"absent-now":
+      current.sha256===localHash?"matches-supplied-scratch":
+      priorSha!==null&&current.sha256===priorSha&&
+        current.revision===priorRevision?"reviewed-remote-still-present":
+      "different-now",
+    ownerRlsReadOnly:true,transferConfirmed:false,
+    baselineSaved:false,automaticRetryAllowed:false,
+  };
 }

@@ -56,10 +56,12 @@ export async function readManualM5Request(
 
 export async function reverifyManualM5Witness(
   request:Request,fetcher?:typeof fetch,
-):Promise<{matchesCurrentScratchPair:true;baselineSaved:false}>{
+):Promise<{matchesCurrentScratchPair:true;baselineSaved:false;
+  transferConfirmed:false;trustedBaselineEligible:false}>{
   const result=await reverifyM3SandboxWitness({...request,fetcher});
   return {matchesCurrentScratchPair:result.matchesCurrentScratchPair,
-    baselineSaved:result.baselineSaved};
+    baselineSaved:result.baselineSaved,transferConfirmed:result.transferConfirmed,
+    trustedBaselineEligible:result.trustedBaselineEligible};
 }
 
 const invoked=process.argv[1]?
@@ -71,7 +73,8 @@ if(invoked){
     );
     const request=await readManualM5Request(process.stdin);
     const result=await reverifyManualM5Witness(request);
-    if(!result.matchesCurrentScratchPair||result.baselineSaved!==false){
+    if(!result.matchesCurrentScratchPair||result.baselineSaved!==false||
+       result.transferConfirmed!==false||result.trustedBaselineEligible!==false){
       throw Error("Unexpected M5 verification result");
     }
     console.log("M5_SANDBOX_SCRATCH_AND_REMOTE_READ_ONLY_VERIFIED");
