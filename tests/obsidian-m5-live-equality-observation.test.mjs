@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
-import {readFile,unlink,writeFile} from "node:fs/promises";
+import {link,readFile,unlink,writeFile} from "node:fs/promises";
 import {spawnSync} from "node:child_process";
 import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 import {
@@ -92,6 +92,48 @@ test("M5 refuses false restored Baselines on changes, incomplete coverage or rec
     await assert.rejects(reverifyM5EqualSourceObservation(saved.path,good),
       /invalid/);
   }finally{await unlink(saved.path);}
+});
+
+test("M5 refuses a remote edit between initial equality and persisted observation, without saving a Baseline",async()=>{
+  const equal=await preview();
+  const remoteChanged=await preview({revision:sha("changed-after-save")});
+  let reads=0;
+  await assert.rejects(runM5ManualObservation(M5_OBSERVE,
+    {sandboxOwnerJwt:"header.payload.sig"},
+    async ()=>{
+      reads++;
+      return reads===1?equal:remoteChanged;
+    }),/disagree/);
+  assert.equal(reads,2,"M5 must independently reacquire both sources after disk persistence");
+
+  const saved=await saveM5EqualSourceObservation(equal);
+  try{
+    let rechecks=0;
+    await assert.rejects(runM5ManualObservation(M5_REVERIFY,
+      {sandboxOwnerJwt:"header.payload.sig",observationPath:saved.path},
+      async()=>{
+        rechecks++;
+        return rechecks===1?equal:remoteChanged;
+      }),/disagree/);
+    assert.equal(rechecks,2,"M5 cross-process verification must use two fresh previews");
+    assert.equal(JSON.parse(await readFile(saved.path,"utf8")).baselineSaved,false);
+  }finally{
+    await unlink(saved.path);
+  }
+});
+
+test("M5 refuses hardlinked observation receipts even if all bytes match",async()=>{
+  const equal=await preview();
+  const saved=await saveM5EqualSourceObservation(equal);
+  const hardlink=saved.path+".hardlink";
+  try{
+    await link(saved.path,hardlink);
+    await assert.rejects(reverifyM5EqualSourceObservation(saved.path,equal),
+      /bounded ordinary file/);
+  }finally{
+    await unlink(hardlink).catch(()=>{});
+    await unlink(saved.path);
+  }
 });
 
 test("M5 manual operation requires MSI, explicit mode, bounded stdin JSON; no JWT in argv",async()=>{

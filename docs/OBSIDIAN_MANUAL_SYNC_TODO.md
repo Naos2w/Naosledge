@@ -1,5 +1,10 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
+## 2026-10-28 正式發布與後續 M5 單一路徑
+
+- **正式發布已驗證**：Owner 指名核准後，PR #50 已合併到 `main`（合併 Commit `776216f216736e69fb2850f12e0da358083a8a91`，main CI SUCCESS）。Vercel Production `dpl_FkX3DPxtYFGissEmQuiHEEaRQSkZ` 為 READY，正式 `https://naosledge.vercel.app` alias 直接指向該版，公開/登入/私人頁面/轉址/SEO 真實 GET 檢查 **14/14 PASS**。只更新 Vercel Production 核准 SHA，未執行 Neon Production Migration 或啟用 Vault 雙向同步。
+- **下一個 TODO：M5 保存前後雙端重新驗證（新獨立開發分支）**：在 `feat/obsidian-m5-approved-baseline-20261028` 改善 MSI 手動觀察：真正註冊 Vault + Sandbox Owner-RLS 完整清單在保存收據**前後各獨立重讀**，跨程序重新檢視也需先後兩次真實觀察；版本、權限、來源不一致就拒絕及清理本次新產生的 OS Scratch 收據。收據硬連結／讀取中遭修改也應拒絕。這不是新的一份正式權威 Baseline：`baselineSaved=false`、不匯入、不碰原稿、不允許自動寫入或刪除。正式可信授權來源、持久化及 M6 故障復原仍按下面既有 TODO 前進；本分支不自動發布。
+
 ## 2026-10-28 最新進度與單一路徑（取代以下 10/26 的舊 PR 狀態）
 
 - **本輪真正 WikiLink E2E 已完成**：Owner 再次明確授權獨立 WikiLink Sandbox-only 模式，MSI 實機執行 `npm run verify:obsidian:m3:wikilink:sandbox:owner:e2e` **Exit 0**；真實 Owner-RLS／M3 CREATE／M4 Incoming／M5 重新檢查／CAS UPDATE／衝突保留／過期版本拒絕皆 PASS，尤其新增 `[[sandbox-target]]` 走固定 Neon SQL003 原子 WikiLink CAS RPC、驗證遠端 SHA、revision 與 backlink 後，再以 RPC 刪除 WikiLink 並重新驗證索引，分別回報 `M3M4_REAL_WIKILINK_CAS_ADD_PASS` 和 `M3M4_REAL_WIKILINK_CAS_REMOVE_PASS`。固定 Integration Sandbox `br-quiet-sunset-b4xx4pnx`，全程沒有真實 Obsidian Vault、正式 Baseline 或 Production 寫入。
