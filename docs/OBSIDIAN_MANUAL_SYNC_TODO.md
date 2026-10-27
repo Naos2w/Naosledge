@@ -7,6 +7,13 @@
 - **2026-10-28 臨時身分清理已全部核實**：M3–M5 真實 E2E 後，曾剩餘 1 個臨時 Auth user/account；Owner 已在 Neon Console 清理。本輪直接用 Neon Integration Sandbox 唯讀 SQL 驗證指定合成身分 `9b57b299-b625-4469-bfc5-90ea83416c6d`：`neon_auth.user=0`、`neon_auth.account=0`、對應 `blog_admins=0`、指定合成 slug `m3m4-acceptance-cd7ce830e09740=0`；全分支 `knowledge_notes=0`、`knowledge_links=0`、`blog_admins=0`、`neon_auth.user=0`、`neon_auth.account=0`。本次驗證僅讀取資料、沒有重新執行任何寫入 E2E，先前一次性授權不再延用。
 - **實際剩餘結案項**：臨時 Auth user/account 清理已完成，不再列為阻礙。M3 WikiLink SQL003 CAS RPC 尚缺真實 Sandbox 路徑驗收；M5 正式可信 Baseline 的授權來源、持久化與可證明的恢復鏈，及 M6 真實網路中斷／復原／清理驗收仍未完成。M7 Production 發布與真實 Obsidian Vault 變更一律另行授權。舊 Scratch witness 與 equality observation 僅屬自述紀錄，不代表可信正式同步成功。
 
+### 2026-10-28 集中修復：M3 SQL003／M5 證據／M6 不確定寫入
+
+- **M3 SQL003 唯讀確認**：已直接核對固定 Integration Sandbox 的 RPC `update_knowledge_note_cas_with_links` 存在、`SECURITY INVOKER`、完整 11 個參數、`authenticated EXECUTE=true`、`anonymous EXECUTE=false`。先前 PGlite 的 RLS/CAS/WikiLink 回滾回歸已存在；**尚未取得本輪新的短效 Owner 授權來實際呼叫 WikiLink 寫入 RPC**，不得沿用已結束的前次一次性 E2E 授權。
+- **M6 真正故障缺口已補程式（僅離線驗證）**：新增 `scripts/obsidian-m6-sandbox-uncertain-recovery.ts`（MSI 專用、明確唯讀旗標、stdin 限量輸入），連到 `inspectUncertainM3SandboxOutcome()`。若 M3 POST/PATCH 可能已提交但回應遺失、無 M5 witness，須提供先前審查的 Markdown SHA 與同一份 canonical Scratch Markdown，用兩次獨立授權的 Owner-RLS 完整遠端 GET，分類為 `matches-supplied-scratch`／`different-now`／`absent-now`。遠端版本競態、第二次 GET 失敗、缺 Owner 身分立即拒絕；**各種結果都不證明先前寫入已成功、不發起重試、不可保存 Baseline**。已新增真實 Node 測試注入「POST 已提交、HTTP 回應遺失」的離線情境；不是已執行真實 Neon 斷線驗收。
+- **M5 可信 Baseline 最小驗收契約（尚未實作正式寫入）**：既有 Scratch witness / equality observation / 外部提供的 SHA 都是**未驗證來源的觀察**，不得被轉成已授權的正式持久 Baseline。後續只有取得與逐篇決定綁定的 Owner 授權來源、實際固定 Vault 原始內容雙掃描、固定 Neon Owner-RLS 完整 GET、跨程序可信的成功寫入事件及可確認的先後順序，才能設計正式持久化；任何資料不符、中斷、歷史歧義一律人工處理。不得以增加離線 PASS 數量替代可信來源或真實驗收，也不因此引入新的 Agent/框架。
+- **目前實際下一步**：先使用 PR #50 同一分支完成 M6 唯讀故障回歸與 CI，接著另行指名核准一次獨立 Sandbox WikiLink RPC / 斷線故障驗收及合成資料清除。M7 Production／真實 Vault 仍另外授權，不自動部署、覆寫或刪除。
+
 更新：2026-10-26；M1/M2 已完成真實 Neon Integration Sandbox 合成 Owner JWT／RLS → MSI 唯讀掃描／JSON → 本機 Chrome 審查整合驗收。尚未部署 Production。
 
 **2026-10-26 23:50 集中整合候選（尚未合併 main）**：目前正式 main 保持在 `7971fa486ef9fc8ef724493c90ba533c6ecb2b7a`（#42；CI #164 SUCCESS）。已在獨立 `integrate/obsidian-m3-m5-delivery-20261026-23` 分支以原 Git 提交歷史整合 #43（M5 Scratch 跨程序重啟檢查）、#44（M4 Incoming Owner-RLS 當下重驗）、#45（M5 雙版本 Browser 純本機比較）、#46（M2→M3 審查交接 JSON）、#47（M3 verified Scratch witness → M5 重驗）與 #48（已註冊 MSI Vault／Sandbox Owner-RLS 雙端 SHA 相同的觀察收據）。已將 6 個 PR 的 Vercel 禁用設定及整合分支一同保留，測試通過後仍需 Owner 授權才可合併到 main。**新增獨立整合測試** `tests/obsidian-m6-integrated-handoff-witness.test.mjs`，使用離線 Owner-RLS HTTP 模擬＋實際 OS Scratch，完成 M2 審查意圖 → M3 one-note CREATE → 自動輸出 metadata-only witness → 新 Node 程序重讀 → M5 Owner-RLS 重新確認；測試涵蓋已撤銷 Owner 授權及本地 SHA 被改動時拒絕，沒有真實 Neon 或 Vault 寫入。
