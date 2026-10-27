@@ -41,6 +41,19 @@ test("only MSI and the precise manual entry can open the new Sandbox acceptance"
   assert.doesNotThrow(()=>assertM3M4AcceptanceApproval(valid));
 });
 
+test("WikiLink live RPC requires its own named Owner scope, never the old M3/M4 approval",()=>{
+  const linked={...valid,args:["--m3-m4-sandbox-wikilink-acceptance"],
+    wikiApproval:"M3WIKILINK_SYNTHETIC_ONLY_20261028"};
+  assert.throws(()=>assertM3M4AcceptanceApproval({
+    ...linked,wikiApproval:undefined,
+  }),/new, exact-scope/);
+  assert.throws(()=>assertM3M4AcceptanceApproval({
+    ...valid,wikiApproval:"M3WIKILINK_SYNTHETIC_ONLY_20261028",
+    args:["--some-other-command"],
+  }),/new, exact-scope/);
+  assert.doesNotThrow(()=>assertM3M4AcceptanceApproval(linked));
+});
+
 test("unapproved CLI exits before Auth, HTTP, Vault IO, or any write",()=>{
   const script=path.join(root,"scripts","obsidian-m3m4-sandbox-live-acceptance.ts");
   const result=spawnSync(process.execPath,[

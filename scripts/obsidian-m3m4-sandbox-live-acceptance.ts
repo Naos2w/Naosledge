@@ -37,6 +37,8 @@ const AUTH="https://ep-square-cloud-b45d18zl.neonauth.c-6.us-east-2.aws.neon.tec
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
 const FLAG="--m3-m4-sandbox-synthetic-acceptance";
 const APPROVAL="M3M4_SYNTHETIC_ONLY_20261028";
+const WIKILINK_FLAG="--m3-m4-sandbox-wikilink-acceptance";
+const WIKILINK_APPROVAL="M3WIKILINK_SYNTHETIC_ONLY_20261028";
 const SUFFIX=randomUUID().replaceAll("-","").slice(0,14);
 const SLUG="m3m4-acceptance-"+SUFFIX;
 const digest=(value:string|Buffer)=>createHash("sha256").update(value).digest("hex");
@@ -53,15 +55,18 @@ const privatePaths:string[]=[];
 
 export function assertM3M4AcceptanceApproval(input:{
   platform:string;computerName:string;args:readonly string[];
-  generalApproval?:string;specificApproval?:string;
+  generalApproval?:string;specificApproval?:string;wikiApproval?:string;
 }):void{
   requireSandboxOwnerWriteApproval({
     platform:input.platform,computerName:input.computerName,
     projectId:OWNER_SANDBOX_PROJECT,branchId:BRANCH,
     acknowledgement:input.generalApproval,
   });
-  if(input.args.length!==1||input.args[0]!==FLAG||
-     input.specificApproval!==APPROVAL||
+  const regular=input.args.length===1&&input.args[0]===FLAG&&
+    input.specificApproval===APPROVAL;
+  const linked=input.args.length===1&&input.args[0]===WIKILINK_FLAG&&
+    input.wikiApproval===WIKILINK_APPROVAL;
+  if(!(regular||linked)||
      new URL(API).hostname!=="ep-square-cloud-b45d18zl.apirest.c-6.us-east-2.aws.neon.tech"||
      new URL(AUTH).hostname!=="ep-square-cloud-b45d18zl.neonauth.c-6.us-east-2.aws.neon.tech"){
     throw Error("A new, exact-scope M3/M4 synthetic Sandbox acceptance approval is required");
@@ -232,7 +237,7 @@ async function removeOnlySyntheticNote(token:string):Promise<boolean>{
     (await inspectSyntheticNote(token))===null;
 }
 
-async function runAcceptance(token:string):Promise<void>{
+async function runAcceptance(token:string,withWikiLinks=false):Promise<void>{
   const original=markdown("# Synthetic M3 note\n\nCreate-only in a private sandbox.");
   const updated=markdown("# Synthetic M3 note UPDATED\n\nConditional update in a private sandbox.");
   const originalSha=digest(original),updatedSha=digest(updated);
@@ -358,6 +363,50 @@ async function runAcceptance(token:string):Promise<void>{
       sandboxOwnerJwt:token,localMarkdown:updated,receiptPath:secondWitness,
     });
   assert.match(secondRecheck.output,/M5_SANDBOX_SCRATCH_AND_REMOTE_READ_ONLY_VERIFIED/);
+
+  if(withWikiLinks){
+    // Distinct Owner authorization is REQUIRED for the real SQL003 RPC.
+    // One disposable Sandbox note: link-free -> add WikiLink -> remove WikiLink.
+    // Both operations use the normal MSI M3 Owner-RLS/CAS manual CLI, never
+    // a direct admin SQL update or blind fallback PATCH.
+    const linkedNote=markdown("# Synthetic M3 WikiLinks\n\nTest [[sandbox-target]]");
+    const linkedSha=digest(linkedNote);
+    await delay(1100);
+    const linked=await manualCommand("M3 WikiLink CAS add",
+      "obsidian-m3-sandbox-manual-update.ts","--sandbox-manual-update-only",{
+        sandboxOwnerJwt:token,markdown:linkedNote,
+        decision:{slug:SLUG,choice:"review-upload",manualReview:true,
+          expectedLocalSha:linkedSha,expectedRemoteSha:updatedSha,
+          expectedRemoteRevision:latest.revision},
+        typedConfirmation:"UPDATE SANDBOX "+SLUG,
+      });
+    assert.match(linked.output,/M3_SANDBOX_UPDATE_VERIFIED; BASELINE_NOT_SAVED/);
+    const linkedWitness=resultPath(linked.output,"M5_PRIVATE_SCRATCH_WITNESS");
+    privatePaths.push(linkedWitness);
+    await checkedScratchDirectory(linkedWitness,"naosledge-sandbox-m3-witness-");
+    const newFp=(await ownerInventory(token)).fingerprints.find(n=>n.slug===SLUG);
+    assert.equal(newFp?.sha256,linkedSha);
+    assert.notEqual(newFp?.revision,latest.revision);
+    console.log("M3M4_REAL_WIKILINK_CAS_ADD_PASS");
+
+    await delay(1100);
+    const removed=await manualCommand("M3 WikiLink CAS remove",
+      "obsidian-m3-sandbox-manual-update.ts","--sandbox-manual-update-only",{
+        sandboxOwnerJwt:token,markdown:updated,
+        decision:{slug:SLUG,choice:"review-upload",manualReview:true,
+          expectedLocalSha:updatedSha,expectedRemoteSha:linkedSha,
+          expectedRemoteRevision:newFp.revision},
+        typedConfirmation:"UPDATE SANDBOX "+SLUG,
+      });
+    assert.match(removed.output,/M3_SANDBOX_UPDATE_VERIFIED; BASELINE_NOT_SAVED/);
+    const removedWitness=resultPath(removed.output,"M5_PRIVATE_SCRATCH_WITNESS");
+    privatePaths.push(removedWitness);
+    await checkedScratchDirectory(removedWitness,"naosledge-sandbox-m3-witness-");
+    const afterRemoval=(await ownerInventory(token)).fingerprints.find(n=>n.slug===SLUG);
+    assert.equal(afterRemoval?.sha256,updatedSha);
+    assert.notEqual(afterRemoval?.revision,newFp.revision);
+    console.log("M3M4_REAL_WIKILINK_CAS_REMOVE_PASS");
+  }
   console.log("M3M4_REAL_SANDBOX_M3_M4_M5_E2E_PASS; NO_VAULT_WRITE; NO_BASELINE");
 }
 
@@ -367,11 +416,12 @@ async function main():Promise<void>{
     platform:process.platform,computerName:hostname(),args:process.argv.slice(2),
     generalApproval:process.env.NAOSLEDGE_SYNTHETIC_SANDBOX_WRITE_APPROVED,
     specificApproval:process.env.NAOSLEDGE_M3M4_REAL_E2E_APPROVED,
+    wikiApproval:process.env.NAOSLEDGE_M3_WIKILINK_E2E_APPROVED,
   });
   try{
     jwt=await createSyntheticOwner();
     await waitForGrant(jwt);
-    await runAcceptance(jwt);
+    await runAcceptance(jwt,process.argv[2]===WIKILINK_FLAG);
   }catch{
     console.error("M3M4_SANDBOX_E2E_NOT_COMPLETED; inspect exact synthetic cleanup handoff");
     process.exitCode=1;
