@@ -9,7 +9,9 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {parseObsidianMarkdown,serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
 import {updateNeonSandboxNoteIfUnchanged} from "../lib/obsidian-neon-sandbox-update.ts";
+import {storeVerifiedM3SandboxWitness} from "../lib/obsidian-m5-sandbox-transfer-witness.ts";
 import {NEON_SYNC_SANDBOX_BRANCH} from "../lib/obsidian-neon-sandbox-readonly.ts";
+import {parseManualM3UploadIntent} from "../lib/obsidian-m2-review-choices.ts";
 import type {SyncDecision} from "../lib/obsidian-sync-plan.ts";
 
 export const M3_MANUAL_UPDATE_FLAG="--sandbox-manual-update-only";
@@ -46,11 +48,16 @@ export async function readManualUpdateRequest(
   catch{throw Error("M3 update request must be JSON");}
   if(!value||typeof value!=="object"||Array.isArray(value)||
      Object.keys(value).length!==4||
-     !["sandboxOwnerJwt","markdown","decision","typedConfirmation"].every(
+     !["sandboxOwnerJwt","markdown","typedConfirmation"].every(
        key=>Object.hasOwn(value,key)
-     ))throw Error("M3 update requires exactly one note, decision and confirmation");
+     )||Object.hasOwn(value,"decision")===Object.hasOwn(value,"handoff")){
+    throw Error("M3 update requires exactly one note, decision and confirmation");
+  }
   const r=value as Record<string,unknown>;
-  const d=r.decision;
+  // M2's single-note handoff is untrusted; a separate MSI Owner JWT,
+  // canonical Markdown and typed UPDATE confirmation are still mandatory.
+  const d=Object.hasOwn(r,"handoff")?
+    parseManualM3UploadIntent(r.handoff):r.decision;
   if(typeof r.sandboxOwnerJwt!=="string"||r.sandboxOwnerJwt.length>8192||
      !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(r.sandboxOwnerJwt)||
      typeof r.markdown!=="string"||Buffer.byteLength(r.markdown,"utf8")>250_000||
@@ -74,17 +81,26 @@ export async function readManualUpdateRequest(
      createHash("sha256").update(r.markdown,"utf8").digest("hex")!==note.expectedLocalSha){
     throw Error("M3 update requires the exact reviewed canonical Markdown");
   }
-  return r as UpdateRequest;
+  return {sandboxOwnerJwt:r.sandboxOwnerJwt as string,
+    markdown:r.markdown as string,decision:note as SyncDecision,
+    typedConfirmation:r.typedConfirmation as string};
 }
 
 export async function updateOneReviewedSandboxNote(
-  request:UpdateRequest,fetcher?:typeof fetch,
-):Promise<{baselineSaved:false}>{
+  request:UpdateRequest,fetcher?:typeof fetch,persistWitness=false,
+):Promise<{baselineSaved:false;receiptPath?:string}>{
   const {sandboxOwnerJwt,markdown,decision,typedConfirmation}=request;
   const result=await updateNeonSandboxNoteIfUnchanged({
     branchId:NEON_SYNC_SANDBOX_BRANCH,sandboxOwnerJwt,decision,typedConfirmation,
     readMarkdown:async()=>markdown,fetcher,
   });
+  if(persistWitness){
+    const evidence=await storeVerifiedM3SandboxWitness({
+      action:"manual-update",slug:result.slug,
+      sha256:result.sha256,revision:result.revision,
+    });
+    return {baselineSaved:false,receiptPath:evidence.receiptPath};
+  }
   return {baselineSaved:result.baselineSaved};
 }
 
@@ -96,9 +112,10 @@ if(invoked){
       process.platform,hostname(),process.argv.slice(2),!!process.stdin.isTTY,
     );
     const request=await readManualUpdateRequest(process.stdin);
-    const result=await updateOneReviewedSandboxNote(request);
-    if(result.baselineSaved!==false)throw Error("Unexpected Baseline write");
+    const result=await updateOneReviewedSandboxNote(request,undefined,true);
+    if(result.baselineSaved!==false||!result.receiptPath)throw Error("M5 witness unavailable");
     console.log("M3_SANDBOX_UPDATE_VERIFIED; BASELINE_NOT_SAVED");
+    console.log("M5_PRIVATE_SCRATCH_WITNESS "+result.receiptPath);
   }catch{
     // PATCH may already have committed: no retry, private data or server body.
     console.error("M3_SANDBOX_UPDATE_NOT_VERIFIED; inspect Sandbox manually before any retry");

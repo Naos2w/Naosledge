@@ -13,7 +13,8 @@ import {
 } from "../lib/obsidian-neon-sandbox-incoming.ts";
 import {
   assertM4ReceiptVerificationInvocation,M4_VERIFY_RECEIPT_FLAG,
-  verifyManualIncomingReceipt,
+  M4_VERIFY_RECEIPT_LIVE_FLAG,verifyManualIncomingReceipt,
+  verifyManualIncomingReceiptAgainstSandbox,
 } from "../scripts/obsidian-m4-sandbox-verify-receipt.ts";
 import {
   M4_SCRATCH_INCOMING_FLAG,assertManualM4Invocation,
@@ -413,6 +414,74 @@ test("M4 receipt reinspection checks both conflict snapshots and detects missing
     await rm(path.dirname(staged.path),{recursive:true,force:true});
   }
   await assert.rejects(verifyManualIncomingReceipt(["C:\\\\Naos\\\\Obsidian\\\\Naosledge\\\\x.json"]));
+});
+
+test("M4/M5 restart preflight revalidates a saved conflict pair against fresh Sandbox Owner-RLS GET",async()=>{
+  assertM4ReceiptVerificationInvocation("win32","MSI",[M4_VERIFY_RECEIPT_LIVE_FLAG],false);
+  assert.throws(()=>assertM4ReceiptVerificationInvocation(
+    "win32","OTHER",[M4_VERIFY_RECEIPT_LIVE_FLAG],false,
+  ),/MSI-only/);
+  const localMarkdown="## Preserved local conflict\\n";
+  const expectedLocalSha=createHash("sha256").update(localMarkdown).digest("hex");
+  const staged=await stageNeonSandboxIncoming({
+    ...options,decision:{...choice,expectedLocalSha},
+    localMarkdown,fetcher:fakeNetwork().fetcher,
+  });
+  const request={receiptPath:staged.receiptPath,sandboxOwnerJwt:jwt,
+    typedConfirmation:"VERIFY SANDBOX INCOMING "+note.slug};
+  try{
+    const n=fakeNetwork();
+    assert.deepEqual(await verifyManualIncomingReceiptAgainstSandbox(
+      [JSON.stringify(request)],n.fetcher,
+    ),{localCopyIncluded:true,baselineSaved:false,
+      verificationScope:"staged-files-and-sandbox-owner-rls-get"});
+    assert.equal(n.calls.length,3,"fresh read requires Owner grant, complete list and exact note");
+    const stale=fakeNetwork({changedSingle:true});
+    await assert.rejects(verifyManualIncomingReceiptAgainstSandbox(
+      [JSON.stringify(request)],stale.fetcher,
+    ),/changed after/);
+    const revoked=fakeNetwork({ownerGranted:false});
+    await assert.rejects(verifyManualIncomingReceiptAgainstSandbox(
+      [JSON.stringify(request)],revoked.fetcher,
+    ),/Owner RLS grant/);
+    assert.equal(revoked.calls.length,1);
+    for(const invalid of [
+      {...request,typedConfirmation:""},
+      {...request,arbitraryDestination:"C:/Vault"},
+      {...request,sandboxOwnerJwt:"not-a-jwt"},
+    ]){
+      const n=fakeNetwork();
+      await assert.rejects(verifyManualIncomingReceiptAgainstSandbox(
+        [JSON.stringify(invalid)],n.fetcher,
+      ));
+      assert.equal(n.calls.length,0,"invalid consent cannot contact Sandbox");
+    }
+    assert.equal((await readFile(staged.localCopyPath,"utf8")),localMarkdown,
+      "read-only preflight must not alter conflict copy");
+  }finally{
+    await rm(path.dirname(staged.path),{recursive:true,force:true});
+  }
+});
+
+test("M4/M5 live recheck refuses Incoming files changed while Owner GET was in flight",async()=>{
+  const staged=await stageNeonSandboxIncoming({...options,fetcher:fakeNetwork().fetcher});
+  const request={receiptPath:staged.receiptPath,sandboxOwnerJwt:jwt,
+    typedConfirmation:"VERIFY SANDBOX INCOMING "+note.slug};
+  const n=fakeNetwork();
+  try{
+    await assert.rejects(verifyManualIncomingReceiptAgainstSandbox(
+      [JSON.stringify(request)],async(url,opts)=>{
+        const response=await n.fetcher(url,opts);
+        if(new URL(url).searchParams.has("slug")){
+          await writeFile(staged.path,"changed while checking remote");
+        }
+        return response;
+      },
+    ),/no longer matches/);
+    assert.equal(n.calls.length,3);
+  }finally{
+    await rm(path.dirname(staged.path),{recursive:true,force:true});
+  }
 });
 
 test("M4 keeps the approved filename and fingerprints when the caller mutates its decision during GET",async()=>{

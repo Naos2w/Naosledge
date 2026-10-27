@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
 import {updateNeonSandboxNoteIfUnchanged} from "../lib/obsidian-neon-sandbox-update.ts";
+import {MANUAL_M3_UPLOAD_INTENT_FORMAT} from "../lib/obsidian-m2-review-choices.ts";
 import {
   NEON_SYNC_SANDBOX_BRANCH,NEON_SYNC_SANDBOX_DATA_API,
 } from "../lib/obsidian-neon-sandbox-readonly.ts";
@@ -130,6 +131,37 @@ function mockNetwork({granted=true,race=false,failPostVerify=false,
   }
   return {fetcher,calls,getRemote:()=>remote};
 }
+
+test("M3 UPDATE consumes one reviewed M2 handoff without weakening CAS or typed consent",async()=>{
+  const {readManualUpdateRequest,updateOneReviewedSandboxNote}=
+    await import("../scripts/obsidian-m3-sandbox-manual-update.ts");
+  const handoff={format:MANUAL_M3_UPLOAD_INTENT_FORMAT,decision};
+  const request=await readManualUpdateRequest([JSON.stringify({
+    sandboxOwnerJwt:jwt,markdown:newMarkdown,handoff,
+    typedConfirmation:"UPDATE SANDBOX "+old.slug,
+  })]);
+  assert.deepEqual(request.decision,decision);
+  const mock=mockNetwork();
+  const result=await updateOneReviewedSandboxNote(request,mock.fetcher);
+  assert.deepEqual(result,{baselineSaved:false});
+  assert.equal(mock.calls.filter(x=>x.startsWith("PATCH ")).length,1);
+  assert.equal(mock.getRemote().content_md,latest.content_md);
+
+  for(const corrupt of [
+    {handoff:{...handoff,decision:{...decision,expectedLocalSha:"0".repeat(64)}}},
+    {handoff:{...handoff,decision:{...decision,expectedRemoteRevision:null}}},
+    {handoff:{...handoff,decision:{...decision,choice:"conflict"}}},
+    {handoff:{...handoff,command:"execute"}},
+    {handoff,decision},
+    {handoff,typedConfirmation:"UPDATE SANDBOX another-note"},
+    {handoff,markdown:newMarkdown+"changed"},
+  ]){
+    await assert.rejects(readManualUpdateRequest([JSON.stringify({
+      sandboxOwnerJwt:jwt,markdown:newMarkdown,
+      typedConfirmation:"UPDATE SANDBOX "+old.slug,...corrupt,
+    })]),/M3/);
+  }
+});
 
 test("M3 single-note Sandbox PATCH uses row id + updated_at atomic CAS, then re-verifies",async()=>{
   const mock=mockNetwork();
@@ -317,6 +349,23 @@ test("M3 manual update passes the reviewed note through CAS and propagates a los
   const mock=mockNetwork();
   assert.deepEqual(await updateOneReviewedSandboxNote(request,mock.fetcher),{baselineSaved:false});
   assert.equal(mock.calls.length,9);
+  const witnessNetwork=mockNetwork();
+  const stored=await updateOneReviewedSandboxNote(
+    request,witnessNetwork.fetcher,true,
+  );
+  try{
+    assert.equal(stored.baselineSaved,false);
+    const {readFile,rm}=await import("node:fs/promises");
+    const path=await import("node:path");
+    const item=JSON.parse(await readFile(stored.receiptPath,"utf8"));
+    assert.equal(item.action,"manual-update");
+    assert.equal(item.sha256,newSha);
+    assert.match(item.revision,/^[a-f0-9]{64}$/);
+  }finally{
+    const {rm}=await import("node:fs/promises");
+    const path=await import("node:path");
+    await rm(path.dirname(stored.receiptPath),{recursive:true,force:true});
+  }
   assert.equal(mock.getRemote().content_md,latest.content_md);
   const raced=mockNetwork({race:true});
   await assert.rejects(updateOneReviewedSandboxNote(request,raced.fetcher),/manual reconciliation/);

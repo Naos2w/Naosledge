@@ -4,7 +4,7 @@
  * persistent approvals, uploads or production deployment.
  */
 import assert from "node:assert/strict";
-import {randomBytes} from "node:crypto";
+import {createHash,randomBytes} from "node:crypto";
 import {existsSync} from "node:fs";
 import {mkdir,readFile,rm,unlink,writeFile} from "node:fs/promises";
 import {spawn} from "node:child_process";
@@ -15,7 +15,11 @@ import path from "node:path";
 import os from "node:os";
 import {chromium} from "playwright-core";
 import {makeSyntheticM2Preview} from "../lib/obsidian-m2-synthetic-fixture.ts";
-import {parseManualM2Handoff,serializeManualM2Handoff,MANUAL_M4_INCOMING_INTENT_FORMAT} from "../lib/obsidian-m2-review-choices.ts";
+import {
+  parseManualM2Handoff,serializeManualM2Handoff,
+  MANUAL_M4_INCOMING_INTENT_FORMAT,MANUAL_M3_UPLOAD_INTENT_FORMAT,
+  parseManualM3UploadIntent,
+} from "../lib/obsidian-m2-review-choices.ts";
 import {saveManualM2Handoff} from "./obsidian-msi-manual-preview.ts";
 import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 
@@ -114,9 +118,22 @@ try{
   const exported=await saveManualM2Handoff(await makeSyntheticM2Preview());
   try{
     await page.locator("#vault-sync-handoff-file").setInputFiles(exported);
-    assert.ok(await page.getByText("MSI 手動匯入 · 唯讀快照").isVisible());
+    await page.getByText("MSI 手動匯入 · 唯讀快照")
+      .waitFor({state:"visible",timeout:15_000});
     assert.equal(await page.locator(".vault-sync-note").count(),7);
     assert.ok(await page.getByText("遠端版本",{exact:true}).first().isVisible());
+    const createAction=page.getByRole("group",{name:"local-new 的審查意圖"});
+    await createAction.getByRole("button",{name:"預定上傳"}).click();
+    const [uploadHandoff]=await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button",{name:"local-new 的 M3 上傳交接 JSON"}).click(),
+    ]);
+    assert.equal(uploadHandoff.suggestedFilename(),"naosledge-m3-upload-local-new.json");
+    const uploadFile=JSON.parse(await readFile(await uploadHandoff.path(),"utf8"));
+    assert.equal(uploadFile.format,MANUAL_M3_UPLOAD_INTENT_FORMAT);
+    assert.equal(parseManualM3UploadIntent(uploadFile).choice,"review-missing-remote");
+    assert.equal(Object.hasOwn(uploadFile,"sandboxOwnerJwt"),false);
+    assert.equal(Object.hasOwn(uploadFile,"markdown"),false);
     await page.getByRole("button",{name:"移除私人快照"}).click();
     assert.equal(await page.locator(".vault-sync-note").count(),0);
     assert.ok(await page.getByText("等待 MSI 唯讀快照").isVisible());
@@ -184,6 +201,35 @@ try{
       "PASS REAL Sandbox JWT/RLS-derived MSI JSON -> M2 browser import/review/clear":
       "PASS single-note synthetic MSI JSON -> M2 browser import/review/clear");
   }finally{if(testHandoff)await unlink(testHandoff).catch(()=>{}); }
+
+  // M4 persisted receipt -> M5 browser-only conflict review; no real Neon,
+  // Vault paths, authentication or Markdown sent to a server.
+  const localVersion="## Synthetic local\r\nKeep local changes\r\n";
+  const remoteVersion="## Synthetic remote\nKeep remote changes\n";
+  const localSha=createHash("sha256").update(localVersion).digest("hex");
+  const remoteSha=createHash("sha256").update(remoteVersion).digest("hex");
+  const receipt=JSON.stringify({
+    format:"naosledge.m4.incoming-copy.v1",slug:"offline-ui-conflict",
+    choice:"conflict",remoteSha256:remoteSha,
+    remoteRevision:"b".repeat(64),localSha256:localSha,
+  });
+  const conflictFiles=[
+    {name:"incoming-receipt.json",mimeType:"application/json",buffer:Buffer.from(receipt)},
+    {name:"offline-ui-conflict.md",mimeType:"text/markdown",buffer:Buffer.from(remoteVersion)},
+    {name:"offline-ui-conflict--local.md",mimeType:"text/markdown",buffer:Buffer.from(localVersion)},
+  ];
+  await page.locator("#vault-sync-conflict-files").setInputFiles(conflictFiles);
+  const conflictRegion=page.getByRole("region",{name:"offline-ui-conflict 的本機雙版本比對"});
+  await conflictRegion.waitFor({state:"visible"});
+  assert.match(await conflictRegion.innerText(),/Synthetic local/);
+  assert.match(await conflictRegion.innerText(),/Synthetic remote/);
+  await page.locator("#vault-sync-conflict-files").setInputFiles([
+    conflictFiles[0],conflictFiles[1],
+    {...conflictFiles[2],buffer:Buffer.from("## Tampered")},
+  ]);
+  assert.ok(await page.getByRole("alert").getByText(/M4 收據、兩份原始 Markdown 副本或 SHA-256 不一致/).isVisible());
+  assert.equal(await conflictRegion.count(),0);
+  console.log("PASS M4 receipt -> M5 Chrome local pair verification, comparison and tamper refusal");
 
   for(const width of [375,768,1024,1440]){
     await page.setViewportSize({width,height:width<500?812:920});
