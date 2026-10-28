@@ -7,6 +7,7 @@ import {
   GitCompareArrows,LockKeyhole,RotateCcw,Search,ShieldCheck,ShieldAlert,
 } from "lucide-react";
 import type {ManualReviewPreview} from "@/lib/obsidian-manual-sync-review";
+import type {M7WebOwnerReadiness} from "@/lib/obsidian-m7-web-owner-readiness";
 import VaultIncomingConflictReview from "@/components/vault-incoming-conflict-review";
 import type {SyncChoice} from "@/lib/obsidian-sync-plan";
 import {
@@ -33,7 +34,9 @@ const INTENT_ICON={
 };
 type Filter="all"|"review"|"conflict"|"done";
 
-export default function VaultManualSyncReview({preview:syntheticPreview}:{preview?:ManualReviewPreview}){
+export default function VaultManualSyncReview({
+  preview:syntheticPreview,m7ProductionReadiness,
+}:{preview?:ManualReviewPreview;m7ProductionReadiness?:M7WebOwnerReadiness}){
   const [manualPreview,setManualPreview]=useState<ManualReviewPreview|null>(null);
   const [importError,setImportError]=useState(false);
   const preview=manualPreview??syntheticPreview;
@@ -111,6 +114,28 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
       </div>
       <span className="vault-sync-demo-label">{manualPreview?"MSI 手動匯入 · 唯讀快照":syntheticPreview?"互動預演 · 合成筆記":"等待 MSI 唯讀快照"}</span>
     </header>
+
+    {m7ProductionReadiness?.state==="verified"&&
+      <div className="vault-sync-notice" role="status" aria-label="M7 正式環境唯讀預檢">
+        <ShieldCheck aria-hidden="true" size={20}/>
+        <div>
+          <strong>M7 正式站長 Session 與 RLS 已通過唯讀檢查</strong>
+          <span>Neon Production 目前有 {m7ProductionReadiness.remoteNotes} 篇本人私人筆記。
+            僅讀取筆數，沒有讀取筆記正文，也尚未取得 MSI Vault 完整比對或任何逐篇傳輸授權。
+            下方 Sandbox 審查快照是另一個獨立流程，不可作為 Production 操作依據。</span>
+        </div>
+      </div>
+    }
+    {m7ProductionReadiness?.state==="unavailable"&&
+      <div className="vault-sync-notice" role="alert" aria-label="M7 正式環境唯讀預檢未完成">
+        <ShieldAlert aria-hidden="true" size={20}/>
+        <div>
+          <strong>M7 正式環境筆記計數尚未驗證</strong>
+          <span>目前無法完成精確的 Owner-RLS 計數。請勿把此狀態視為空資料庫或同步成功。
+            不會執行上傳、下載、覆寫、刪除或建立 Baseline。</span>
+        </div>
+      </div>
+    }
 
     <div className="vault-sync-notice" role="status">
       <ShieldCheck aria-hidden="true" size={20}/>

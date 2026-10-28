@@ -11,6 +11,7 @@ import {spawn} from "node:child_process";
 import {createServer} from "node:net";
 import {setTimeout as delay} from "node:timers/promises";
 import {fileURLToPath} from "node:url";
+import {createRequire} from "node:module";
 import path from "node:path";
 import os from "node:os";
 import {chromium} from "playwright-core";
@@ -24,6 +25,11 @@ import {saveManualM2Handoff} from "./obsidian-msi-manual-preview.ts";
 import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
+const require=createRequire(import.meta.url);
+// Worktrees can reuse the parent repository's installed Next.js without
+// a local node_modules junction. Resolve the actual package, not cwd.
+const nextBin=path.join(path.dirname(require.resolve("next/package.json")),
+  "dist","bin","next");
 const fixture=path.join(root,"app","m2-sync-local-fixture");
 const nextEnvPath=path.join(root,"next-env.d.ts");
 const previousNextEnv=await readFile(nextEnvPath,"utf8");
@@ -52,6 +58,13 @@ export default async function M2LocalFixture({searchParams}){
       localDirectoriesNotScanned:1,localCoverageNeedsReview:true,
     },
   }:preview;
+  if(mode==="m7-verified")return <VaultManualSyncReview m7ProductionReadiness={{
+    state:"verified",remoteNotes:2,remoteFullInventoryRead:false,
+    noteBodiesRead:false,comparisonPerformed:false,transferAllowed:false,baselineSaved:false,
+  }}/>;
+  if(mode==="m7-unavailable")return <VaultManualSyncReview m7ProductionReadiness={{
+    state:"unavailable",
+  }}/>;
   return mode==="empty"?<VaultManualSyncReview/>:<VaultManualSyncReview preview={shown}/>;
 }
 `;
@@ -74,7 +87,7 @@ try{
   await writeFile(path.join(fixture,"page.tsx"),pageSource,"utf8");
   const port=await freePort(),origin=`http://localhost:${port}`;
   server=spawn(process.execPath,[
-    path.join(root,"node_modules","next","dist","bin","next"),
+    nextBin,
     "dev","--webpack","--hostname","localhost","--port",String(port),
   ],{
     cwd:root,windowsHide:true,stdio:["ignore","pipe","pipe"],
@@ -108,6 +121,22 @@ try{
     if(!url.startsWith(origin+"/")&&!url.startsWith("data:")&&!url.startsWith("blob:"))
       remoteRequests.push("unexpected-external-request");
   });
+  // M7 Production readiness panel is only a rendered synthetic STATUS here.
+  // It must never turn a count into a transfer or M2 review authorization.
+  await page.goto(origin+"/m2-sync-local-fixture?mode=m7-verified",
+    {waitUntil:"networkidle"});
+  const readiness=page.getByRole("status",{name:"M7 正式環境唯讀預檢"});
+  assert.match(await readiness.innerText(),/Neon Production 目前有 2 篇本人私人筆記/);
+  assert.match(await readiness.innerText(),/未取得 MSI Vault 完整比對/);
+  assert.equal(await page.locator(".vault-sync-note").count(),0);
+  assert.equal(await page.getByRole("button",{name:"預定上傳"}).count(),0);
+  await page.goto(origin+"/m2-sync-local-fixture?mode=m7-unavailable",
+    {waitUntil:"networkidle"});
+  const blocked=page.getByRole("alert",{name:"M7 正式環境唯讀預檢未完成"});
+  assert.match(await blocked.innerText(),/請勿把此狀態視為空資料庫或同步成功/);
+  assert.equal(await page.locator(".vault-sync-note").count(),0);
+  console.log("PASS M7 synthetic web status visible; no implied Production transfers");
+
   // Exercise the production entry state: no synthetic notes until the Owner
   // explicitly imports a valid MSI export file. This is still a synthetic
   // exporter fixture, NOT an authenticated Neon Sandbox acceptance.
@@ -227,8 +256,10 @@ try{
     conflictFiles[0],conflictFiles[1],
     {...conflictFiles[2],buffer:Buffer.from("## Tampered")},
   ]);
-  assert.ok(await page.getByRole("alert").getByText(/M4 收據、兩份原始 Markdown 副本或 SHA-256 不一致/).isVisible());
-  assert.equal(await conflictRegion.count(),0);
+  await page.getByRole("alert")
+    .getByText(/M4 收據、兩份原始 Markdown 副本或 SHA-256 不一致/)
+    .waitFor({state:"visible",timeout:10_000});
+  await conflictRegion.waitFor({state:"hidden",timeout:10_000});
   console.log("PASS M4 receipt -> M5 Chrome local pair verification, comparison and tamper refusal");
 
   for(const width of [375,768,1024,1440]){
@@ -296,7 +327,10 @@ try{
   await page.locator("#vault-sync-handoff-file").setInputFiles({
     name:"msi-review.json",mimeType:"application/json",buffer:Buffer.from(handoff),
   });
-  assert.ok(await page.getByText("MSI 手動匯入 · 唯讀快照").isVisible());
+  // File.text() is asynchronous; wait for the committed React state rather
+  // than racing the browser's file-input change event.
+  await page.getByText("MSI 手動匯入 · 唯讀快照")
+    .waitFor({state:"visible",timeout:10_000});
   assert.equal(await page.locator(".vault-sync-note").count(),7);
   await page.locator("#vault-sync-handoff-file").setInputFiles({
     name:"invalid.json",mimeType:"application/json",buffer:Buffer.from('{"format":"bad"}'),

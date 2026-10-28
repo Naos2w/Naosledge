@@ -8,9 +8,14 @@ import {spawn} from "node:child_process";
 import {createServer} from "node:net";
 import {setTimeout as delay} from "node:timers/promises";
 import {fileURLToPath} from "node:url";
+import {createRequire} from "node:module";
 import path from "node:path";
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
+// Isolated worktrees can reuse the parent repository's dependencies.
+const require=createRequire(import.meta.url);
+const nextBin=path.join(path.dirname(require.resolve("next/package.json")),
+  "dist","bin","next");
 async function availablePort(){
   return await new Promise((resolve,reject)=>{
     const s=createServer();
@@ -24,7 +29,7 @@ async function availablePort(){
 const port=await availablePort();
 const origin=`http://127.0.0.1:${port}`;
 const child=spawn(process.execPath,[
-  path.join(root,"node_modules","next","dist","bin","next"),
+  nextBin,
   "start","--hostname","127.0.0.1","--port",String(port),
 ],{
   cwd:root,windowsHide:true,stdio:["ignore","pipe","pipe"],

@@ -1,6 +1,14 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
-## 2026-10-28 M7 新增 Production Owner-RLS 唯讀入口（最新候選）
+## 2026-10-28 M7 網站登入 Session → Production RLS 唯讀狀態（最新候選）
+
+- **現有登入即可驗證，不另取 JWT**：在原有站長限定的 `/vault/sync` Server Component 先呼叫 `requireVault()`，保留 Neon Auth Email 驗證、正式簽發的會員 JWT 與 `blog_admins` Owner-RLS 授權鏈。再透過**同一個**經授權的會員資料庫 Client 發出 `knowledge_notes.select("id",{count:"exact"}).eq("owner_id",user.id).limit(1)`，只查本人筆記精確數量，不傳 JWT、id、slug 或正文至瀏覽器，也不建立任何新同步系統。
+- **精確 Production 發布閘門**：新 `lib/obsidian-m7-web-owner-readiness.ts` 使用既有 `validateProductionRelease()` 核對 Vercel 正式版本 SHA、專案、分支、固定 Neon Auth/Data API、HTTPS origin 等設定。非 Production/Sandbox/Local 不執行此查詢；正式設定不一致、遠端失敗、未知或不一致的 count 只回報「未驗證」，**不可推論 0 篇或成功同步**。同時 `remoteFullInventoryRead=false`、`noteBodiesRead=false`、`transferAllowed=false`、`baselineSaved=false`。
+- **前端狀態**：在既有 M2 手動審查頁顯示獨立的 M7 正式站長只讀狀態與筆數；明確說明這與下方 Sandbox-only 本機 JSON 審查不同，兩者不得混淆為 Production 逐篇批准。保留現有 M2/M3/M4/M5 及失敗時不覆寫的行為，不加入按鈕執行同步或背景排程。
+- **測試和實測界線**：新 `tests/obsidian-m7-web-owner-readiness.test.mjs` 驗證真實 PostgREST Client 組成的 GET/精確計數、SHA/端點錯配與不完整清單拒絕、唯讀資料最小化，以及頁面要求先驗證 Owner。這些是隔離的合成 HTTP 驗證；**新版網站尚未部署，也沒有取得真人當前網站 Session 的 Live E2E**。真正站長登入驗收需未來在經核准的確切 Production SHA 發布後手動瀏覽網站。
+- **下一步**：先完成 PR/CI 與已核准的精確部署，才能用本人現有網站登入來驗證 M7 計數。之後再完成正式非空 Metadata/Fingerprint Inventory、真實 MSI Vault 雙端唯讀比較、個別指定的單篇測試筆記、持久備份/恢復，以及人工逐篇上下載與衝突處理。未經另外授權，**不寫入 Production 筆記、不自動同步，也不重跑 SQL003**。
+
+## 2026-10-28 M7 新增 Production Owner-RLS 唯讀入口（以下為早前候選）
 
 - **沿用既有架構，不啟動正式同步**：新增 `lib/obsidian-m7-production-owner-readonly.ts`，獨立釘選正式 Neon Branch/HTTPS Data API（直接沿用 `lib/neon/production-release.ts`），只接受短效 Production Owner JWT，先以真正 Data API 及 `blog_admins` 本人 RLS 驗證站長，再對 `knowledge_notes` 只查 `id` 和精確列數。沒有讀取 Markdown 正文、slug、沒有寫入、沒有完整遠端 Inventory；**即使查到 0 筆，也不判定已同步或取得逐篇操作權**。既有 Sandbox-only M1–M6 Adapter 完全不變，Production JWT 不會被送去 Sandbox。
 - **人工 MSI 腳本**：新增 `npm run verify:obsidian:m7:owner:readonly`。必須在指定的 MSI Windows 上使用唯一 `--m7-production-owner-readonly` 旗標，從私人 stdin 管線提供短效 **Production** Owner JWT（不得放在指令參數、環境變數、檔案或聊天）。取得真正 Owner-RLS 計數後，再沿用既有 Obsidian GUI Vault 註冊與唯讀 Manifest 檢查，只輸出摘要數量，`remoteFullInventoryRead=false`、`comparisonPerformed=false`、`localWrites=remoteWrites=0`。
