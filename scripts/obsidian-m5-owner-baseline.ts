@@ -1,8 +1,7 @@
 /**
- * MSI-only manual review, one approved Sandbox upload and M5 Baseline.
- * The upload mode calls the existing M3 CAS transport; the other modes only
- * observe/adopt current equality. Never accesses Production, writes the Vault
- * or schedules background sync.
+ * MSI-only manual M2 review -> M3 upload / M4 Incoming apply -> M5 Baseline.
+ * Upload uses existing M3 CAS; Incoming apply requires separate per-note
+ * consent and a verified staged copy. No Production or background sync.
  *
  * No tokens or private note bodies on argv/env/disk/logs. The caller supplies
  * a short-lived Neon Integration Sandbox Owner JWT over private stdin.
@@ -13,19 +12,21 @@ import {fileURLToPath} from "node:url";
 import {
   adoptM5CurrentEquality,inspectM5OwnerApprovedBaseline,
   assertM5ApprovedBaselineInvocation,readM5ApprovedReview,
-  uploadReviewedM3AndRecordM5,
+  uploadReviewedM3AndRecordM5,applyReviewedM4AndRecordM5,
 } from "../lib/obsidian-m5-owner-baseline-journal.ts";
-import {parseManualM3UploadIntent} from "../lib/obsidian-m2-review-choices.ts";
+import {parseManualM3UploadIntent,parseManualM4IncomingIntent}
+  from "../lib/obsidian-m2-review-choices.ts";
 import {saveManualM2Handoff} from "./obsidian-msi-manual-preview.ts";
 
 export const M5_ADOPT="--m5-adopt-current-equality";
 export const M5_INSPECT="--m5-inspect-approved-baseline";
 export const M5_REVIEW="--m5-review-approved-baseline";
 export const M5_UPLOAD="--m5-upload-reviewed-note";
+export const M5_APPLY_INCOMING="--m5-apply-reviewed-incoming";
 type Request={
   sandboxOwnerJwt:string;
   slug?:string;sha256?:string;remoteRevision?:string;
-  typedConfirmation?:string;handoff?:unknown;
+  typedConfirmation?:string;handoff?:unknown;receiptPath?:string;
 };
 export async function readM5ApprovedBaselineRequest(
   input:AsyncIterable<string|Uint8Array>,mode:string,
@@ -49,6 +50,8 @@ export async function readM5ApprovedBaselineRequest(
     "sandboxOwnerJwt","slug","sha256","remoteRevision","typedConfirmation",
   ]:mode===M5_UPLOAD?[
     "sandboxOwnerJwt","handoff","typedConfirmation",
+  ]:mode===M5_APPLY_INCOMING?[
+    "sandboxOwnerJwt","handoff","receiptPath","typedConfirmation",
   ]:[M5_INSPECT,M5_REVIEW].includes(mode)?["sandboxOwnerJwt"]:[];
   if(!fields.length||Object.keys(r).length!==fields.length||
      !fields.every(key=>Object.hasOwn(r,key))||
@@ -72,6 +75,17 @@ export async function readM5ApprovedBaselineRequest(
        r.typedConfirmation!=="UPLOAD M5 SANDBOX "+d.slug+" "+
          d.expectedLocalSha!.slice(0,12)){
       throw Error("M5 upload requires explicit per-note review and confirmation");
+    }
+  }
+  if(mode===M5_APPLY_INCOMING){
+    const d=parseManualM4IncomingIntent(r.handoff);
+    if(!["review-download","review-missing-local"].includes(d.choice)||
+       typeof r.receiptPath!=="string"||!r.receiptPath||
+       r.receiptPath.length>4096||/[\0\r\n]/.test(r.receiptPath)||
+       typeof r.typedConfirmation!=="string"||
+       r.typedConfirmation!=="APPLY M5 SANDBOX "+d.slug+" "+
+         d.expectedRemoteSha!.slice(0,12)){
+      throw Error("M5 Incoming apply requires a reviewed download and private receipt");
     }
   }
   return r as Request;
@@ -109,6 +123,21 @@ if(executed){
       console.log("M3_M5_SANDBOX_UPLOAD_AND_BASELINE_VERIFIED count="+
         verified.entryCount);
       console.log("MANUAL_OWNER_APPROVAL; NO_VAULT_WRITE; NO_AUTO_DELETE");
+    }else if(flag===M5_APPLY_INCOMING){
+      const applied=await applyReviewedM4AndRecordM5({
+        sandboxOwnerJwt:r.sandboxOwnerJwt,handoff:r.handoff,
+        receiptPath:r.receiptPath!,typedConfirmation:r.typedConfirmation!,
+      });
+      if(applied.baselineSaved!==true||applied.transferConfirmed!==true||
+         applied.autoApplyAllowed!==false||applied.deleteAllowed!==false){
+        throw Error("M5 Incoming apply returned unexpected authority");
+      }
+      console.log("M4_M5_LOCAL_APPLY_AND_BASELINE_VERIFIED count="+
+        applied.entryCount);
+      console.log(applied.originalBackedUp?
+        "LOCAL_ORIGINAL_BACKED_UP_IN_PRIVATE_JOURNAL":
+        "NEW_LOCAL_NOTE_EXCLUSIVE_CREATED");
+      console.log("MANUAL_OWNER_APPROVAL; NO_AUTO_SYNC; NO_DELETE");
     }else if(flag===M5_REVIEW){
       const verified=await readM5ApprovedReview({
         sandboxOwnerJwt:r.sandboxOwnerJwt,
@@ -131,7 +160,9 @@ if(executed){
     // No JWT, slug, note bytes or full OS private path ever printed.
     console.error(process.argv[2]===M5_UPLOAD?
       "M3_M5_UPLOAD_NOT_VERIFIED; REMOTE_MAY_HAVE_COMMITTED; NO_RETRY":
-      "M5_OWNER_BASELINE_NOT_VERIFIED; NO_AUTO_SYNC");
+      process.argv[2]===M5_APPLY_INCOMING?
+        "M4_M5_LOCAL_APPLY_NOT_VERIFIED; LOCAL_MAY_HAVE_CHANGED; NO_RETRY":
+        "M5_OWNER_BASELINE_NOT_VERIFIED; NO_AUTO_SYNC");
     process.exitCode=1;
   }
 }

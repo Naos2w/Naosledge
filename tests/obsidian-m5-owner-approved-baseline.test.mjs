@@ -20,7 +20,7 @@ import {
   assertM5ApprovedBaselineInvocation,windowsM5KeyProtector,
 } from "../lib/obsidian-m5-owner-baseline-journal.ts";
 import {
-  M5_ADOPT,M5_INSPECT,M5_REVIEW,M5_UPLOAD,
+  M5_ADOPT,M5_INSPECT,M5_REVIEW,M5_UPLOAD,M5_APPLY_INCOMING,
   readM5ApprovedBaselineRequest,
 } from "../scripts/obsidian-m5-owner-baseline.ts";
 
@@ -469,7 +469,7 @@ test("M5 CLI only permits MSI manual private stdin and exact fields",async()=>{
   assert.doesNotThrow(()=>assertM5ApprovedBaselineInvocation("win32","MSI",[
     M5_INSPECT,
   ],false));
-  for(const mode of [M5_REVIEW,M5_UPLOAD]){
+  for(const mode of [M5_REVIEW,M5_UPLOAD,M5_APPLY_INCOMING]){
     assert.doesNotThrow(()=>assertM5ApprovedBaselineInvocation(
       "win32","MSI",[mode],false,
     ));
@@ -480,6 +480,7 @@ test("M5 CLI only permits MSI manual private stdin and exact fields",async()=>{
     ["win32","MSI",[M5_ADOPT],true],
     ["win32","MSI",[],false],
     ["win32","MSI",[M5_INSPECT,"C:\\OtherVault"],false],
+    ["win32","MSI",[M5_APPLY_INCOMING,"C:\\Vault"],false],
   ])assert.throws(()=>assertM5ApprovedBaselineInvocation(...argv),/MSI-only/);
   const good=adopt(noteA);
   assert.deepEqual(await readM5ApprovedBaselineRequest([

@@ -33,6 +33,7 @@
     "verify:obsidian:m5:review:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-review-approved-baseline",
     "verify:obsidian:m5:upload:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-upload-reviewed-note",
     "verify:obsidian:m4:incoming:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m4-sandbox-manual-incoming.ts --sandbox-scratch-incoming-only",
+    "verify:obsidian:m5:apply-incoming:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-apply-reviewed-incoming",
     "test:release:closed:local": "node scripts/smoke-production-closed.mjs",
     "verify:health:manual": "node scripts/live-readonly-health.mjs",
     "verify:owner-email:sandbox:manual": "node scripts/verify-owner-email-sandbox.mjs",

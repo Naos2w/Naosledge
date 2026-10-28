@@ -145,6 +145,7 @@ export async function stageNeonSandboxIncoming(args:{
  */
 export async function verifyStagedSandboxIncomingReceipt(receiptPath:string):Promise<{
   remoteCopyPath:string;localCopyPath:string|null;sha256:string;revision:string;
+  choice:"review-download"|"review-missing-local"|"conflict";localSha256:string|null;
   baselineSaved:false;verificationScope:"staged-files-only";
 }>{
   const root=await realpath(tmpdir());
@@ -188,7 +189,8 @@ export async function verifyStagedSandboxIncomingReceipt(receiptPath:string):Pro
   }
   const verifyCopy=async(filename:string,expected:string)=>{
     const stat=await lstat(filename);
-    if(!stat.isFile()||stat.isSymbolicLink()||stat.size>250_000){
+    if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||
+       stat.size>250_000){
       throw new Error("M4 Incoming copy is not an ordinary bounded file");
     }
     const bytes=await readFile(filename);
@@ -207,6 +209,8 @@ export async function verifyStagedSandboxIncomingReceipt(receiptPath:string):Pro
     throw new Error("M4 Incoming receipt changed during inspection");
   }
   return {remoteCopyPath,localCopyPath,sha256:r.remoteSha256 as string,
-    revision:r.remoteRevision as string,baselineSaved:false,
+    revision:r.remoteRevision as string,
+    choice:r.choice as "review-download"|"review-missing-local"|"conflict",
+    localSha256:r.localSha256 as string|null,baselineSaved:false,
     verificationScope:"staged-files-only"};
 }

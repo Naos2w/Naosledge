@@ -273,6 +273,34 @@ export function serializeManualM4IncomingIntent(
   })+"\n";
 }
 
+/** Strict M2 single-note download hint. Never by itself authorizes a Vault write. */
+export function parseManualM4IncomingIntent(value:unknown):SyncDecision{
+  if(!exactFields(value,["format","decision"])||
+     (value as {format?:unknown}).format!==MANUAL_M4_INCOMING_INTENT_FORMAT){
+    throw Error("M4 review handoff format invalid");
+  }
+  const d=(value as {decision:unknown}).decision;
+  if(!exactFields(d,M3_DECISION_FIELDS)){
+    throw Error("M4 review handoff contains unexpected fields");
+  }
+  const row=d as Record<string,unknown>;
+  if(typeof row.slug!=="string"||row.slug.length<3||row.slug.length>120||
+     !SLUG.test(row.slug)||row.manualReview!==true||
+     !["review-download","review-missing-local","conflict"].includes(String(row.choice))||
+     (row.expectedLocalSha!==null&&
+       (typeof row.expectedLocalSha!=="string"||!SHA.test(row.expectedLocalSha)))||
+     typeof row.expectedRemoteSha!=="string"||!SHA.test(row.expectedRemoteSha)||
+     typeof row.expectedRemoteRevision!=="string"||!SHA.test(row.expectedRemoteRevision)||
+     (row.choice==="review-missing-local")!==(row.expectedLocalSha===null)||
+     (row.expectedLocalSha!==null&&row.expectedLocalSha===row.expectedRemoteSha)){
+    throw Error("M4 reviewed Incoming direction or version invalid");
+  }
+  return {slug:row.slug,choice:row.choice as SyncDecision["choice"],
+    manualReview:true,expectedLocalSha:row.expectedLocalSha as string|null,
+    expectedRemoteSha:row.expectedRemoteSha as string,
+    expectedRemoteRevision:row.expectedRemoteRevision as string};
+}
+
 export const MANUAL_M2_HANDOFF_FORMAT="naosledge.m2.sandbox-readonly.v1";
 export const MANUAL_M2_HANDOFF_MAX_BYTES=512_000;
 

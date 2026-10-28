@@ -10,14 +10,18 @@
  * A malicious process running as the SAME Windows user (or rollback of the
  * whole user profile) remains outside this local-integrity trust boundary.
  */
-import {createHmac,randomBytes,timingSafeEqual} from "node:crypto";
+import {createHash,createHmac,randomBytes,timingSafeEqual} from "node:crypto";
 import {spawn} from "node:child_process";
 import {homedir,hostname,tmpdir} from "node:os";
 import {lstat,mkdir,open,readFile,readdir,realpath,unlink} from "node:fs/promises";
 import path from "node:path";
 import {previewApprovedMsiSandboxSync,readApprovedMsiCanonicalMarkdown}
   from "./obsidian-manual-sync-approved-msi.ts";
-import {parseManualM3UploadIntent} from "./obsidian-m2-review-choices.ts";
+import {parseManualM3UploadIntent,parseManualM4IncomingIntent}
+  from "./obsidian-m2-review-choices.ts";
+import {verifyStagedSandboxIncomingReceipt} from "./obsidian-neon-sandbox-incoming.ts";
+import {applyStagedM4ToLocal,verifyM5LocalBackup,APPROVED_MSI_VAULT,
+  verifyMsiVaultRegistration} from "./obsidian-m4-local-apply.ts";
 import {createNeonSandboxNoteOnly} from "./obsidian-neon-sandbox-create.ts";
 import {updateNeonSandboxNoteIfUnchanged} from "./obsidian-neon-sandbox-update.ts";
 import type {SyncDecision} from "./obsidian-sync-plan.ts";
@@ -33,15 +37,17 @@ const PREFIX="naosledge-m5-owner-baseline-test-";
 const GENESIS="0".repeat(64);
 const KEYFILE="identity.dpapi";
 const RECORDS="records";
+const BACKUPS="backups";
 const LOCK="journal.lock";
 const LIMIT=20;
 type Protector={seal:(key:Buffer)=>Promise<string>;unseal:(blob:string)=>Promise<Buffer>};
 type Entry={
   format:typeof FORMAT;seq:number;previousMac:string;
   branch:typeof NEON_SYNC_SANDBOX_BRANCH;ownerId:string;
-  action:"manual-adopt-current-equality"|"verified-m3-upload";
+  action:"manual-adopt-current-equality"|"verified-m3-upload"|"verified-m4-download";
   slug:string;sha256:string;remoteRevision:string;createdAt:string;
   beforeRemoteSha?:string|null;beforeRemoteRevision?:string|null;
+  beforeLocalSha?:string|null;backupSha?:string|null;
 };
 type SignedEntry=Entry&{mac:string};
 export type M5ApprovedBaselineResult={
@@ -68,7 +74,8 @@ export function assertM5ApprovedBaselineInvocation(
 ):void{
   if(platform!=="win32"||computer.trim().toUpperCase()!=="MSI"||
      flags.length!==1||!["--m5-adopt-current-equality","--m5-inspect-approved-baseline",
-       "--m5-review-approved-baseline","--m5-upload-reviewed-note"].includes(flags[0])||
+       "--m5-review-approved-baseline","--m5-upload-reviewed-note",
+       "--m5-apply-reviewed-incoming"].includes(flags[0])||
      tty)err("MSI-only, explicit manual flag and piped stdin required");
 }
 export function approvedBaselineDirectory():string{
@@ -185,15 +192,20 @@ function validateRecord(row:unknown,seq:number,previousMac:string):Entry{
   const fields=["format","seq","previousMac","branch","ownerId","action",
     "slug","sha256","remoteRevision","createdAt"];
   const isUpload=a.action==="verified-m3-upload";
+  const isDownload=a.action==="verified-m4-download";
   if(Object.keys(a).join(",")!==
-       [...fields,...(isUpload?["beforeRemoteSha","beforeRemoteRevision"]:[])].join(",")||
+       [...fields,...(isUpload?["beforeRemoteSha","beforeRemoteRevision"]:[]),
+         ...(isDownload?["beforeLocalSha","backupSha"]:[])].join(",")||
      a.format!==FORMAT||a.seq!==seq||a.previousMac!==previousMac||
      a.branch!==NEON_SYNC_SANDBOX_BRANCH||
      typeof a.ownerId!=="string"||!UUID.test(a.ownerId)||
-     (a.action!=="manual-adopt-current-equality"&&!isUpload)||
+     (a.action!=="manual-adopt-current-equality"&&!isUpload&&!isDownload)||
      (isUpload&&!((a.beforeRemoteSha===null&&a.beforeRemoteRevision===null)||
        (typeof a.beforeRemoteSha==="string"&&HASH.test(a.beforeRemoteSha)&&
         typeof a.beforeRemoteRevision==="string"&&HASH.test(a.beforeRemoteRevision))))||
+     (isDownload&&!((a.beforeLocalSha===null&&a.backupSha===null)||
+       (typeof a.beforeLocalSha==="string"&&HASH.test(a.beforeLocalSha)&&
+        a.backupSha===a.beforeLocalSha)))||
      typeof a.slug!=="string"||a.slug.length<3||a.slug.length>120||
      !SLUG.test(a.slug)||
      typeof a.sha256!=="string"||!HASH.test(a.sha256)||
@@ -217,7 +229,9 @@ async function loadJournal(root:string,ownerId:string,protector:Protector):Promi
     if(names.length===0||(names.length===1&&names[0]===LOCK))return null;
     err("existing journal has no protected identity key");
   }
-  if(names.some(name=>![KEYFILE,RECORDS,LOCK].includes(name)))err("unexpected journal entry");
+  if(names.some(name=>![KEYFILE,RECORDS,BACKUPS,LOCK].includes(name))){
+    err("unexpected journal entry");
+  }
   const keyBytes=await safeReadFile(path.join(root,KEYFILE),8192);
   let keyEnvelope:unknown;
   try{keyEnvelope=JSON.parse(keyBytes.toString("utf8"));}
@@ -239,6 +253,7 @@ async function loadJournal(root:string,ownerId:string,protector:Protector):Promi
   }
   let prev=GENESIS;
   const latest=new Map<string,Entry>();
+  const expectedBackups:string[]=[];
   const entries:SignedEntry[]=[];
   for(let i=0;i<files.length;i++){
     if(files[i]!==String(i+1).padStart(6,"0")+".json")err("missing journal sequence");
@@ -267,11 +282,31 @@ async function loadJournal(root:string,ownerId:string,protector:Protector):Promi
         event.beforeRemoteRevision!==older.remoteRevision)){
       err("M5 upload is not chained to its previous adopted baseline");
     }
+    if(event.action==="verified-m4-download"){
+      if(event.beforeLocalSha!==null&&
+         (!older||older.sha256!==event.beforeLocalSha)){
+        err("M5 download is not chained to its original local Baseline");
+      }
+      if(event.backupSha){
+        await verifyM5LocalBackup(root,event.seq,event.slug,event.backupSha);
+        expectedBackups.push(String(event.seq).padStart(6,"0")+
+          "-"+event.slug+".bak");
+      }
+    }
     latest.set(event.slug,event);
     prev=signature as string;
     entries.push({...event,mac:prev});
   }
   if((await readdir(records)).length!==files.length)err("journal changed during validation");
+  if(names.includes(BACKUPS)){
+    await safeDirectory(path.join(root,BACKUPS));
+    const filesOnDisk=(await readdir(path.join(root,BACKUPS))).sort();
+    if(JSON.stringify(filesOnDisk)!==JSON.stringify(expectedBackups.sort())){
+      err("uncommitted or missing M4 backup requires manual recovery");
+    }
+  }else if(expectedBackups.length){
+    err("M4 original backup directory is missing");
+  }
   return {key,entries};
 }
 async function initialize(root:string,protector:Protector):Promise<Buffer>{
@@ -313,12 +348,14 @@ export type ApprovedJournalDependencies={
     readMarkdown:()=>Promise<string>;typedConfirmation:string})=>Promise<{
     slug:string;sha256:string;revision:string;baselineSaved:false;
   }>;
+  /** Real local Vault is pinned; overrides only under independent OS temp. */
+  vaultRoot?:string;
 };
 function dependencies(options:ApprovedJournalDependencies={}){
   const root=options.rootDir??approvedBaselineDirectory();
   if(options.rootDir!==undefined||options.protector!==undefined||
      options.readPreview!==undefined||options.readMarkdown!==undefined||
-     options.transfer!==undefined){
+     options.transfer!==undefined||options.vaultRoot!==undefined){
     if(typeof options.rootDir!=="string"||
        path.dirname(path.resolve(options.rootDir)).toLowerCase()!==
          path.resolve(tmpdir()).toLowerCase()||
@@ -327,14 +364,20 @@ function dependencies(options:ApprovedJournalDependencies={}){
        typeof options.protector.unseal!=="function"||
        typeof options.readPreview!=="function"||
        (options.readMarkdown!==undefined&&typeof options.readMarkdown!=="function")||
-       (options.transfer!==undefined&&typeof options.transfer!=="function")){
+       (options.transfer!==undefined&&typeof options.transfer!=="function")||
+       (options.vaultRoot!==undefined&&(
+         typeof options.vaultRoot!=="string"||
+         path.dirname(path.resolve(options.vaultRoot)).toLowerCase()!==
+           path.resolve(tmpdir()).toLowerCase()||
+         !path.basename(options.vaultRoot).startsWith("naosledge-m4-vault-test-")))){
       err("dependency overrides only permitted in isolated OS-temp tests");
     }
   }
   return {root,protector:options.protector??windowsM5KeyProtector,
     readPreview:options.readPreview??previewApprovedMsiSandboxSync,
     readMarkdown:options.readMarkdown??readApprovedMsiCanonicalMarkdown,
-    transfer:options.transfer};
+    transfer:options.transfer,vaultRoot:options.vaultRoot??APPROVED_MSI_VAULT,
+    testOnly:options.rootDir!==undefined};
 }
 
 /**
@@ -491,6 +534,119 @@ export async function uploadReviewedM3AndRecordM5(args:{
       err("M5 persisted M3 upload could not be independently verified");
     }
     return {baselineSaved:true,transferConfirmed:true,entryCount:seq,
+      autoApplyAllowed:false,deleteAllowed:false};
+  });
+}
+
+/**
+ * M2 reviewed download -> existing M4 Incoming -> local CAS-like file replace
+ * or exclusive create -> TWO fresh complete Owner-RLS/Vault reads -> M5 journal.
+ * Uncertain local writes preserve backups and must never auto-retry.
+ */
+export async function applyReviewedM4AndRecordM5(args:{
+  sandboxOwnerJwt:string;handoff:unknown;receiptPath:string;
+  typedConfirmation:string;
+},options?:ApprovedJournalDependencies):Promise<{
+  baselineSaved:true;transferConfirmed:true;entryCount:number;
+  originalBackedUp:boolean;autoApplyAllowed:false;deleteAllowed:false;
+}>{
+  const ownerId=validateOwnerJwt(args?.sandboxOwnerJwt);
+  const decision=parseManualM4IncomingIntent(args.handoff);
+  if(decision.choice!=="review-download"&&
+     decision.choice!=="review-missing-local"){
+    err("M4 conflict requires keeping both copies, not overwriting");
+  }
+  const {slug}=decision;
+  const desired=decision.expectedRemoteSha!;
+  if(typeof args.receiptPath!=="string"||args.receiptPath.length>4096||
+     args.typedConfirmation!=="APPLY M5 SANDBOX "+slug+" "+desired.slice(0,12)){
+    err("M4 original replacement requires an explicit one-note approval");
+  }
+  const {root,protector,readPreview,vaultRoot,testOnly}=dependencies(options);
+  await checkRoot(root,true);
+  return withLock(root,async()=>{
+    const journal=await loadJournal(root,ownerId,protector);
+    const seq=(journal?.entries.length??0)+1;
+    if(seq>LIMIT)err("bounded M5 history exceeded");
+    const old=new Map((journal?.entries??[]).map(x=>[x.slug,x]));
+    const prior=old.get(slug);
+    if(decision.choice==="review-download"&&
+       (!prior||prior.sha256!==decision.expectedLocalSha)){
+      err("M4 review lacks matching signed local Baseline");
+    }
+    const baseline=[...old.values()].map(x=>({
+      slug:x.slug,sha256:x.sha256,revision:x.remoteRevision,
+    }));
+    const scan=()=>readPreview({sandboxOwnerJwt:args.sandboxOwnerJwt,baseline});
+    const sameReviewed=(preview:ManualReviewPreview)=>{
+      const row=preview.decisions.find(x=>x.slug===slug);
+      return preview.sandboxOnly===true&&preview.readOnly===true&&
+        preview.manualTriggerOnly===true&&preview.previewStatus==="ready"&&
+        preview.autoApplyAllowed===false&&
+        preview.inventory.remoteFullInventory===true&&
+        preview.inventory.localCoverageNeedsReview===false&&
+        row?.choice===decision.choice&&
+        row.expectedLocalSha===decision.expectedLocalSha&&
+        row.expectedRemoteSha===desired&&
+        row.expectedRemoteRevision===decision.expectedRemoteRevision;
+    };
+    if(!sameReviewed(await scan())){
+      err("M2 download decision changed before manual apply");
+    }
+    const first=await verifyStagedSandboxIncomingReceipt(args.receiptPath);
+    if(first.choice!==decision.choice||first.localCopyPath!==null||
+       path.basename(first.remoteCopyPath)!==slug+".md"||
+       first.sha256!==desired||
+       first.revision!==decision.expectedRemoteRevision){
+      err("M4 Incoming receipt is unrelated to reviewed download");
+    }
+    if(!sameReviewed(await scan())){
+      err("M4 remote or local source changed after Incoming inspection");
+    }
+    const second=await verifyStagedSandboxIncomingReceipt(args.receiptPath);
+    if(JSON.stringify(first)!==JSON.stringify(second)){
+      err("M4 Incoming receipt changed during Owner-RLS verification");
+    }
+    if(!testOnly)await verifyMsiVaultRegistration();
+    const incoming=await readFile(second.remoteCopyPath);
+    // The receipt is untrusted until bytes are checked AGAIN immediately
+    // before committing to the pinned Vault. No caller-selected filename.
+    if(!incoming.length||incoming.length>250_000||
+       createHash("sha256").update(incoming).digest("hex")!==desired){
+      err("M4 staged Incoming no longer matches its reviewed SHA");
+    }
+    const applied=await applyStagedM4ToLocal({
+      slug,expectedLocalSha:decision.expectedLocalSha,incoming,
+      expectedRemoteSha:desired,vaultRoot,journalRoot:root,seq,
+    });
+    // Even if both scans now match, this is NOT an automatic approval to
+    // overwrite more notes. Only this exact M4 action can reach the journal.
+    if(!validPreviewEqual(await scan(),slug,desired,
+      decision.expectedRemoteRevision!)||
+       !validPreviewEqual(await scan(),slug,desired,
+         decision.expectedRemoteRevision!)){
+      err("M4 local commit outcome uncertain; preserve backup and re-inspect");
+    }
+    const key=journal?journal.key:await initialize(root,protector);
+    const event:Entry={
+      format:FORMAT,seq,previousMac:journal?.entries.at(-1)?.mac??GENESIS,
+      branch:NEON_SYNC_SANDBOX_BRANCH,ownerId,
+      action:"verified-m4-download",slug,sha256:desired,
+      remoteRevision:decision.expectedRemoteRevision!,
+      createdAt:new Date().toISOString(),
+      beforeLocalSha:applied.beforeLocalSha,backupSha:applied.backupSha,
+    };
+    const signature=mac(key,event);
+    await writeExclusive(path.join(root,RECORDS,
+      String(seq).padStart(6,"0")+".json"),
+      Buffer.from(JSON.stringify({...event,mac:signature}),"utf8"));
+    const verified=await loadJournal(root,ownerId,protector);
+    if(verified?.entries.length!==seq||
+       verified.entries.at(-1)?.mac!==signature){
+      err("M5 local download record could not be authenticated");
+    }
+    return {baselineSaved:true,transferConfirmed:true,entryCount:seq,
+      originalBackedUp:applied.backupSha!==null,
       autoApplyAllowed:false,deleteAllowed:false};
   });
 }
