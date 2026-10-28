@@ -220,8 +220,11 @@ function mac(key:Buffer,event:Entry):string{
   return createHmac("sha256",key).update(JSON.stringify(event),"utf8").digest("hex");
 }
 
-type Opened={key:Buffer;entries:SignedEntry[]};
-async function loadJournal(root:string,ownerId:string,protector:Protector):Promise<Opened|null>{
+type Opened={key:Buffer;entries:SignedEntry[];orphanBackups:string[]};
+async function loadJournal(
+  root:string,ownerId:string,protector:Protector,
+  allowOrphanBackup=false,
+):Promise<Opened|null>{
   let names:string[];
   try{names=await readdir(root);}
   catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")return null;throw e;}
@@ -298,16 +301,29 @@ async function loadJournal(root:string,ownerId:string,protector:Protector):Promi
     entries.push({...event,mac:prev});
   }
   if((await readdir(records)).length!==files.length)err("journal changed during validation");
+  let orphanBackups:string[]=[];
   if(names.includes(BACKUPS)){
     await safeDirectory(path.join(root,BACKUPS));
     const filesOnDisk=(await readdir(path.join(root,BACKUPS))).sort();
-    if(JSON.stringify(filesOnDisk)!==JSON.stringify(expectedBackups.sort())){
+    const expected=new Set(expectedBackups);
+    if(expected.size!==expectedBackups.length||
+       expectedBackups.some(name=>!filesOnDisk.includes(name))){
+      err("committed M4 backup missing or modified");
+    }
+    orphanBackups=filesOnDisk.filter(name=>!expected.has(name));
+    if(orphanBackups.length&&(!allowOrphanBackup||
+       orphanBackups.length!==1||
+       !/^\d{6}-[a-z0-9]+(?:-[a-z0-9]+)*\.bak$/.test(orphanBackups[0]))){
       err("uncommitted or missing M4 backup requires manual recovery");
+    }
+    if(JSON.stringify((await readdir(path.join(root,BACKUPS))).sort())!==
+       JSON.stringify(filesOnDisk)){
+      err("M4 backup listing changed during inspection");
     }
   }else if(expectedBackups.length){
     err("M4 original backup directory is missing");
   }
-  return {key,entries};
+  return {key,entries,orphanBackups};
 }
 async function initialize(root:string,protector:Protector):Promise<Buffer>{
   const other=(await readdir(root)).filter(x=>x!==LOCK);
@@ -687,6 +703,98 @@ async function verifiedM5Review(args:{
     err("baseline journal changed during live reconciliation");
   }
   return {baselineCount:baselines.length,preview};
+}
+
+/**
+ * M6: after a hard process exit between M4 local file replacement and the
+ * M5 success event, a retained original backup has no matching signed record.
+ * Inspect that one specific orphan while preserving strict normal journal
+ * loading. Current remote equality NEVER proves that the prior local apply
+ * succeeded or that the baseline may be advanced.
+ *
+ * No filenames, note bytes, arbitrary Vault paths, auto retries or mutation.
+ */
+export async function inspectInterruptedM4LocalApply(args:{
+  sandboxOwnerJwt:string;
+},options?:ApprovedJournalDependencies):Promise<{
+  interruptedBackupFound:true;
+  currentLocalState:"matches-previous-baseline"|"matches-current-remote"|
+    "different-from-both"|"missing";
+  remoteChangedSinceBaseline:boolean;
+  staleLocalLockPresent:boolean;
+  currentObservationOnly:true;
+  previousTransferProven:false;
+  baselineSaved:false;
+  autoRetryAllowed:false;
+  autoRestoreAllowed:false;
+}>{
+  const ownerId=validateOwnerJwt(args?.sandboxOwnerJwt);
+  const {root,protector,readPreview}=dependencies(options);
+  await checkRoot(root,false);
+  const hasLock=(await readdir(root)).includes(LOCK);
+  const state=await loadJournal(root,ownerId,protector,true);
+  if(!state?.entries.length||state.orphanBackups.length!==1){
+    err("no single interrupted M4 backup can be verified");
+  }
+  const file=state.orphanBackups[0];
+  const seq=state.entries.length+1;
+  if(seq>LIMIT||file.slice(0,7)!==String(seq).padStart(6,"0")+"-"){
+    err("interrupted M4 sequence does not follow the signed history");
+  }
+  const slug=file.slice(7,-4);
+  if(!SLUG.test(slug)||slug.length<3||slug.length>120){
+    err("interrupted M4 slug invalid");
+  }
+  const latest=new Map(state.entries.map(item=>[item.slug,item]));
+  const prior=latest.get(slug);
+  if(!prior)err("orphaned M4 backup has no signed previous baseline");
+  await verifyM5LocalBackup(root,seq,slug,prior.sha256);
+
+  const baseline=[...latest.values()].map(item=>({
+    slug:item.slug,sha256:item.sha256,revision:item.remoteRevision,
+  }));
+  const observe=async()=>{
+    const p=await readPreview({sandboxOwnerJwt:args.sandboxOwnerJwt,baseline});
+    if(p.sandboxOnly!==true||p.readOnly!==true||
+       p.manualTriggerOnly!==true||p.previewStatus!=="ready"||
+       p.automaticSyncEnabled!==false||
+       p.automaticDeleteEnabled!==false||
+       p.autoApplyAllowed!==false||p.inventory.remoteFullInventory!==true||
+       p.inventory.localCoverageNeedsReview!==false||
+       p.inventory.localDirectoriesNotScanned!==0||
+       p.inventory.localUnsupportedMarkdown!==0){
+      err("M6 Owner-RLS or complete local recovery read unavailable");
+    }
+    const row=p.decisions.find(item=>item.slug===slug);
+    if(!row)err("interrupted note absent from complete M6 recovery inventory");
+    return row;
+  };
+  const before=await observe();
+  const after=await observe();
+  if(JSON.stringify(before)!==JSON.stringify(after)){
+    err("M6 local or remote changed during recovery inspection");
+  }
+  const final=await loadJournal(root,ownerId,protector,true);
+  if(!final||JSON.stringify(final.entries)!==JSON.stringify(state.entries)||
+     JSON.stringify(final.orphanBackups)!==JSON.stringify(state.orphanBackups)||
+     (await readdir(root)).includes(LOCK)!==hasLock){
+    err("M6 signed history or abandoned backup changed during inspection");
+  }
+  await verifyM5LocalBackup(root,seq,slug,prior.sha256);
+
+  const currentLocalState=after.expectedLocalSha===null?"missing":
+    after.expectedLocalSha===prior.sha256?"matches-previous-baseline":
+    after.expectedLocalSha===after.expectedRemoteSha?"matches-current-remote":
+    "different-from-both";
+  return {
+    interruptedBackupFound:true,
+    currentLocalState,
+    remoteChangedSinceBaseline:after.expectedRemoteSha!==prior.sha256||
+      after.expectedRemoteRevision!==prior.remoteRevision,
+    staleLocalLockPresent:hasLock,
+    currentObservationOnly:true,previousTransferProven:false,
+    baselineSaved:false,autoRetryAllowed:false,autoRestoreAllowed:false,
+  };
 }
 
 /** A verified preview for the existing M2 JSON import. No automatic action. */

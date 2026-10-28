@@ -1,5 +1,12 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
+## 2026-10-28 最新交付：PR #51 已合併、Production 已更新、接續 M6
+
+- **已合併部署且正式驗證通過**：PR #51 已合併至 `main ba4f89ab9a27932ee6553b69649d7fe16f87e965`，合併後 [CI #40614816329](https://github.com/Naos2w/Naosledge/actions/runs/40614816329) SUCCESS。Vercel Production 精確採用該 SHA 的 `dpl_7nzZH8GQ7oh7FGfSMJboQ4e2rCpr` 為 READY，`https://naosledge.vercel.app` alias 已指向新版，正式網站 **14/14 真實 HTTP 健康檢查 PASS**。沒有跑正式 DB Migration、沒有修改真實 Vault 筆記、沒有啟用排程。
+- **M6 具體故障：M4 本機完成替換但在 M5 Journal 提交前程序終止**：沿用既有 M5 Journal 與原稿 `backups/`；正常簽章載入仍嚴格拒絕孤兒備份。新增**僅唯讀** `inspectInterruptedM4LocalApply()`，允許診斷一個精確的孤兒備份：先驗 HMAC 歷史和上一版 SHA，要求新鮮固定 Neon Sandbox Owner-RLS＋MSI Vault **兩次完整唯讀重掃**，判斷目前本機仍是歷史版、已等於當前遠端、兩者皆非或本機檔缺失；同時回報殘留原本 `journal.lock`。即使目前相等，也**永遠不**自動補寫 Baseline、不清除鎖、不回滾或再次覆寫原稿，不能視為已證明中斷時成功傳輸。
+- **M6 MSI 人工唯讀入口**：沿用舊 `scripts/obsidian-m6-sandbox-uncertain-recovery.ts`，新增 `npm run verify:obsidian:m6:m4:readonly`，固定 MSI、明確旗標、私人 stdin 短效 Sandbox Owner JWT；不允許自訂 URL／路徑。舊 M3 結果不明 `--sandbox-inspect-uncertain-m3-readonly` 仍完整保留。
+- **故障驗證範圍（尚非 Live Neon E2E）**：在隨機 OS Scratch Vault/Journals 中，真實 Node **子程序以 Exit 77 中斷**（已完成檔案 rename、備份，但還沒有簽章成功事件），第二個獨立 Node 程序重啟後檢查原稿、保留的備份、舊簽章鏈，並確認診斷成功**但不更新任何 Baseline**；篡改備份／多餘孤兒備份／Owner Reader 模擬斷線都拒絕。此測試的 Owner-RLS 是**隔離模擬 Reader**，並未建立新 Auth 身分或對真實 Neon／實際 Vault 執行故障注入。**真正 M6 Live Sandbox 網路故障驗收、現場清理證據及孤兒「新建檔無備份」情況的恢復路徑仍待完成**；不能在沒有真實資料與新逐篇操作授權下宣稱完全結案。
+
 ## 2026-10-28 正式發布與後續 M5 單一路徑
 
 ### PR #51：M2 → M3/M4 → M5 實際整合（本輪）

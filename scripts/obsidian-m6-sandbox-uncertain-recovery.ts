@@ -1,16 +1,20 @@
 /**
- * MSI-only READ-ONLY diagnosis after an M3 POST/PATCH with an uncertain result.
- * The input is a separately held, manually reviewed Scratch Markdown and its
- * exact earlier SHA; no Vault paths, arbitrary endpoints, writes or retries.
- * A current SHA match does not prove the failed operation committed.
+ * MSI-only READ-ONLY diagnosis after an uncertain M3 POST/PATCH or an M4
+ * local write interrupted before its signed M5 Baseline event. Never retries,
+ * deletes files, repairs stale locks or promotes equal bytes to a Baseline.
  */
 import {hostname} from "node:os";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {inspectUncertainM3SandboxOutcome}
   from "../lib/obsidian-m5-sandbox-transfer-witness.ts";
+import {inspectInterruptedM4LocalApply}
+  from "../lib/obsidian-m5-owner-baseline-journal.ts";
+import {readOwnerJwtFromPipe}
+  from "./obsidian-msi-manual-preview.ts";
 
 export const M6_UNCERTAIN_READONLY_FLAG="--sandbox-inspect-uncertain-m3-readonly";
+export const M6_INTERRUPTED_M4_FLAG="--sandbox-inspect-interrupted-m4-readonly";
 type M6Request={
   sandboxOwnerJwt:string;localMarkdown:string;reviewedLocalSha:string;
   reviewedRemoteSha:string|null;reviewedRemoteRevision:string|null;
@@ -21,7 +25,9 @@ export function assertManualM6Invocation(
   platform:string,computerName:string,args:readonly string[],isTerminal:boolean,
 ):void{
   if(platform!=="win32"||computerName.trim().toUpperCase()!=="MSI"||
-     args.length!==1||args[0]!==M6_UNCERTAIN_READONLY_FLAG||isTerminal){
+     args.length!==1||
+     ![M6_UNCERTAIN_READONLY_FLAG,M6_INTERRUPTED_M4_FLAG].includes(args[0])||
+     isTerminal){
     throw Error("M6 inspection requires MSI, explicit read-only flag and piped input");
   }
 }
@@ -73,13 +79,27 @@ if(invoked){
     assertManualM6Invocation(
       process.platform,hostname(),process.argv.slice(2),!!process.stdin.isTTY,
     );
-    const request=await readM6UncertainRequest(process.stdin);
-    const result=await inspectUncertainM3SandboxOutcome(request);
-    if(result.baselineSaved!==false||result.transferConfirmed!==false||
-       result.automaticRetryAllowed!==false)throw Error("Unexpected M6 recovery authority");
-    console.log("M6_SANDBOX_CURRENT_REMOTE_STATE "+result.currentRemoteState);
-    console.log("CURRENT_OWNER_RLS_OBSERVATION_ONLY; PRIOR_TRANSFER_NOT_PROVEN");
-    console.log("NO_AUTOMATIC_RETRY; NO_VAULT_ACCESS; BASELINE_UNCHANGED");
+    if(process.argv[2]===M6_INTERRUPTED_M4_FLAG){
+      const sandboxOwnerJwt=await readOwnerJwtFromPipe(process.stdin);
+      const result=await inspectInterruptedM4LocalApply({sandboxOwnerJwt});
+      if(!result.currentObservationOnly||result.baselineSaved!==false||
+         result.autoRetryAllowed!==false||result.autoRestoreAllowed!==false){
+        throw Error("Unexpected M6 local recovery authority");
+      }
+      console.log("M6_INTERRUPTED_M4_LOCAL_STATE "+result.currentLocalState);
+      console.log("M6_REMOTE_CHANGED "+result.remoteChangedSinceBaseline);
+      console.log("M6_PREVIOUS_LOCAL_LOCK "+result.staleLocalLockPresent);
+      console.log("M6_OWNER_RLS_AND_SIGNED_BACKUP_OBSERVATION_ONLY");
+      console.log("NO_AUTO_RETRY; NO_AUTO_RESTORE; BASELINE_UNCHANGED");
+    }else{
+      const request=await readM6UncertainRequest(process.stdin);
+      const result=await inspectUncertainM3SandboxOutcome(request);
+      if(result.baselineSaved!==false||result.transferConfirmed!==false||
+         result.automaticRetryAllowed!==false)throw Error("Unexpected M6 recovery authority");
+      console.log("M6_SANDBOX_CURRENT_REMOTE_STATE "+result.currentRemoteState);
+      console.log("CURRENT_OWNER_RLS_OBSERVATION_ONLY; PRIOR_TRANSFER_NOT_PROVEN");
+      console.log("NO_AUTOMATIC_RETRY; NO_VAULT_ACCESS; BASELINE_UNCHANGED");
+    }
   }catch{
     console.error("M6_UNCERTAIN_SANDBOX_REINSPECTION_NOT_VERIFIED; NO_RETRY");
     process.exitCode=1;
