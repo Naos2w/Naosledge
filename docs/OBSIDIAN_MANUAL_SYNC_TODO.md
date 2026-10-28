@@ -1,6 +1,14 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
-## 2026-10-28 M7 起跑：正式 Schema 唯讀閘門（最新狀態）
+## 2026-10-28 M7 Production SQL003 Migration 已完成（最新狀態）
+
+- **執行目標與授權**：經 Owner 本次明確同意，只在 Neon Project `bitter-silence-36632892` 的 Production `br-aged-sound-b43h5r2c` / `neondb` 安裝 SQL003 `update_knowledge_note_cas_with_links`。來源為已合併 GitHub `main 0995a6e48bc7ee738f640d1a4f22d4d4ff489fce` 的 `neon/migrations/003_m3_wikilink_cas_candidate.sql`（blob `a0fbb10ddbaaeafa5c809c4c18111f489cf274ba`）。只執行原檔的 `CREATE FUNCTION`、`REVOKE` 和 `GRANT`，在**同一資料庫交易**原子提交，未重跑 001/002 或修改其他 RPC。
+- **實際階段驗證**：Neon Migration 準備介面的 SQL 分段解析不支援此 PL/pgSQL dollar-quoted body，故該工具首次準備報 `unterminated dollar-quoted string`，**沒有改動 Production**。隨後臨時建立 Production 衍生分支 `br-jolly-shadow-b4kqien4`，用 `run_sql_transaction` 實際測試相同三個 DDL/ACL 指令，M7 Schema Gate **PASS**，比較顯示只增加 SQL003 函式及其權限；Production 以相同單一交易執行成功。部署後再次驗證 Production Gate **`m7_schema_ready=true`**、與臨時測試分支 Schema 差異 **0**；臨時分支已刪除並透過 Neon 分支列表確認不存在。
+- **正式唯讀核對**：Production 私人 `knowledge_notes` 與 `knowledge_links` 兩表存在且 RLS 啟用；SQL003 完整 11 參數、`SECURITY INVOKER`、固定空 `search_path`、authenticated 允許執行而 anonymous 無 EXECUTE 權限，全部符合。正式 `knowledge_notes=0`、`knowledge_links=0`、`blog_admins=1`、公開文章=0，與此次 Migration 前一致，沒有筆記正文變更。
+- **重要邊界**：SQL003 已經安裝，**不可再次執行**；這是資料庫 Schema/ACL 升級，並非真實 Obsidian Vault 與 Production 雙向同步的授權、功能開啟或真人 E2E。沒有新增同步排程、沒有 Vercel 發布、沒有本機 Vault 寫入，也沒有以 Neon 管理員身分代替真人 JWT/RLS 測試筆記傳輸。
+- **實際 M7 下一步**：精確真人站長登入／Owner-RLS、指定單篇測試筆記及備份策略、人工逐篇上下載、衝突和中斷復原驗收與發布 SHA 的核對；正式內容的寫入須另外逐篇授權，不以本次 Schema 許可推定已核准。
+
+## 2026-10-28 M7 起跑：正式 Schema 唯讀閘門（以下為 SQL003 執行前的查核紀錄）
 
 - **M6 合併**：PR #53 已於 2026-10-28 合併至 `main 0995a6e48bc7ee738f640d1a4f22d4d4ff489fce`，精確 HEAD `fe1e56e` 的 [CI #40643116866](https://github.com/Naos2w/Naosledge/actions/runs/40643116866) SUCCESS。一次性真實 Sandbox E2E、故障注入及臨時身分清理已完成；實體 TCP 斷線／長時間離線尚非全部驗證。這次合併**不等於**在正式 Vault 或 Production 啟用雙向同步。
 - **Production 實際缺口**：2026-10-28 對固定 Neon Project `bitter-silence-36632892` 做 **唯讀** Schema 查核：Integration Sandbox `br-quiet-sunset-b4xx4pnx` 有 SQL003 `update_knowledge_note_cas_with_links`，Production `br-aged-sound-b43h5r2c` **沒有**。兩端均有 `knowledge_notes`、`knowledge_links` 和既有 `save_knowledge_note`。Production 在獲得 SQL003 個別授權、驗證與執行前不可宣稱 WikiLink CAS 更新已可用。
