@@ -1,6 +1,8 @@
--- M3 candidate ONLY: additive Owner-RLS CAS + WikiLink update RPC.
--- NOT APPLIED to Neon Sandbox or Production. Requires explicit Owner approval
--- for any future migration execution. Do not modify existing 002 functions.
+-- M3 additive Owner-RLS CAS + WikiLink update RPC.
+-- Installed and verified in Neon Integration Sandbox and, after a separate
+-- explicit Owner approval, in Production on 2026-10-28. DO NOT re-run on
+-- either branch; this is an audit reference, not an auto-apply migration.
+-- The existing 002 functions are unchanged.
 -- A PostgREST call is one PostgreSQL transaction: note and outgoing index
 -- either both commit, or both roll back on a lost CAS or invalid link set.
 BEGIN;

@@ -1,6 +1,37 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
-## 2026-10-28 M6 真正 Neon Sandbox 故障驗收結果（最新，優先於下列歷史）
+## 2026-10-28 M7 網站登入 Session → Production RLS 唯讀狀態（最新候選）
+
+- **現有登入即可驗證，不另取 JWT**：在原有站長限定的 `/vault/sync` Server Component 先呼叫 `requireVault()`，保留 Neon Auth Email 驗證、正式簽發的會員 JWT 與 `blog_admins` Owner-RLS 授權鏈。再透過**同一個**經授權的會員資料庫 Client 發出 `knowledge_notes.select("id",{count:"exact"}).eq("owner_id",user.id).limit(1)`，只查本人筆記精確數量，不傳 JWT、id、slug 或正文至瀏覽器，也不建立任何新同步系統。
+- **精確 Production 發布閘門**：新 `lib/obsidian-m7-web-owner-readiness.ts` 使用既有 `validateProductionRelease()` 核對 Vercel 正式版本 SHA、專案、分支、固定 Neon Auth/Data API、HTTPS origin 等設定。非 Production/Sandbox/Local 不執行此查詢；正式設定不一致、遠端失敗、未知或不一致的 count 只回報「未驗證」，**不可推論 0 篇或成功同步**。同時 `remoteFullInventoryRead=false`、`noteBodiesRead=false`、`transferAllowed=false`、`baselineSaved=false`。
+- **前端狀態**：在既有 M2 手動審查頁顯示獨立的 M7 正式站長只讀狀態與筆數；明確說明這與下方 Sandbox-only 本機 JSON 審查不同，兩者不得混淆為 Production 逐篇批准。保留現有 M2/M3/M4/M5 及失敗時不覆寫的行為，不加入按鈕執行同步或背景排程。
+- **測試和實測界線**：新 `tests/obsidian-m7-web-owner-readiness.test.mjs` 驗證真實 PostgREST Client 組成的 GET/精確計數、SHA/端點錯配與不完整清單拒絕、唯讀資料最小化，以及頁面要求先驗證 Owner。這些是隔離的合成 HTTP 驗證；**新版網站尚未部署，也沒有取得真人當前網站 Session 的 Live E2E**。真正站長登入驗收需未來在經核准的確切 Production SHA 發布後手動瀏覽網站。
+- **下一步**：先完成 PR/CI 與已核准的精確部署，才能用本人現有網站登入來驗證 M7 計數。之後再完成正式非空 Metadata/Fingerprint Inventory、真實 MSI Vault 雙端唯讀比較、個別指定的單篇測試筆記、持久備份/恢復，以及人工逐篇上下載與衝突處理。未經另外授權，**不寫入 Production 筆記、不自動同步，也不重跑 SQL003**。
+
+## 2026-10-28 M7 新增 Production Owner-RLS 唯讀入口（以下為早前候選）
+
+- **沿用既有架構，不啟動正式同步**：新增 `lib/obsidian-m7-production-owner-readonly.ts`，獨立釘選正式 Neon Branch/HTTPS Data API（直接沿用 `lib/neon/production-release.ts`），只接受短效 Production Owner JWT，先以真正 Data API 及 `blog_admins` 本人 RLS 驗證站長，再對 `knowledge_notes` 只查 `id` 和精確列數。沒有讀取 Markdown 正文、slug、沒有寫入、沒有完整遠端 Inventory；**即使查到 0 筆，也不判定已同步或取得逐篇操作權**。既有 Sandbox-only M1–M6 Adapter 完全不變，Production JWT 不會被送去 Sandbox。
+- **人工 MSI 腳本**：新增 `npm run verify:obsidian:m7:owner:readonly`。必須在指定的 MSI Windows 上使用唯一 `--m7-production-owner-readonly` 旗標，從私人 stdin 管線提供短效 **Production** Owner JWT（不得放在指令參數、環境變數、檔案或聊天）。取得真正 Owner-RLS 計數後，再沿用既有 Obsidian GUI Vault 註冊與唯讀 Manifest 檢查，只輸出摘要數量，`remoteFullInventoryRead=false`、`comparisonPerformed=false`、`localWrites=remoteWrites=0`。
+- **離線測試／真實驗收的界線**：新增 `tests/obsidian-m7-production-owner-readonly.test.mjs`，測試精確 Production URL、只送 GET、不接受非 Owner、逾期 JWT、SSO 轉址、未知遠端列數、不完整清單及不安全 Vault 等拒絕。**測試只用合成 JWT 與隔離 Fake HTTP，並未取得本人真人 Production JWT／Session**；因此不可把單元測試 PASS 當作正式站長登入的 Live E2E，更沒有真正筆記上下載／備份／復原驗收。
+- **下一個實際驗收**：在使用者正式登入且已有合格短效 Production Owner JWT 時，才能人工執行一次此純唯讀入口；後續建立完整非空遠端 Inventory 和正式單篇同步 Adapter，仍須明確指定可測試的筆記、備份策略和操作授權。**不重跑 SQL003、不自動同步／發布／刪除。**
+
+## 2026-10-28 M7 Production SQL003 Migration 已完成（以下為既有完成紀錄）
+
+- **執行目標與授權**：經 Owner 本次明確同意，只在 Neon Project `bitter-silence-36632892` 的 Production `br-aged-sound-b43h5r2c` / `neondb` 安裝 SQL003 `update_knowledge_note_cas_with_links`。來源為已合併 GitHub `main 0995a6e48bc7ee738f640d1a4f22d4d4ff489fce` 的 `neon/migrations/003_m3_wikilink_cas_candidate.sql`（blob `a0fbb10ddbaaeafa5c809c4c18111f489cf274ba`）。只執行原檔的 `CREATE FUNCTION`、`REVOKE` 和 `GRANT`，在**同一資料庫交易**原子提交，未重跑 001/002 或修改其他 RPC。
+- **實際階段驗證**：Neon Migration 準備介面的 SQL 分段解析不支援此 PL/pgSQL dollar-quoted body，故該工具首次準備報 `unterminated dollar-quoted string`，**沒有改動 Production**。隨後臨時建立 Production 衍生分支 `br-jolly-shadow-b4kqien4`，用 `run_sql_transaction` 實際測試相同三個 DDL/ACL 指令，M7 Schema Gate **PASS**，比較顯示只增加 SQL003 函式及其權限；Production 以相同單一交易執行成功。部署後再次驗證 Production Gate **`m7_schema_ready=true`**、與臨時測試分支 Schema 差異 **0**；臨時分支已刪除並透過 Neon 分支列表確認不存在。
+- **正式唯讀核對**：Production 私人 `knowledge_notes` 與 `knowledge_links` 兩表存在且 RLS 啟用；SQL003 完整 11 參數、`SECURITY INVOKER`、固定空 `search_path`、authenticated 允許執行而 anonymous 無 EXECUTE 權限，全部符合。正式 `knowledge_notes=0`、`knowledge_links=0`、`blog_admins=1`、公開文章=0，與此次 Migration 前一致，沒有筆記正文變更。
+- **重要邊界**：SQL003 已經安裝，**不可再次執行**；這是資料庫 Schema/ACL 升級，並非真實 Obsidian Vault 與 Production 雙向同步的授權、功能開啟或真人 E2E。沒有新增同步排程、沒有 Vercel 發布、沒有本機 Vault 寫入，也沒有以 Neon 管理員身分代替真人 JWT/RLS 測試筆記傳輸。
+- **實際 M7 下一步**：精確真人站長登入／Owner-RLS、指定單篇測試筆記及備份策略、人工逐篇上下載、衝突和中斷復原驗收與發布 SHA 的核對；正式內容的寫入須另外逐篇授權，不以本次 Schema 許可推定已核准。
+
+## 2026-10-28 M7 起跑：正式 Schema 唯讀閘門（以下為 SQL003 執行前的查核紀錄）
+
+- **M6 合併**：PR #53 已於 2026-10-28 合併至 `main 0995a6e48bc7ee738f640d1a4f22d4d4ff489fce`，精確 HEAD `fe1e56e` 的 [CI #40643116866](https://github.com/Naos2w/Naosledge/actions/runs/40643116866) SUCCESS。一次性真實 Sandbox E2E、故障注入及臨時身分清理已完成；實體 TCP 斷線／長時間離線尚非全部驗證。這次合併**不等於**在正式 Vault 或 Production 啟用雙向同步。
+- **Production 實際缺口**：2026-10-28 對固定 Neon Project `bitter-silence-36632892` 做 **唯讀** Schema 查核：Integration Sandbox `br-quiet-sunset-b4xx4pnx` 有 SQL003 `update_knowledge_note_cas_with_links`，Production `br-aged-sound-b43h5r2c` **沒有**。兩端均有 `knowledge_notes`、`knowledge_links` 和既有 `save_knowledge_note`。Production 在獲得 SQL003 個別授權、驗證與執行前不可宣稱 WikiLink CAS 更新已可用。
+- **本次開發的可重複門檻**：`neon/m7_schema_readiness_readonly.sql` 僅 SELECT `pg_catalog`：確認私人表存在並啟用 RLS、SQL003 **完整 11 參數簽章**、`SECURITY INVOKER`、受限 `search_path`、authenticated EXECUTE 和 anonymous 無權執行。`npm run verify:obsidian:m7:schema:offline` 使用 PGlite 真正執行 001/002 與 003、以及權限／RLS 反例，沒有碰正式資料庫。`m7_schema_ready=true` **只代表 Schema/ACL 結構合格**，不是 Owner-RLS 真人驗收、實際筆記授權或開放同步。
+- **首次 Gate 實測**：直接在兩個 Neon 分支執行同一份唯讀 SQL：Sandbox 的 `m7_schema_ready=true`，Production 的 `m7_schema_ready=false`（RPC 缺失；私人表、RLS 均存在）。MSI `npm run verify:obsidian:vault:msi` 也已實際通過 GUI Vault 註冊與本機清單查核：Markdown=0、未掃描子目錄=0、不支援檔名=0、讀寫操作=0。這些結果**不代表**已有正式兩端非空筆記同步實測。
+- **M7 待完成**：先在得到獨立 Production Migration 核准後單次套用並重新唯讀驗證 SQL003；再明確指定真人站長登入、真實 Vault 的測試筆記範圍、備份位置／保存策略、雙向逐篇人工操作、衝突／中斷後的恢復驗收與精確部署 SHA。先完成只讀檢查再討論正式寫入；保持既有 M2–M6 同一路徑，不增加新的同步服務、Agent、排程、自動覆寫或自動刪除。
+
+## 2026-10-28 M6 真正 Neon Sandbox 故障驗收結果（以下為既有證據）
 
 - **已完成一次性 Owner 授權的真實 API/實機故障驗收**：執行 MSI `npm run verify:obsidian:m6:real:sandbox:owner:e2e`（須額外設定 `NAOSLEDGE_SYNTHETIC_SANDBOX_WRITE_APPROVED=SYNTHETIC_SANDBOX_ONLY` 與 `NAOSLEDGE_M6_REAL_E2E_APPROVED=M6_SANDBOX_FAULT_ONLY_20261028`），`M6_REAL_SANDBOX_FAULT_E2E_PASS`、**Exit Code 0**。固定 Neon Integration Sandbox `bitter-silence-36632892` / `br-quiet-sunset-b4xx4pnx`，一次性合成 Auth Owner、真實 RLS 和 API。
 - **明確故障覆蓋**：真實 Neon POST 已 **201 commit**，但故意丟棄回應讓 M3 報寫入結果不明；實際 Owner-RLS 完整清單再次確認只有一篇指定合成筆記、SHA 一致，M6 唯讀工具回報目前遠端相符，**不把這視為先前操作成功的可信證明、不重試、不寫 Baseline**。在真實 GET 收到遠端回應後，故意取消其 response body 並拋出連線讀取錯誤，必須拒絕不完整回應。此為**真實遠端伺服器＋受控用戶端回應中斷注入**，非網卡實體斷線或 DNS/TCP 層故障。

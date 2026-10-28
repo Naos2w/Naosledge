@@ -111,7 +111,10 @@ test("M2 private route requires Vault owner and starts without synthetic notes o
   const src=await readFile(new URL("../app/vault/sync/page.tsx",import.meta.url),"utf8");
   assert.match(src,/await requireVault\(\)/);
   assert.doesNotMatch(src,/makeSyntheticM2Preview|obsidian-m2-synthetic-fixture/);
-  assert.match(src,/<VaultManualSyncReview\/>/);
+  // M7 now passes ONLY the Owner-scoped read-only count, not a synthetic M2 preview.
+  assert.match(src,/<VaultManualSyncReview m7ProductionReadiness=\{m7ProductionReadiness\}\/>/);
+  assert.match(src,/const context=await requireVault\(\)/);
+  assert.match(src,/\.select\("id",\{count:"exact"\}\)/);
   assert.match(src,/force-dynamic/);
   assert.match(src,/index:false/);
   assert.doesNotMatch(src,/previewApprovedMsiSandboxSync|fetchNeonSandboxFingerprints|readObsidianLocalManifest|writeFile|fetch\(/);
