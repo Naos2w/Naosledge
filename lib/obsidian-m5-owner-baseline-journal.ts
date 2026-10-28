@@ -15,7 +15,12 @@ import {spawn} from "node:child_process";
 import {homedir,hostname,tmpdir} from "node:os";
 import {lstat,mkdir,open,readFile,readdir,realpath,unlink} from "node:fs/promises";
 import path from "node:path";
-import {previewApprovedMsiSandboxSync} from "./obsidian-manual-sync-approved-msi.ts";
+import {previewApprovedMsiSandboxSync,readApprovedMsiCanonicalMarkdown}
+  from "./obsidian-manual-sync-approved-msi.ts";
+import {parseManualM3UploadIntent} from "./obsidian-m2-review-choices.ts";
+import {createNeonSandboxNoteOnly} from "./obsidian-neon-sandbox-create.ts";
+import {updateNeonSandboxNoteIfUnchanged} from "./obsidian-neon-sandbox-update.ts";
+import type {SyncDecision} from "./obsidian-sync-plan.ts";
 import {NEON_SYNC_SANDBOX_BRANCH} from "./obsidian-neon-sandbox-readonly.ts";
 import type {ManualReviewPreview} from "./obsidian-manual-sync-review.ts";
 import type {SyncFingerprint} from "./obsidian-sync-plan.ts";
@@ -34,8 +39,9 @@ type Protector={seal:(key:Buffer)=>Promise<string>;unseal:(blob:string)=>Promise
 type Entry={
   format:typeof FORMAT;seq:number;previousMac:string;
   branch:typeof NEON_SYNC_SANDBOX_BRANCH;ownerId:string;
-  action:"manual-adopt-current-equality";
+  action:"manual-adopt-current-equality"|"verified-m3-upload";
   slug:string;sha256:string;remoteRevision:string;createdAt:string;
+  beforeRemoteSha?:string|null;beforeRemoteRevision?:string|null;
 };
 type SignedEntry=Entry&{mac:string};
 export type M5ApprovedBaselineResult={
@@ -61,7 +67,8 @@ export function assertM5ApprovedBaselineInvocation(
   platform:string,computer:string,flags:readonly string[],tty:boolean,
 ):void{
   if(platform!=="win32"||computer.trim().toUpperCase()!=="MSI"||
-     flags.length!==1||!["--m5-adopt-current-equality","--m5-inspect-approved-baseline"].includes(flags[0])||
+     flags.length!==1||!["--m5-adopt-current-equality","--m5-inspect-approved-baseline",
+       "--m5-review-approved-baseline","--m5-upload-reviewed-note"].includes(flags[0])||
      tty)err("MSI-only, explicit manual flag and piped stdin required");
 }
 export function approvedBaselineDirectory():string{
@@ -175,13 +182,18 @@ async function withLock<T>(root:string,run:()=>Promise<T>):Promise<T>{
 function validateRecord(row:unknown,seq:number,previousMac:string):Entry{
   if(!row||typeof row!=="object"||Array.isArray(row))err("invalid journal record");
   const a=row as Record<string,unknown>;
-  const keys=["format","seq","previousMac","branch","ownerId","action",
+  const fields=["format","seq","previousMac","branch","ownerId","action",
     "slug","sha256","remoteRevision","createdAt"];
-  if(Object.keys(a).join(",")!==keys.join(",")||
+  const isUpload=a.action==="verified-m3-upload";
+  if(Object.keys(a).join(",")!==
+       [...fields,...(isUpload?["beforeRemoteSha","beforeRemoteRevision"]:[])].join(",")||
      a.format!==FORMAT||a.seq!==seq||a.previousMac!==previousMac||
      a.branch!==NEON_SYNC_SANDBOX_BRANCH||
      typeof a.ownerId!=="string"||!UUID.test(a.ownerId)||
-     a.action!=="manual-adopt-current-equality"||
+     (a.action!=="manual-adopt-current-equality"&&!isUpload)||
+     (isUpload&&!((a.beforeRemoteSha===null&&a.beforeRemoteRevision===null)||
+       (typeof a.beforeRemoteSha==="string"&&HASH.test(a.beforeRemoteSha)&&
+        typeof a.beforeRemoteRevision==="string"&&HASH.test(a.beforeRemoteRevision))))||
      typeof a.slug!=="string"||a.slug.length<3||a.slug.length>120||
      !SLUG.test(a.slug)||
      typeof a.sha256!=="string"||!HASH.test(a.sha256)||
@@ -226,7 +238,7 @@ async function loadJournal(root:string,ownerId:string,protector:Protector):Promi
     err("incomplete or unexpected persistent journal");
   }
   let prev=GENESIS;
-  const seen=new Set<string>();
+  const latest=new Map<string,Entry>();
   const entries:SignedEntry[]=[];
   for(let i=0;i<files.length;i++){
     if(files[i]!==String(i+1).padStart(6,"0")+".json")err("missing journal sequence");
@@ -245,8 +257,17 @@ async function loadJournal(root:string,ownerId:string,protector:Protector):Promi
     const expected=mac(key,event);
     if(!timingSafeEqual(Buffer.from(expected,"hex"),Buffer.from(signature as string,"hex"))||
        raw.toString("utf8")!==JSON.stringify({...event,mac:signature})||
-       event.ownerId!==ownerId||seen.has(event.slug))err("tampered or ambiguous journal");
-    seen.add(event.slug);
+       event.ownerId!==ownerId)err("tampered or ambiguous journal");
+    const older=latest.get(event.slug);
+    if(event.action==="manual-adopt-current-equality"&&older){
+      err("duplicate baseline adoption");
+    }
+    if(event.action==="verified-m3-upload"&&older&&
+       (event.beforeRemoteSha!==older.sha256||
+        event.beforeRemoteRevision!==older.remoteRevision)){
+      err("M5 upload is not chained to its previous adopted baseline");
+    }
+    latest.set(event.slug,event);
     prev=signature as string;
     entries.push({...event,mac:prev});
   }
@@ -286,23 +307,34 @@ export type ApprovedJournalDependencies={
   rootDir?:string;
   protector?:Protector;
   readPreview?:typeof previewApprovedMsiSandboxSync;
+  /** Test-only source and transport are never available to the live MSI CLI. */
+  readMarkdown?:(slug:string,sha:string)=>Promise<string>;
+  transfer?:(input:{sandboxOwnerJwt:string;decision:SyncDecision;
+    readMarkdown:()=>Promise<string>;typedConfirmation:string})=>Promise<{
+    slug:string;sha256:string;revision:string;baselineSaved:false;
+  }>;
 };
 function dependencies(options:ApprovedJournalDependencies={}){
   const root=options.rootDir??approvedBaselineDirectory();
   if(options.rootDir!==undefined||options.protector!==undefined||
-     options.readPreview!==undefined){
+     options.readPreview!==undefined||options.readMarkdown!==undefined||
+     options.transfer!==undefined){
     if(typeof options.rootDir!=="string"||
        path.dirname(path.resolve(options.rootDir)).toLowerCase()!==
          path.resolve(tmpdir()).toLowerCase()||
        !path.basename(options.rootDir).startsWith(PREFIX)||
        typeof options.protector?.seal!=="function"||
        typeof options.protector.unseal!=="function"||
-       typeof options.readPreview!=="function"){
+       typeof options.readPreview!=="function"||
+       (options.readMarkdown!==undefined&&typeof options.readMarkdown!=="function")||
+       (options.transfer!==undefined&&typeof options.transfer!=="function")){
       err("dependency overrides only permitted in isolated OS-temp tests");
     }
   }
   return {root,protector:options.protector??windowsM5KeyProtector,
-    readPreview:options.readPreview??previewApprovedMsiSandboxSync};
+    readPreview:options.readPreview??previewApprovedMsiSandboxSync,
+    readMarkdown:options.readMarkdown??readApprovedMsiCanonicalMarkdown,
+    transfer:options.transfer};
 }
 
 /**
@@ -356,21 +388,128 @@ export async function adoptM5CurrentEquality(args:{
   });
 }
 
-/** Load/verify ALL chained evidence before passing baseline to current M1/M2. */
-export async function inspectM5OwnerApprovedBaseline(args:{
+/**
+ * The one approved M2 -> M3 -> M5 upload flow on MSI.
+ * A reviewed M2 handoff is only an intent; this function requires a fresh
+ * independent typed per-note approval, real Owner-RLS preflight, the CURRENT
+ * registered local Markdown, and a successful atomic M3 post-write check.
+ *
+ * Never fall back to saving a Baseline on a failed/ambiguous POST or PATCH.
+ * A later M4 Incoming copy is NOT a completed local download.
+ */
+export async function uploadReviewedM3AndRecordM5(args:{
+  sandboxOwnerJwt:string;handoff:unknown;typedConfirmation:string;
+},options?:ApprovedJournalDependencies):Promise<{
+  baselineSaved:true;transferConfirmed:true;entryCount:number;
+  autoApplyAllowed:false;deleteAllowed:false;
+}>{
+  const ownerId=validateOwnerJwt(args?.sandboxOwnerJwt);
+  const decision=parseManualM3UploadIntent(args.handoff);
+  const slug=decision.slug,desired=decision.expectedLocalSha!;
+  if(args.typedConfirmation!=="UPLOAD M5 SANDBOX "+slug+" "+desired.slice(0,12)){
+    err("one reviewed M2 upload and independent per-note confirmation required");
+  }
+  const {root,protector,readPreview,readMarkdown,transfer}=dependencies(options);
+  await checkRoot(root,true);
+  return withLock(root,async()=>{
+    const journal=await loadJournal(root,ownerId,protector);
+    if((journal?.entries.length??0)>=LIMIT)err("bounded journal entry limit exceeded");
+    const previous=new Map((journal?.entries??[]).map(item=>[item.slug,item]));
+    const prior=previous.get(slug);
+    if(prior&&(prior.sha256!==decision.expectedRemoteSha||
+       prior.remoteRevision!==decision.expectedRemoteRevision)){
+      err("M2 remote version diverges from signed historical Baseline");
+    }
+    const baseline=[...previous.values()].map(item=>({
+      slug:item.slug,sha256:item.sha256,revision:item.remoteRevision,
+    }));
+    const scan=()=>readPreview({sandboxOwnerJwt:args.sandboxOwnerJwt,baseline});
+    const before=await scan();
+    const row=before.decisions.find(item=>item.slug===slug);
+    if(before.previewStatus!=="ready"||before.sandboxOnly!==true||
+       before.readOnly!==true||before.manualTriggerOnly!==true||
+       before.autoApplyAllowed!==false||
+       before.inventory.remoteFullInventory!==true||
+       before.inventory.localCoverageNeedsReview!==false||
+       !row||row.expectedLocalSha!==desired||
+       row.expectedRemoteSha!==decision.expectedRemoteSha||
+       row.expectedRemoteRevision!==decision.expectedRemoteRevision){
+      err("M2 reviewed source changed before authorized transfer");
+    }
+    const read=()=>readMarkdown(slug,desired);
+    // The real path invokes the ALREADY VERIFIED M3 Owner-RLS transport.
+    // Injected test transport is allowed only with an isolated OS-temp root.
+    const send=transfer??(async(input:{
+      sandboxOwnerJwt:string;decision:SyncDecision;
+      readMarkdown:()=>Promise<string>;typedConfirmation:string;
+    })=>decision.choice==="review-missing-remote"?
+      createNeonSandboxNoteOnly({
+        branchId:NEON_SYNC_SANDBOX_BRANCH,...input,
+      }):updateNeonSandboxNoteIfUnchanged({
+        branchId:NEON_SYNC_SANDBOX_BRANCH,...input,
+      }));
+    const result=await send({
+      sandboxOwnerJwt:args.sandboxOwnerJwt,decision,readMarkdown:read,
+      typedConfirmation:(decision.choice==="review-missing-remote"?
+        "CREATE SANDBOX ":"UPDATE SANDBOX ")+slug,
+    });
+    if(result.baselineSaved!==false||result.slug!==slug||
+       result.sha256!==desired||typeof result.revision!=="string"||
+       !HASH.test(result.revision)){
+      err("M3 transfer did not return one fully verified note");
+    }
+    // An M3 good HTTP response alone does not persist a Baseline. The
+    // separately registered local Vault and Owner-RLS remote MUST still
+    // agree on the EXACT post-write revision, twice, while the local
+    // journal is exclusively locked.
+    const after=await scan();
+    if(!validPreviewEqual(after,slug,desired,result.revision)){
+      err("M3 finished but M5 two-source verification failed; no retry");
+    }
+    const last=await scan();
+    if(!validPreviewEqual(last,slug,desired,result.revision)){
+      err("M5 source changed before durable commit; no retry");
+    }
+    const key=journal?journal.key:await initialize(root,protector);
+    const seq=(journal?.entries.length??0)+1;
+    const event:Entry={
+      format:FORMAT,seq,
+      previousMac:journal?.entries.at(-1)?.mac??GENESIS,
+      branch:NEON_SYNC_SANDBOX_BRANCH,ownerId,
+      action:"verified-m3-upload",slug,sha256:desired,
+      remoteRevision:result.revision,createdAt:new Date().toISOString(),
+      beforeRemoteSha:decision.expectedRemoteSha,
+      beforeRemoteRevision:decision.expectedRemoteRevision,
+    };
+    const signature=mac(key,event);
+    await writeExclusive(path.join(root,RECORDS,
+      String(seq).padStart(6,"0")+".json"),
+      Buffer.from(JSON.stringify({...event,mac:signature}),"utf8"));
+    const committed=await loadJournal(root,ownerId,protector);
+    if(committed?.entries.length!==seq||
+       committed.entries.at(-1)?.mac!==signature){
+      err("M5 persisted M3 upload could not be independently verified");
+    }
+    return {baselineSaved:true,transferConfirmed:true,entryCount:seq,
+      autoApplyAllowed:false,deleteAllowed:false};
+  });
+}
+
+/** Load/verify ALL chained evidence before passing the real Baseline to M1/M2. */
+async function verifiedM5Review(args:{
   sandboxOwnerJwt:string;
 },options?:ApprovedJournalDependencies):Promise<{
-  baselineCount:number;manualReviewCount:number;conflicts:number;
-  possibleDeletionsNeverApplied:number;
-  loadedFromAuthenticatedJournal:true;readOnly:true;autoApplyAllowed:false;
-  transferConfirmed:false;deleteAllowed:false;
+  baselineCount:number;preview:ManualReviewPreview;
 }>{
   const ownerId=validateOwnerJwt(args?.sandboxOwnerJwt);
   const {root,protector,readPreview}=dependencies(options);
   await checkRoot(root,false);
   const state=await loadJournal(root,ownerId,protector);
   if(!state?.entries.length)err("no approved baseline journal");
-  const baselines:SyncFingerprint[]=state.entries.map(x=>({
+  // Later verified M3 uploads replace the previous per-note Baseline in the
+  // same signed history; historic events themselves are never deleted.
+  const latest=new Map(state.entries.map(item=>[item.slug,item]));
+  const baselines:SyncFingerprint[]=[...latest.values()].map(x=>({
     slug:x.slug,sha256:x.sha256,revision:x.remoteRevision,
   }));
   const preview=await readPreview({sandboxOwnerJwt:args.sandboxOwnerJwt,
@@ -391,7 +530,27 @@ export async function inspectM5OwnerApprovedBaseline(args:{
   if(!second||JSON.stringify(second.entries)!==JSON.stringify(state.entries)){
     err("baseline journal changed during live reconciliation");
   }
-  return {baselineCount:baselines.length,manualReviewCount:preview.manualReviewCount,
+  return {baselineCount:baselines.length,preview};
+}
+
+/** A verified preview for the existing M2 JSON import. No automatic action. */
+export async function readM5ApprovedReview(args:{
+  sandboxOwnerJwt:string;
+},options?:ApprovedJournalDependencies):Promise<ManualReviewPreview>{
+  return (await verifiedM5Review(args,options)).preview;
+}
+
+/** A restart-safe, count-only CLI summary; private note metadata stays local. */
+export async function inspectM5OwnerApprovedBaseline(args:{
+  sandboxOwnerJwt:string;
+},options?:ApprovedJournalDependencies):Promise<{
+  baselineCount:number;manualReviewCount:number;conflicts:number;
+  possibleDeletionsNeverApplied:number;
+  loadedFromAuthenticatedJournal:true;readOnly:true;autoApplyAllowed:false;
+  transferConfirmed:false;deleteAllowed:false;
+}>{
+  const {baselineCount,preview}=await verifiedM5Review(args,options);
+  return {baselineCount,manualReviewCount:preview.manualReviewCount,
     conflicts:preview.conflicts,
     possibleDeletionsNeverApplied:preview.possibleDeletionsNeverApplied,
     loadedFromAuthenticatedJournal:true,readOnly:true,

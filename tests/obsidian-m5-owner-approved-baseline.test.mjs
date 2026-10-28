@@ -11,12 +11,17 @@ import {spawnSync} from "node:child_process";
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
+import {chooseReviewIntent,serializeManualM3UploadIntent,
+  parseManualM2Handoff} from "../lib/obsidian-m2-review-choices.ts";
+import {saveManualM2Handoff} from "../scripts/obsidian-msi-manual-preview.ts";
 import {
   adoptM5CurrentEquality,inspectM5OwnerApprovedBaseline,
+  readM5ApprovedReview,uploadReviewedM3AndRecordM5,
   assertM5ApprovedBaselineInvocation,windowsM5KeyProtector,
 } from "../lib/obsidian-m5-owner-baseline-journal.ts";
 import {
-  M5_ADOPT,M5_INSPECT,readM5ApprovedBaselineRequest,
+  M5_ADOPT,M5_INSPECT,M5_REVIEW,M5_UPLOAD,
+  readM5ApprovedBaselineRequest,
 } from "../scripts/obsidian-m5-owner-baseline.ts";
 
 const OWNER="00000000-0000-4000-8000-000000000079";
@@ -303,6 +308,160 @@ test("M5 refuses revoked Owner reader and never downgrades to its old local rece
   });
 });
 
+test("M2 review -> M3 reviewed CREATE/UPDATE -> M5 signed Baseline -> restarted M2 review",async()=>{
+  await withRoot(async root=>{
+    const f=fixture(root,OWNER,[noteA]);
+    f.setRemote([]);
+    const initial=await f.options.readPreview({
+      sandboxOwnerJwt:JWT(OWNER),baseline:[],
+    });
+    const createIntent=JSON.parse(serializeManualM3UploadIntent(
+      initial,chooseReviewIntent(initial,{},noteA.slug,"upload"),noteA.slug,
+    ));
+    let transportCalls=0;
+    const transfer=async({sandboxOwnerJwt,decision,readMarkdown,typedConfirmation})=>{
+      assert.equal(sandboxOwnerJwt,JWT(OWNER));
+      assert.equal(decision.slug,noteA.slug);
+      assert.equal(typedConfirmation,transportCalls===0?
+        "CREATE SANDBOX "+noteA.slug:"UPDATE SANDBOX "+noteA.slug);
+      const raw=await readMarkdown();
+      assert.equal(sha(raw),decision.expectedLocalSha);
+      transportCalls++;
+      const revision=sha("approved m3 transport "+transportCalls);
+      f.setRemote([{slug:noteA.slug,sha256:decision.expectedLocalSha,revision}]);
+      return {slug:noteA.slug,sha256:decision.expectedLocalSha,
+        revision,baselineSaved:false};
+    };
+    let localBytes="safe common A";
+    const options={...f.options,
+      readMarkdown:async()=>localBytes,transfer,
+    };
+    const result=await uploadReviewedM3AndRecordM5({
+      sandboxOwnerJwt:JWT(OWNER),handoff:createIntent,
+      typedConfirmation:"UPLOAD M5 SANDBOX "+noteA.slug+" "+noteA.sha256.slice(0,12),
+    },options);
+    assert.deepEqual(result,{
+      baselineSaved:true,transferConfirmed:true,entryCount:1,
+      autoApplyAllowed:false,deleteAllowed:false,
+    });
+    assert.equal(transportCalls,1);
+    const first=JSON.parse(await readFile(path.join(root,"records","000001.json"),"utf8"));
+    assert.equal(first.action,"verified-m3-upload");
+    assert.equal(first.beforeRemoteSha,null);
+    assert.equal(first.beforeRemoteRevision,null);
+    assert.equal(first.ownerId,OWNER);
+    assert.equal(first.slug,noteA.slug);
+    assert.equal(first.sha256,noteA.sha256);
+    assert.equal(first.mac.length,64);
+
+    const equal=await readM5ApprovedReview({sandboxOwnerJwt:JWT(OWNER)},options);
+    assert.equal(equal.summary.unchanged,1);
+    // The existing M2 browser import is fed by this exact reloaded preview.
+    const m2file=await saveManualM2Handoff(equal);
+    try{
+      const imported=parseManualM2Handoff(await readFile(m2file,"utf8"));
+      assert.equal(imported.summary.unchanged,1);
+    }finally{await unlink(m2file);}
+
+    localBytes="safe common A updated";
+    const nextSha=sha(localBytes);
+    f.setLocal([{slug:noteA.slug,sha256:nextSha}]);
+    const toReview=await readM5ApprovedReview({sandboxOwnerJwt:JWT(OWNER)},options);
+    assert.equal(toReview.summary["review-upload"],1);
+    const updateIntent=JSON.parse(serializeManualM3UploadIntent(
+      toReview,chooseReviewIntent(toReview,{},noteA.slug,"upload"),noteA.slug,
+    ));
+    const newer=await uploadReviewedM3AndRecordM5({
+      sandboxOwnerJwt:JWT(OWNER),handoff:updateIntent,
+      typedConfirmation:"UPLOAD M5 SANDBOX "+noteA.slug+" "+nextSha.slice(0,12),
+    },options);
+    assert.equal(newer.entryCount,2);
+    assert.equal(transportCalls,2);
+    const journal=(await readdir(path.join(root,"records"))).sort();
+    assert.deepEqual(journal,["000001.json","000002.json"]);
+    const second=JSON.parse(await readFile(path.join(root,"records","000002.json"),"utf8"));
+    assert.equal(second.beforeRemoteSha,first.sha256);
+    assert.equal(second.beforeRemoteRevision,first.remoteRevision);
+    assert.equal(second.previousMac,first.mac);
+    assert.equal(second.action,"verified-m3-upload");
+
+    // Fresh process re-verifies BOTH journal entries and resumes from latest.
+    const importer=new URL("../lib/obsidian-m5-owner-baseline-journal.ts",import.meta.url).href;
+    const planner=new URL("../lib/obsidian-manual-sync-review.ts",import.meta.url).href;
+    const code=[
+      "import {readFileSync} from 'node:fs';",
+      "import {readM5ApprovedReview} from "+JSON.stringify(importer)+";",
+      "import {previewManualObsidianSync} from "+JSON.stringify(planner)+";",
+      "const x=JSON.parse(readFileSync(0,'utf8'));",
+      "const protector={seal:async b=>Buffer.from('synthetic:'+b.toString('base64')).toString('base64'),",
+      "unseal:async b=>Buffer.from(Buffer.from(b,'base64').toString('utf8').slice(10),'base64')};",
+      "const readPreview=({baseline})=>previewManualObsidianSync({baseline,",
+      "readLocal:async()=>({fingerprints:x.local,unsupportedMarkdownFiles:0,otherFiles:0,",
+      "directoriesNotScanned:0,autoApplyAllowed:false}),",
+      "readRemote:async()=>({fingerprints:x.remote,numberOfNotes:x.remote.length,",
+      "sandboxOnly:true,rlsEnforcedByDataApi:true,writeEnabled:false,fullInventory:true})});",
+      "const p=await readM5ApprovedReview({sandboxOwnerJwt:x.jwt},",
+      "{rootDir:x.root,protector,readPreview});",
+      "process.stdout.write(JSON.stringify({summary:p.summary,decisions:p.decisions}));",
+    ].join("\n");
+    const child=spawnSync(process.execPath,[
+      "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON","--input-type=module",
+      "-e",code,
+    ],{input:JSON.stringify({root,jwt:JWT(OWNER),
+      local:[{slug:noteA.slug,sha256:nextSha}],
+      remote:[{slug:noteA.slug,sha256:nextSha,revision:second.remoteRevision}]}),
+      encoding:"utf8",timeout:15000});
+    assert.equal(child.status,0,child.stderr);
+    assert.equal(JSON.parse(child.stdout).summary.unchanged,1);
+    assert.equal(JSON.parse(child.stdout).decisions.length,1);
+  });
+});
+
+test("M3 uncertain commit, stale M2 intent or failed post-GET never writes a M5 Baseline",async()=>{
+  await withRoot(async root=>{
+    const f=fixture(root,OWNER,[noteA]);
+    f.setRemote([]);
+    const p=await f.options.readPreview({sandboxOwnerJwt:JWT(OWNER),baseline:[]});
+    const handoff=JSON.parse(serializeManualM3UploadIntent(
+      p,chooseReviewIntent(p,{},noteA.slug,"upload"),noteA.slug,
+    ));
+    const request={sandboxOwnerJwt:JWT(OWNER),handoff,
+      typedConfirmation:"UPLOAD M5 SANDBOX "+noteA.slug+" "+noteA.sha256.slice(0,12)};
+    let writes=0;
+    const base={...f.options,readMarkdown:async()=>"safe common A"};
+    await assert.rejects(uploadReviewedM3AndRecordM5({
+      ...request,typedConfirmation:"WRONG",
+    },{...base,transfer:async()=>{writes++;throw Error("unexpected transfer");}}),
+    /independent per-note confirmation/);
+    assert.equal(writes,0);
+
+    const timeout={...base,transfer:async()=>{
+      writes++;
+      f.setRemote([{...noteA}]);
+      throw Error("lost POST acknowledgement");
+    }};
+    await assert.rejects(uploadReviewedM3AndRecordM5(request,timeout),
+      /lost POST acknowledgement/);
+    assert.equal(writes,1);
+    assert.deepEqual(await readdir(root),[],
+      "even a remotely committed POST without acknowledgement cannot mint a journal");
+
+    f.setRemote([]);
+    const noPost={...base,transfer:async()=>{
+      writes++;
+      return {slug:noteA.slug,sha256:noteA.sha256,
+        revision:noteA.revision,baselineSaved:false};
+    }};
+    await assert.rejects(uploadReviewedM3AndRecordM5(request,noPost),
+      /M5 two-source verification failed/);
+    assert.deepEqual(await readdir(root),[]);
+    f.setRemote([{...noteA}]);
+    await assert.rejects(uploadReviewedM3AndRecordM5(request,noPost),
+      /reviewed source changed/);
+    assert.equal(writes,2,"stale intent cannot reach POST/PATCH");
+  });
+});
+
 test("M5 CLI only permits MSI manual private stdin and exact fields",async()=>{
   assert.doesNotThrow(()=>assertM5ApprovedBaselineInvocation("win32","MSI",[
     M5_ADOPT,
@@ -310,6 +469,11 @@ test("M5 CLI only permits MSI manual private stdin and exact fields",async()=>{
   assert.doesNotThrow(()=>assertM5ApprovedBaselineInvocation("win32","MSI",[
     M5_INSPECT,
   ],false));
+  for(const mode of [M5_REVIEW,M5_UPLOAD]){
+    assert.doesNotThrow(()=>assertM5ApprovedBaselineInvocation(
+      "win32","MSI",[mode],false,
+    ));
+  }
   for(const argv of [
     ["linux","MSI",[M5_ADOPT],false],
     ["win32","OTHER",[M5_ADOPT],false],
@@ -334,6 +498,33 @@ test("M5 CLI only permits MSI manual private stdin and exact fields",async()=>{
   await assert.rejects(readM5ApprovedBaselineRequest([
     JSON.stringify({...good,vaultPath:"C:\\Naos\\Obsidian\\Naosledge"}),
   ],M5_ADOPT),/invalid/);
+  await withRoot(async root=>{
+    const f=fixture(root);f.setRemote([]);
+    const p=await f.options.readPreview({
+      sandboxOwnerJwt:JWT(OWNER),baseline:[],
+    });
+    const handoff=JSON.parse(serializeManualM3UploadIntent(
+      p,chooseReviewIntent(p,{},noteA.slug,"upload"),noteA.slug,
+    ));
+    const reviewed={sandboxOwnerJwt:JWT(OWNER),handoff,
+      typedConfirmation:"UPLOAD M5 SANDBOX "+noteA.slug+" "+noteA.sha256.slice(0,12)};
+    assert.deepEqual(await readM5ApprovedBaselineRequest([
+      JSON.stringify(reviewed),
+    ],M5_UPLOAD),reviewed);
+    assert.deepEqual(await readM5ApprovedBaselineRequest([
+      JSON.stringify({sandboxOwnerJwt:JWT(OWNER)}),
+    ],M5_REVIEW),{sandboxOwnerJwt:JWT(OWNER)});
+    for(const bad of [
+      {...reviewed,typedConfirmation:"upload"},
+      {...reviewed,markdown:"secret"},
+      {...reviewed,outputPath:"C:\\Naos\\Obsidian"},
+      {...reviewed,handoff:{...handoff,format:"wrong"}},
+    ]){
+      await assert.rejects(readM5ApprovedBaselineRequest([
+        JSON.stringify(bad),
+      ],M5_UPLOAD),/invalid|review|format|confirmation/);
+    }
+  });
 });
 
 test("M5 Windows DPAPI actually seals and unseals the journal key for the same logged-on user",

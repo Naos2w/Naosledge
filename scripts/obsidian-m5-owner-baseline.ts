@@ -1,7 +1,8 @@
 /**
- * MSI only, manually invoked M5 Owner-adopted CURRENT common Baseline.
- * This is not a prior-transfer receipt and does NOT access Production,
- * perform a remote write, change the real Obsidian Vault or schedule sync.
+ * MSI-only manual review, one approved Sandbox upload and M5 Baseline.
+ * The upload mode calls the existing M3 CAS transport; the other modes only
+ * observe/adopt current equality. Never accesses Production, writes the Vault
+ * or schedules background sync.
  *
  * No tokens or private note bodies on argv/env/disk/logs. The caller supplies
  * a short-lived Neon Integration Sandbox Owner JWT over private stdin.
@@ -11,15 +12,20 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {
   adoptM5CurrentEquality,inspectM5OwnerApprovedBaseline,
-  assertM5ApprovedBaselineInvocation,
+  assertM5ApprovedBaselineInvocation,readM5ApprovedReview,
+  uploadReviewedM3AndRecordM5,
 } from "../lib/obsidian-m5-owner-baseline-journal.ts";
+import {parseManualM3UploadIntent} from "../lib/obsidian-m2-review-choices.ts";
+import {saveManualM2Handoff} from "./obsidian-msi-manual-preview.ts";
 
 export const M5_ADOPT="--m5-adopt-current-equality";
 export const M5_INSPECT="--m5-inspect-approved-baseline";
+export const M5_REVIEW="--m5-review-approved-baseline";
+export const M5_UPLOAD="--m5-upload-reviewed-note";
 type Request={
   sandboxOwnerJwt:string;
   slug?:string;sha256?:string;remoteRevision?:string;
-  typedConfirmation?:string;
+  typedConfirmation?:string;handoff?:unknown;
 };
 export async function readM5ApprovedBaselineRequest(
   input:AsyncIterable<string|Uint8Array>,mode:string,
@@ -41,7 +47,9 @@ export async function readM5ApprovedBaselineRequest(
   const r=value as Record<string,unknown>;
   const fields=mode===M5_ADOPT?[
     "sandboxOwnerJwt","slug","sha256","remoteRevision","typedConfirmation",
-  ]:mode===M5_INSPECT?["sandboxOwnerJwt"]:[];
+  ]:mode===M5_UPLOAD?[
+    "sandboxOwnerJwt","handoff","typedConfirmation",
+  ]:[M5_INSPECT,M5_REVIEW].includes(mode)?["sandboxOwnerJwt"]:[];
   if(!fields.length||Object.keys(r).length!==fields.length||
      !fields.every(key=>Object.hasOwn(r,key))||
      typeof r.sandboxOwnerJwt!=="string"||r.sandboxOwnerJwt.length>8192||
@@ -57,6 +65,14 @@ export async function readM5ApprovedBaselineRequest(
     r.typedConfirmation!=="ADOPT M5 SANDBOX "+r.slug+" "+r.sha256.slice(0,12)
   )){
     throw Error("M5 requires specific manual adoption confirmation");
+  }
+  if(mode===M5_UPLOAD){
+    const d=parseManualM3UploadIntent(r.handoff);
+    if(typeof r.typedConfirmation!=="string"||
+       r.typedConfirmation!=="UPLOAD M5 SANDBOX "+d.slug+" "+
+         d.expectedLocalSha!.slice(0,12)){
+      throw Error("M5 upload requires explicit per-note review and confirmation");
+    }
   }
   return r as Request;
 }
@@ -81,6 +97,25 @@ if(executed){
       }
       console.log("M5_OWNER_ADOPTED_EQUAL_BASELINE_PERSISTED count="+event.entryCount);
       console.log("EXPLICIT_CURRENT_ADOPTION_ONLY; NOT_PAST_TRANSFER; NO_AUTO_SYNC");
+    }else if(flag===M5_UPLOAD){
+      const verified=await uploadReviewedM3AndRecordM5({
+        sandboxOwnerJwt:r.sandboxOwnerJwt,handoff:r.handoff,
+        typedConfirmation:r.typedConfirmation!,
+      });
+      if(verified.baselineSaved!==true||verified.transferConfirmed!==true||
+         verified.autoApplyAllowed!==false||verified.deleteAllowed!==false){
+        throw Error("M5 upload returned unexpected authority");
+      }
+      console.log("M3_M5_SANDBOX_UPLOAD_AND_BASELINE_VERIFIED count="+
+        verified.entryCount);
+      console.log("MANUAL_OWNER_APPROVAL; NO_VAULT_WRITE; NO_AUTO_DELETE");
+    }else if(flag===M5_REVIEW){
+      const verified=await readM5ApprovedReview({
+        sandboxOwnerJwt:r.sandboxOwnerJwt,
+      });
+      const file=await saveManualM2Handoff(verified);
+      console.log("M2_APPROVED_BASELINE_READONLY_HANDOFF "+file);
+      console.log("REVIEW_IN_BROWSER; NO_TRANSMISSION; NO_AUTO_APPLY");
     }else if(flag===M5_INSPECT){
       const result=await inspectM5OwnerApprovedBaseline({
         sandboxOwnerJwt:r.sandboxOwnerJwt,
@@ -94,7 +129,9 @@ if(executed){
     }
   }catch{
     // No JWT, slug, note bytes or full OS private path ever printed.
-    console.error("M5_OWNER_BASELINE_NOT_VERIFIED; NO_AUTO_SYNC");
+    console.error(process.argv[2]===M5_UPLOAD?
+      "M3_M5_UPLOAD_NOT_VERIFIED; REMOTE_MAY_HAVE_COMMITTED; NO_RETRY":
+      "M5_OWNER_BASELINE_NOT_VERIFIED; NO_AUTO_SYNC");
     process.exitCode=1;
   }
 }

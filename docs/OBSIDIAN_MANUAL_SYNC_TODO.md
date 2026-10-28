@@ -2,6 +2,14 @@
 
 ## 2026-10-28 正式發布與後續 M5 單一路徑
 
+### PR #51：M2 → M3/M4 → M5 實際整合（本輪）
+
+- **不再建立重複架構**：直接重用原本 M2 網頁的逐篇 `handoff` JSON、M3 Sandbox `createNeonSandboxNoteOnly()/updateNeonSandboxNoteIfUnchanged()`、M4 Incoming 與 **同一份** Windows DPAPI-HMAC M5 持久 Journal。
+- **上傳成功路徑**：在 MSI 執行 `npm run verify:obsidian:m5:upload:msi`，私人 stdin JSON 需有短效 Sandbox Owner JWT、M2 已選取的上傳 `handoff`，及對應 `UPLOAD M5 SANDBOX <slug> <local SHA 前12位>` 逐篇明確確認。使用者不可指定 Vault 路徑、API URL 或任意檔案。程式先比對新鮮 MSI 已註冊 Vault/Owner-RLS 完整清單，M3 真正執行原有單篇 CREATE/CAS UPDATE 並驗證遠端 SHA/revision，再雙次獨立掃描證實兩端內容仍相同，**最後才**把 `verified-m3-upload` 的前／後遠端 SHA、revision、Owner 身分及 MAC 寫進既有 M5 Journal；任何一步失敗都不寫 Baseline，也不自動重試。真實檔案僅唯讀，沒有覆寫／刪除本機 Obsidian。
+- **下載尚未完成＝不寫 Baseline**：原 M2 `review-download`／`review-missing-local`／`conflict` 意圖仍走現有 `npm run verify:obsidian:m4:incoming:msi`，只在獨立 OS Scratch 儲存 Incoming／衝突雙副本。沒有正式 Vault 寫入時，不得自行升格 M5 Baseline。
+- **重新啟動後的審查路徑**：`npm run verify:obsidian:m5:review:msi` 用新短效 Owner JWT 驗證**整條既有 HMAC 簽章鏈**，同一 slug 以最新成功上傳事件作為三方差異基準，重新取得註冊 Vault + Sandbox Owner-RLS 清單，再沿用原 `saveManualM2Handoff()` 產生瀏覽器本機匯入 JSON。M2 網頁仍是人工唯讀審查，不能從頁面直接執行同步；不會帶 JWT 到瀏覽器。
+- **目前驗證邊界**：新 Node 真實 OS Scratch + 隔離模擬 Owner-RLS／M3 transport 的 **CREATE → 更新 → Journal → 新程序恢復 M2 差異** 整合回歸，另涵蓋已提交但回應失蹤、失敗回讀與過期 M2 決策時 **不生 Baseline**。尚未得到本次真正非空 Vault + Sandbox Owner JWT 新的逐篇真實上傳授權，故不可宣稱真實 Vault↔Neon 完成端到端同步。Production 維持已發布的 `776216f`，M6 真實網路故障驗收仍在後續 TODO。
+
 ### M5 下一階段實作：人工採認、可跨程序驗證的持久 Baseline（PR #51 續作）
 
 - **真正的兩種證據不能混淆**：已實作 **Owner 對「目前兩端相同內容」的逐篇人工採認** `manual-adopt-current-equality`，它建立日後三方差異比較所需的**初始 Baseline**，但**絕不證明過去執行過 M3/M4 傳輸**。既有 Scratch equality observation / M3 self-reported witness 不自動轉為可信基準，更不憑兩端 SHA 相同推定已完成傳輸。

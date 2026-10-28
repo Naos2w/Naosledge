@@ -144,7 +144,7 @@ export default function VaultManualSyncReview({preview:syntheticPreview}:{previe
 
     {!preview&&<div className="vault-sync-empty" role="status">
       <strong>尚未匯入 MSI 唯讀快照</strong>
-      <p>在 MSI 上手動執行 <code>scripts/obsidian-msi-manual-preview.ts --sandbox-m2-readonly-handoff</code>，以標準輸入提供短效的 Sandbox Owner JWT，產生本機 JSON 後再從上方選擇檔案。請勿將 JWT 貼到網頁、聊天、指令參數或檔案。</p>
+      <p>首次預覽：在 MSI 執行 <code>scripts/obsidian-msi-manual-preview.ts --sandbox-m2-readonly-handoff</code>。已有 M5 持久 Baseline 時，改用 <code>npm run verify:obsidian:m5:review:msi</code> 重新讀取 Baseline 與兩端版本。兩者都必須從私人 stdin 提供短效 Sandbox Owner JWT，產生 JSON 後再從上方匯入。請勿將 JWT 貼到網頁、聊天、指令參數或檔案。</p>
       <p>未取得真正的 Sandbox Owner 身分驗證與完整清單時，這裡不顯示任何示例筆記，避免將合成資料誤認為真實結果。</p>
     </div>}
 
