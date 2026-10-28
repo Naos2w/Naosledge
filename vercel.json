@@ -57,7 +57,8 @@
       "integrate/obsidian-m3-m5-delivery-20261026-23": false,
       "feat/obsidian-m3-m6-e2e-fix-20261028": false,
       "feat/obsidian-m5-approved-baseline-20261028": false,
-      "feat/obsidian-m6-crash-recovery-20261028": false
+      "feat/obsidian-m6-crash-recovery-20261028": false,
+      "feat/obsidian-m6-live-sandbox-fault-e2e-20261028": false
     }
   }
 }
