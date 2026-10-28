@@ -373,8 +373,8 @@ test("M4 Incoming writes a self-described receipt and independently checks scrat
     const inspected=await verifyStagedSandboxIncomingReceipt(staged.receiptPath);
     assert.deepEqual(inspected,{
       remoteCopyPath:staged.path,localCopyPath:null,
-      sha256:digest,revision,baselineSaved:false,
-      verificationScope:"staged-files-only",
+      sha256:digest,revision,choice:"conflict",localSha256:null,
+      baselineSaved:false,verificationScope:"staged-files-only",
     });
     assert.deepEqual(await verifyManualIncomingReceipt([staged.receiptPath]),{
       localCopyIncluded:false,baselineSaved:false,

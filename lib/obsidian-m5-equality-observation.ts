@@ -112,10 +112,16 @@ export async function reverifyM5EqualSourceObservation(
     throw new Error("M5 observation must be a separate scratch file");
   }
   const stat=await lstat(file);
-  if(!stat.isFile()||stat.isSymbolicLink()||stat.size>5000){
+  if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>5000){
     throw new Error("M5 observation file is not a bounded ordinary file");
   }
   const raw=await readFile(file);
+  const afterRead=await lstat(file);
+  if(afterRead.ino!==stat.ino||afterRead.size!==stat.size||
+     afterRead.mtimeMs!==stat.mtimeMs||!afterRead.isFile()||
+     afterRead.isSymbolicLink()||afterRead.nlink!==1){
+    throw new Error("M5 observation file changed during read");
+  }
   let parsed:unknown;
   try{parsed=JSON.parse(raw.toString("utf8")) as unknown;}
   catch{throw new Error("M5 observation JSON is invalid");}
@@ -133,7 +139,10 @@ export async function reverifyM5EqualSourceObservation(
   })){
     throw new Error("M5 current local/remote sources disagree with the observation");
   }
-  if(!(await readFile(file)).equals(raw)){
+  const final=await lstat(file);
+  if(final.ino!==stat.ino||final.size!==stat.size||
+     final.mtimeMs!==stat.mtimeMs||final.nlink!==1||
+     !(await readFile(file)).equals(raw)){
     throw new Error("M5 observation file changed during verification");
   }
   return {stillEqualNotes:evidence.entries.length,baselineSaved:false,

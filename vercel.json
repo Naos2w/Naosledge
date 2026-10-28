@@ -55,7 +55,8 @@
       "feat/obsidian-m5-evidence-manual-20261026-22": false,
       "feat/obsidian-m5-baseline-candidate-20261026-23": false,
       "integrate/obsidian-m3-m5-delivery-20261026-23": false,
-      "feat/obsidian-m3-m6-e2e-fix-20261028": false
+      "feat/obsidian-m3-m6-e2e-fix-20261028": false,
+      "feat/obsidian-m5-approved-baseline-20261028": false
     }
   }
 }

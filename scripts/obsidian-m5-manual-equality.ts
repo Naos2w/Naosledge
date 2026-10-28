@@ -4,6 +4,7 @@
  * Short-lived Sandbox JWT and optional prior receipt path enter via stdin only.
  */
 import {hostname} from "node:os";
+import {unlink} from "node:fs/promises";
 import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {previewApprovedMsiSandboxSync} from "../lib/obsidian-manual-sync-approved-msi.ts";
@@ -61,18 +62,36 @@ export async function runM5ManualObservation(
 ):Promise<{path?:string;count:number;baselineSaved:false}>{
   // Calling the approved MSI adapter performs two Vault scans around the
   // authenticated, full-inventory Owner-RLS GET. Only CURRENT equality counts.
-  const preview=await readPreview({
+  const readBoth=()=>readPreview({
     sandboxOwnerJwt:request.sandboxOwnerJwt,baseline:[],
   });
+  // Both independently registered Vault + Owner-RLS reads are required:
+  // a snapshot that was equal before persistence may be stale afterwards.
+  const initial=await readBoth();
   if(mode===M5_OBSERVE){
-    const saved=await saveM5EqualSourceObservation(preview);
-    return {path:saved.path,count:saved.observedNotes,baselineSaved:false};
+    const saved=await saveM5EqualSourceObservation(initial);
+    try{
+      const confirmed=await readBoth();
+      const checked=await reverifyM5EqualSourceObservation(saved.path,confirmed);
+      if(checked.stillEqualNotes!==saved.observedNotes){
+        throw Error("M5 equal-source observation changed during persistence");
+      }
+      return {path:saved.path,count:saved.observedNotes,baselineSaved:false};
+    }catch(error){
+      // Only remove THIS invocation's brand-new scratch receipt; never touch
+      // a Vault file, a historic receipt or any remote Sandbox record.
+      try{await unlink(saved.path);}
+      catch{throw Error("M5 stale observation cleanup needs manual inspection");}
+      throw error;
+    }
   }
   if(mode===M5_REVERIFY&&request.observationPath){
-    const result=await reverifyM5EqualSourceObservation(
-      request.observationPath,preview,
+    await reverifyM5EqualSourceObservation(request.observationPath,initial);
+    const confirmed=await readBoth();
+    const checked=await reverifyM5EqualSourceObservation(
+      request.observationPath,confirmed,
     );
-    return {count:result.stillEqualNotes,baselineSaved:false};
+    return {count:checked.stillEqualNotes,baselineSaved:false};
   }
   throw Error("M5 mode or observation path missing");
 }

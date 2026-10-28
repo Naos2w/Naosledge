@@ -1,5 +1,26 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
+## 2026-10-28 正式發布與後續 M5 單一路徑
+
+### PR #51：M2 → M3/M4 → M5 實際整合（本輪）
+
+- **不再建立重複架構**：直接重用原本 M2 網頁的逐篇 `handoff` JSON、M3 Sandbox `createNeonSandboxNoteOnly()/updateNeonSandboxNoteIfUnchanged()`、M4 Incoming 與 **同一份** Windows DPAPI-HMAC M5 持久 Journal。
+- **上傳成功路徑**：在 MSI 執行 `npm run verify:obsidian:m5:upload:msi`，私人 stdin JSON 需有短效 Sandbox Owner JWT、M2 已選取的上傳 `handoff`，及對應 `UPLOAD M5 SANDBOX <slug> <local SHA 前12位>` 逐篇明確確認。使用者不可指定 Vault 路徑、API URL 或任意檔案。程式先比對新鮮 MSI 已註冊 Vault/Owner-RLS 完整清單，M3 真正執行原有單篇 CREATE/CAS UPDATE 並驗證遠端 SHA/revision，再雙次獨立掃描證實兩端內容仍相同，**最後才**把 `verified-m3-upload` 的前／後遠端 SHA、revision、Owner 身分及 MAC 寫進既有 M5 Journal；任何一步失敗都不寫 Baseline，也不自動重試。真實檔案僅唯讀，沒有覆寫／刪除本機 Obsidian。
+- **M4 Incoming → M5 本機套用已實作（本輪）**：原 M2 `review-download`／`review-missing-local`／`conflict` 均先以既有 `npm run verify:obsidian:m4:incoming:msi` 產生獨立 OS Scratch Incoming／衝突副本。只有前兩種、且再次得到逐篇 Owner JWT/RLS 全清單、版本與 M4 receipt 內容吻合，才能由新 `npm run verify:obsidian:m5:apply-incoming:msi`（私人 stdin 需 `sandboxOwnerJwt`、原 M2 `handoff`、原 M4 `receiptPath`、`APPLY M5 SANDBOX <slug> <遠端SHA前12位>`）明確套用到**固定已註冊 MSI Vault**。新檔使用 `wx` 排他建立；既有原稿先在私人 LocalAppData Journal `backups/` 獨立 `fsync` 備份後才 staged+rename，後續雙端 Owner-RLS／Vault 重新確認一致，最後才在**同一份** DPAPI/HMAC 簽章鏈追加 `verified-m4-download` 及前一本地 SHA/備份 SHA。舊事件不可覆寫，歷史缺口／備份遭修改／孤兒備份皆拒絕自動恢復。雙邊 `conflict` 絕不套用或升級 Baseline；任何失敗不自動重試或回滾原稿。已用 **真實 OS Scratch 文件建立、原稿備份與替換** 搭配隔離模擬 Owner-RLS 驗證；**本輪未真正寫入使用者註冊 Vault**，沒有獲新一次真人逐篇操作授權，不能宣稱真人 Live E2E 已驗收。
+- **重新啟動後的審查路徑**：`npm run verify:obsidian:m5:review:msi` 用新短效 Owner JWT 驗證**整條既有 HMAC 簽章鏈**，同一 slug 以最新成功上傳／本地下載或人工初始採認的簽章事件作為三方差異基準，重新取得註冊 Vault + Sandbox Owner-RLS 清單，再沿用原 `saveManualM2Handoff()` 產生瀏覽器本機匯入 JSON。M2 網頁仍是人工唯讀審查，不能從頁面直接執行同步；不會帶 JWT 到瀏覽器。
+- **目前驗證邊界**：新 Node 真實 OS Scratch + 隔離模擬 Owner-RLS／M3 transport 的 **CREATE → 更新 → Journal → 新程序恢復 M2 差異**，加上 M4 **Incoming → 本機新檔排他建立／舊檔獨立備份與替換 → Journal → 再次檢查** 的整合回歸；涵蓋已提交但回應失蹤、錯誤回讀、過期 M2 決策及 M4 後段遠端修改時 **不生 Baseline**。尚未得到本次真正非空 Vault + Sandbox Owner JWT 新的逐篇真實上傳授權，故不可宣稱真實 Vault↔Neon 完成端到端同步。Production 維持已發布的 `776216f`，M6 真實網路故障驗收仍在後續 TODO。
+
+### M5 下一階段實作：人工採認、可跨程序驗證的持久 Baseline（PR #51 續作）
+
+- **真正的兩種證據不能混淆**：已實作 **Owner 對「目前兩端相同內容」的逐篇人工採認** `manual-adopt-current-equality`，它建立日後三方差異比較所需的**初始 Baseline**，但**絕不證明過去執行過 M3/M4 傳輸**。既有 Scratch equality observation / M3 self-reported witness 不自動轉為可信基準，更不憑兩端 SHA 相同推定已完成傳輸。
+- **固定來源及最少人工權限**：`scripts/obsidian-m5-owner-baseline.ts` 僅允許 MSI Windows 上使用私人 stdin、明確 `--m5-adopt-current-equality` 或 `--m5-inspect-approved-baseline`，後端只使用已註冊的固定 Obsidian Vault **唯讀**掃描及固定 Neon Integration Sandbox 的短效 Owner JWT/RLS 完整清單。採認每篇需指定 slug、兩端 SHA、遠端 revision 及文字 `ADOPT M5 SANDBOX <slug> <sha前12字元>`，在取得明確確認前後各執行新鮮雙端掃描，任何來源缺漏／變更／撤權都中止；不允許自訂 Vault/Neon URL、不讀寫 Production、不寫原稿、不做 DELETE。
+- **真正持久記錄**：首次採認才於當前 Windows 使用者 `%LOCALAPPDATA%\\Naosledge\\m5-owner-baseline` 建立獨立金鑰／遞增事件日誌。金鑰以 Windows DPAPI CurrentUser 保護，採認事件附 HMAC-SHA256、Owner 身分、固定 Sandbox 分支、精確筆記 SHA/revision、嚴格連續 sequence 和 previous MAC；每次獨立程序重讀整條簽章鏈，再以短效 Owner-RLS 身分與新鮮註冊 Vault 掃描重建差異分類。中斷、竄改、歷史缺口、重複採認、跨帳號、不完整清單、非法 hardlink／reparse point 與不明併發鎖均拒絕，不自動修補日誌。
+- **保護界線與已知限制**：日誌在**同一個 Windows 使用者**身分下具有防意外竄改的 HMAC+DPAPI 證據能力，不是遠端公證、TPM 或抗惡意同使用者／整套 Profile 回滾保證。讀取成功僅可當作**人工審核的歷史基準**，M2 後續 `review-upload/download/conflict/both-removed` 仍全部不可自動執行；本模組明確報告 `possibleDeletionsNeverApplied`，從不刪筆記。
+- **執行範圍**：已在 MSI 以合成 Owner-RLS Reader、真實 OS Scratch、跨程序 Node 重啟與原生 DPAPI 進行離線驗證；**尚未使用真人短效 Owner JWT + 真實已註冊 Vault 非空相同筆記來建置第一份實際持久 Baseline**。真正 live 採認需要 Owner 再次個別核准與可用 Sandbox Auth 身分。接下來需擴充可信「逐篇傳輸成功」事件，將 M3/M4 完成結果、實際兩端版本及人工操作來源與既有簽章鏈串接；M6 真實斷線復原仍另待驗收。本分支不合併／不部署 Production。
+
+- **正式發布已驗證**：Owner 指名核准後，PR #50 已合併到 `main`（合併 Commit `776216f216736e69fb2850f12e0da358083a8a91`，main CI SUCCESS）。Vercel Production `dpl_FkX3DPxtYFGissEmQuiHEEaRQSkZ` 為 READY，正式 `https://naosledge.vercel.app` alias 直接指向該版，公開/登入/私人頁面/轉址/SEO 真實 GET 檢查 **14/14 PASS**。只更新 Vercel Production 核准 SHA，未執行 Neon Production Migration 或啟用 Vault 雙向同步。
+- **下一個 TODO：M5 保存前後雙端重新驗證（新獨立開發分支）**：在 `feat/obsidian-m5-approved-baseline-20261028` 改善 MSI 手動觀察：真正註冊 Vault + Sandbox Owner-RLS 完整清單在保存收據**前後各獨立重讀**，跨程序重新檢視也需先後兩次真實觀察；版本、權限、來源不一致就拒絕及清理本次新產生的 OS Scratch 收據。收據硬連結／讀取中遭修改也應拒絕。這不是新的一份正式權威 Baseline：`baselineSaved=false`、不匯入、不碰原稿、不允許自動寫入或刪除。正式可信授權來源、持久化及 M6 故障復原仍按下面既有 TODO 前進；本分支不自動發布。
+
 ## 2026-10-28 最新進度與單一路徑（取代以下 10/26 的舊 PR 狀態）
 
 - **本輪真正 WikiLink E2E 已完成**：Owner 再次明確授權獨立 WikiLink Sandbox-only 模式，MSI 實機執行 `npm run verify:obsidian:m3:wikilink:sandbox:owner:e2e` **Exit 0**；真實 Owner-RLS／M3 CREATE／M4 Incoming／M5 重新檢查／CAS UPDATE／衝突保留／過期版本拒絕皆 PASS，尤其新增 `[[sandbox-target]]` 走固定 Neon SQL003 原子 WikiLink CAS RPC、驗證遠端 SHA、revision 與 backlink 後，再以 RPC 刪除 WikiLink 並重新驗證索引，分別回報 `M3M4_REAL_WIKILINK_CAS_ADD_PASS` 和 `M3M4_REAL_WIKILINK_CAS_REMOVE_PASS`。固定 Integration Sandbox `br-quiet-sunset-b4xx4pnx`，全程沒有真實 Obsidian Vault、正式 Baseline 或 Production 寫入。
