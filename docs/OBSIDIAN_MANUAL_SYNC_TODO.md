@@ -1,5 +1,13 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
+## 2026-10-28 M6 真正 Neon Sandbox 故障驗收結果（最新，優先於下列歷史）
+
+- **已完成一次性 Owner 授權的真實 API/實機故障驗收**：執行 MSI `npm run verify:obsidian:m6:real:sandbox:owner:e2e`（須額外設定 `NAOSLEDGE_SYNTHETIC_SANDBOX_WRITE_APPROVED=SYNTHETIC_SANDBOX_ONLY` 與 `NAOSLEDGE_M6_REAL_E2E_APPROVED=M6_SANDBOX_FAULT_ONLY_20261028`），`M6_REAL_SANDBOX_FAULT_E2E_PASS`、**Exit Code 0**。固定 Neon Integration Sandbox `bitter-silence-36632892` / `br-quiet-sunset-b4xx4pnx`，一次性合成 Auth Owner、真實 RLS 和 API。
+- **明確故障覆蓋**：真實 Neon POST 已 **201 commit**，但故意丟棄回應讓 M3 報寫入結果不明；實際 Owner-RLS 完整清單再次確認只有一篇指定合成筆記、SHA 一致，M6 唯讀工具回報目前遠端相符，**不把這視為先前操作成功的可信證明、不重試、不寫 Baseline**。在真實 GET 收到遠端回應後，故意取消其 response body 並拋出連線讀取錯誤，必須拒絕不完整回應。此為**真實遠端伺服器＋受控用戶端回應中斷注入**，非網卡實體斷線或 DNS/TCP 層故障。
+- **跨程序本機恢復使用真實遠端**：真實 M4 Owner-RLS Incoming 收據 → MSI 隔離 OS Temp Vault，真實子程序 Exit 77，首次 `wx` 新增筆記後尚無 M5 Baseline；另一個 Node 程序用真正 Owner-RLS + Temp Vault 重新讀取，確認目前相符但 `baselineSaved=false`。在另一組 OS Temp Vault 先用真正 Windows DPAPI 封存經 Owner 採認的**測試用**初始 Baseline，遠端以真正 Owner-RLS CAS UPDATE 修改，下載最新 Incoming 並在本機備份／rename 後 Exit 77；跨程序檢查原稿備份、舊簽章歷史和真實遠端版本，一律不補寫成功 Baseline 或自動重試。**從未修改已註冊的真實 Obsidian Vault 或正式 Neon**。
+- **清理及剩餘**：本次程序已精確刪除合成筆記、所有 OS Scratch 測試目錄，且 Owner 透過 Neon SQL 撤銷**本次** `blog_admins` 測試授權。最終 Neon 唯讀 SQL：`knowledge_notes=0`、`knowledge_links=0`、`blog_admins=0`、合成 slug=0；**Owner 已於 Neon Integration Sandbox Console 刪除本次臨時 Auth 使用者**；2026-10-28 再次執行真正 Neon 唯讀 SQL，確認整個 Sandbox 的 Auth User、Auth Account、Owner Grant、筆記及連結 **全數 0**，且此次 User UUID `80434a21-3ae9-44e9-80bc-c59262e91a8a` 及筆記 slug `m6-fault-9f1858ae5e5f4c` 都不存在。**本次測試身分與資料清理 DONE**。
+- **交付邊界**：M6 的「遠端回應遺失／不明結果」與「MSI 真實程序崩潰／重啟」已完成**一次真實 Neon Sandbox E2E**；尚未把所有可能的實際網路斷線模式（如實體 TCP 中斷、長時間離線）宣稱完整覆蓋。M7 真正 Obsidian Vault + Production 啟用、登入及雙向資料遷移仍須各自核准。此驗收程式必須人工啟動，**不加入 CI 或自動排程**。
+
 ## 2026-10-28 最新交付：PR #51 已合併、Production 已更新、接續 M6
 
 - **已合併部署且正式驗證通過**：PR #51 已合併至 `main ba4f89ab9a27932ee6553b69649d7fe16f87e965`，合併後 [CI #40614816329](https://github.com/Naos2w/Naosledge/actions/runs/40614816329) SUCCESS。Vercel Production 精確採用該 SHA 的 `dpl_7nzZH8GQ7oh7FGfSMJboQ4e2rCpr` 為 READY，`https://naosledge.vercel.app` alias 已指向新版，正式網站 **14/14 真實 HTTP 健康檢查 PASS**。沒有跑正式 DB Migration、沒有修改真實 Vault 筆記、沒有啟用排程。
