@@ -8,13 +8,16 @@ import path from "node:path";
 import {fileURLToPath} from "node:url";
 import {inspectUncertainM3SandboxOutcome}
   from "../lib/obsidian-m5-sandbox-transfer-witness.ts";
-import {inspectInterruptedM4LocalApply}
+import {inspectInterruptedM4LocalApply,inspectInterruptedM4NewNote}
   from "../lib/obsidian-m5-owner-baseline-journal.ts";
+import {parseManualM4IncomingIntent}
+  from "../lib/obsidian-m2-review-choices.ts";
 import {readOwnerJwtFromPipe}
   from "./obsidian-msi-manual-preview.ts";
 
 export const M6_UNCERTAIN_READONLY_FLAG="--sandbox-inspect-uncertain-m3-readonly";
 export const M6_INTERRUPTED_M4_FLAG="--sandbox-inspect-interrupted-m4-readonly";
+export const M6_NEW_NOTE_FLAG="--sandbox-inspect-interrupted-m4-new-readonly";
 type M6Request={
   sandboxOwnerJwt:string;localMarkdown:string;reviewedLocalSha:string;
   reviewedRemoteSha:string|null;reviewedRemoteRevision:string|null;
@@ -26,7 +29,8 @@ export function assertManualM6Invocation(
 ):void{
   if(platform!=="win32"||computerName.trim().toUpperCase()!=="MSI"||
      args.length!==1||
-     ![M6_UNCERTAIN_READONLY_FLAG,M6_INTERRUPTED_M4_FLAG].includes(args[0])||
+     ![M6_UNCERTAIN_READONLY_FLAG,M6_INTERRUPTED_M4_FLAG,
+       M6_NEW_NOTE_FLAG].includes(args[0])||
      isTerminal){
     throw Error("M6 inspection requires MSI, explicit read-only flag and piped input");
   }
@@ -72,6 +76,44 @@ export async function readM6UncertainRequest(
   return r as M6Request;
 }
 
+/** Strict private input for one READ-ONLY M4 new-note crash inspection. */
+export async function readM6NewNoteRequest(
+  source:AsyncIterable<string|Uint8Array>,
+):Promise<{sandboxOwnerJwt:string;handoff:unknown;receiptPath:string}>{
+  const chunks:Buffer[]=[];
+  let total=0;
+  for await(const part of source){
+    const chunk=typeof part==="string"?Buffer.from(part):Buffer.from(part);
+    total+=chunk.byteLength;
+    if(total>16_000)throw Error("M6 first-download request too large");
+    chunks.push(chunk);
+  }
+  let parsed:unknown;
+  try{parsed=JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;}
+  catch{throw Error("M6 first-download request requires one JSON object");}
+  if(!parsed||typeof parsed!=="object"||Array.isArray(parsed)){
+    throw Error("M6 first-download request invalid");
+  }
+  const r=parsed as Record<string,unknown>;
+  const fields=["sandboxOwnerJwt","handoff","receiptPath"];
+  if(Object.keys(r).length!==fields.length||
+     !fields.every(name=>Object.hasOwn(r,name))||
+     typeof r.sandboxOwnerJwt!=="string"||
+     r.sandboxOwnerJwt.length>8192||
+     !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(r.sandboxOwnerJwt)||
+     typeof r.receiptPath!=="string"||!r.receiptPath||
+     r.receiptPath.length>4096||/[\0\r\n]/.test(r.receiptPath)){
+    throw Error("M6 first-download request fields invalid");
+  }
+  const reviewed=parseManualM4IncomingIntent(r.handoff);
+  if(reviewed.choice!=="review-missing-local"||
+     reviewed.expectedLocalSha!==null){
+    throw Error("M6 first-download inspector requires a missing-local review");
+  }
+  return {sandboxOwnerJwt:r.sandboxOwnerJwt,
+    handoff:r.handoff,receiptPath:r.receiptPath};
+}
+
 const invoked=process.argv[1]?
   path.resolve(process.argv[1])===fileURLToPath(import.meta.url):false;
 if(invoked){
@@ -79,7 +121,21 @@ if(invoked){
     assertManualM6Invocation(
       process.platform,hostname(),process.argv.slice(2),!!process.stdin.isTTY,
     );
-    if(process.argv[2]===M6_INTERRUPTED_M4_FLAG){
+    if(process.argv[2]===M6_NEW_NOTE_FLAG){
+      const request=await readM6NewNoteRequest(process.stdin);
+      const result=await inspectInterruptedM4NewNote(request);
+      if(!result.currentObservationOnly||
+         result.previousTransferProven!==false||
+         result.baselineSaved!==false||result.autoRetryAllowed!==false||
+         result.autoRestoreAllowed!==false){
+        throw Error("Unexpected M6 first-download recovery authority");
+      }
+      console.log("M6_FIRST_DOWNLOAD_LOCAL_STATE "+result.currentLocalState);
+      console.log("M6_FIRST_DOWNLOAD_REMOTE_STATE "+result.currentRemoteState);
+      console.log("M6_PREVIOUS_LOCAL_LOCK "+result.staleLocalLockPresent);
+      console.log("OWNER_RLS_CURRENT_OBSERVATION_ONLY; PRIOR_TRANSFER_NOT_PROVEN");
+      console.log("NO_AUTO_RETRY; NO_AUTO_RESTORE; BASELINE_UNCHANGED");
+    }else if(process.argv[2]===M6_INTERRUPTED_M4_FLAG){
       const sandboxOwnerJwt=await readOwnerJwtFromPipe(process.stdin);
       const result=await inspectInterruptedM4LocalApply({sandboxOwnerJwt});
       if(!result.currentObservationOnly||result.baselineSaved!==false||

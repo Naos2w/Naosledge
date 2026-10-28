@@ -797,6 +797,95 @@ export async function inspectInterruptedM4LocalApply(args:{
   };
 }
 
+/**
+ * M6: a first-time M4 Incoming download can create a local note and then
+ * crash before the very first M5 signature exists. No previous original means
+ * no orphan backup. The exact M2 one-note review + independently reverified
+ * M4 Incoming receipt provide a bounded lookup for READ-ONLY diagnosis.
+ *
+ * This can classify the current files, never certify that our earlier write
+ * happened. In particular, equal local and remote hashes are not a license
+ * to mint a past transfer event or repeat a local create.
+ */
+export async function inspectInterruptedM4NewNote(args:{
+  sandboxOwnerJwt:string;handoff:unknown;receiptPath:string;
+},options?:ApprovedJournalDependencies):Promise<{
+  currentLocalState:"missing-now"|"matches-reviewed-incoming"|"different-now";
+  currentRemoteState:"matches-reviewed-revision"|"changed-now"|"missing-now";
+  staleLocalLockPresent:boolean;
+  currentObservationOnly:true;previousTransferProven:false;
+  baselineSaved:false;autoRetryAllowed:false;autoRestoreAllowed:false;
+}>{
+  const ownerId=validateOwnerJwt(args?.sandboxOwnerJwt);
+  const intent=parseManualM4IncomingIntent(args?.handoff);
+  if(intent.choice!=="review-missing-local"||
+     intent.expectedLocalSha!==null||
+     typeof args?.receiptPath!=="string"||!args.receiptPath||
+     args.receiptPath.length>4096||/[\0\r\n]/.test(args.receiptPath)){
+    err("M6 requires a single reviewed missing-local Incoming and receipt");
+  }
+  const {root,protector,readPreview}=dependencies(options);
+  await checkRoot(root,false);
+  const first=await verifyStagedSandboxIncomingReceipt(args.receiptPath);
+  if(first.choice!=="review-missing-local"||
+     first.localCopyPath!==null||first.localSha256!==null||
+     path.basename(first.remoteCopyPath)!==intent.slug+".md"||
+     first.sha256!==intent.expectedRemoteSha||
+     first.revision!==intent.expectedRemoteRevision){
+    err("M6 receipt differs from originally reviewed missing-local note");
+  }
+  const rootBefore=await readdir(root);
+  const state=await loadJournal(root,ownerId,protector);
+  if(state?.entries.some(item=>item.slug===intent.slug)){
+    err("M6 new-note diagnostic cannot replace signed history");
+  }
+  const latest=new Map((state?.entries??[]).map(item=>[item.slug,item]));
+  const baseline=[...latest.values()].map(item=>({
+    slug:item.slug,sha256:item.sha256,revision:item.remoteRevision,
+  }));
+  const read=async()=>{
+    const p=await readPreview({sandboxOwnerJwt:args.sandboxOwnerJwt,baseline});
+    if(p.sandboxOnly!==true||p.readOnly!==true||
+       p.manualTriggerOnly!==true||p.previewStatus!=="ready"||
+       p.automaticSyncEnabled!==false||
+       p.automaticDeleteEnabled!==false||p.autoApplyAllowed!==false||
+       p.inventory.remoteFullInventory!==true||
+       p.inventory.localCoverageNeedsReview!==false||
+       p.inventory.localUnsupportedMarkdown!==0||
+       p.inventory.localDirectoriesNotScanned!==0){
+      err("M6 full Owner-RLS and local recovery reinspection unavailable");
+    }
+    const row=p.decisions.find(item=>item.slug===intent.slug);
+    if(!row)err("M6 reviewed missing-local note absent from inventory");
+    return row;
+  };
+  const current1=await read();
+  const current2=await read();
+  if(JSON.stringify(current1)!==JSON.stringify(current2)){
+    err("M6 first-download sources changed during recovery inspection");
+  }
+  const finalReceipt=await verifyStagedSandboxIncomingReceipt(args.receiptPath);
+  const finalState=await loadJournal(root,ownerId,protector);
+  if(JSON.stringify(first)!==JSON.stringify(finalReceipt)||
+     JSON.stringify(state?.entries??[])!==
+       JSON.stringify(finalState?.entries??[])||
+     JSON.stringify(rootBefore.sort())!==JSON.stringify((await readdir(root)).sort())){
+    err("M6 first-download receipt or persistent journal changed");
+  }
+  return {
+    currentLocalState:current2.expectedLocalSha===null?"missing-now":
+      current2.expectedLocalSha===intent.expectedRemoteSha?
+        "matches-reviewed-incoming":"different-now",
+    currentRemoteState:current2.expectedRemoteSha===null?"missing-now":
+      current2.expectedRemoteSha===intent.expectedRemoteSha&&
+      current2.expectedRemoteRevision===intent.expectedRemoteRevision?
+        "matches-reviewed-revision":"changed-now",
+    staleLocalLockPresent:rootBefore.includes(LOCK),
+    currentObservationOnly:true,previousTransferProven:false,
+    baselineSaved:false,autoRetryAllowed:false,autoRestoreAllowed:false,
+  };
+}
+
 /** A verified preview for the existing M2 JSON import. No automatic action. */
 export async function readM5ApprovedReview(args:{
   sandboxOwnerJwt:string;

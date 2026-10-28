@@ -29,6 +29,7 @@
     "verify:obsidian:m3:wikilink:sandbox:owner:e2e": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m3m4-sandbox-live-acceptance.ts --m3-m4-sandbox-wikilink-acceptance",
     "verify:obsidian:m6:uncertain:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m6-sandbox-uncertain-recovery.ts --sandbox-inspect-uncertain-m3-readonly",
     "verify:obsidian:m6:m4:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m6-sandbox-uncertain-recovery.ts --sandbox-inspect-interrupted-m4-readonly",
+    "verify:obsidian:m6:m4:new:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m6-sandbox-uncertain-recovery.ts --sandbox-inspect-interrupted-m4-new-readonly",
     "verify:obsidian:m5:adopt:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-adopt-current-equality",
     "verify:obsidian:m5:inspect:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-inspect-approved-baseline",
     "verify:obsidian:m5:review:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-review-approved-baseline",

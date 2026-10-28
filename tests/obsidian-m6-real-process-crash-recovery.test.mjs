@@ -16,14 +16,16 @@ import {serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
 import {readObsidianLocalManifest} from "../lib/obsidian-local-manifest.ts";
 import {previewManualObsidianSync} from "../lib/obsidian-manual-sync-review.ts";
 import {adoptM5CurrentEquality,readM5ApprovedReview,
-  inspectInterruptedM4LocalApply} from "../lib/obsidian-m5-owner-baseline-journal.ts";
+  inspectInterruptedM4LocalApply,inspectInterruptedM4NewNote}
+  from "../lib/obsidian-m5-owner-baseline-journal.ts";
 import {chooseReviewIntent,serializeManualM4IncomingIntent}
   from "../lib/obsidian-m2-review-choices.ts";
 import {stageNeonSandboxIncoming} from "../lib/obsidian-neon-sandbox-incoming.ts";
 import {NEON_SYNC_SANDBOX_BRANCH,NEON_SYNC_SANDBOX_DATA_API}
   from "../lib/obsidian-neon-sandbox-readonly.ts";
 import {
-  M6_INTERRUPTED_M4_FLAG,assertManualM6Invocation,
+  M6_INTERRUPTED_M4_FLAG,M6_NEW_NOTE_FLAG,
+  assertManualM6Invocation,readM6NewNoteRequest,
 } from "../scripts/obsidian-m6-sandbox-uncertain-recovery.ts";
 
 const owner="00000000-0000-4000-8000-000000000079";
@@ -64,12 +66,12 @@ const ownerFetch=async(url,request)=>{
   assert.ok(u.pathname.endsWith("/knowledge_notes"));
   return json([updated]);
 };
-async function withFixture(fn){
+async function withFixture(fn,{missingLocal=false}={}){
   const root=await mkdtemp(path.join(tmpdir(),"naosledge-m5-owner-baseline-test-"));
   const vaultRoot=await mkdtemp(path.join(tmpdir(),"naosledge-m4-vault-test-"));
   const staged=[];
   const localFile=path.join(vaultRoot,original.slug+".md");
-  await writeFile(localFile,md(original));
+  if(!missingLocal)await writeFile(localFile,md(original));
   const readPreview=({baseline})=>previewManualObsidianSync({
     baseline,
     readLocal:()=>readObsidianLocalManifest(vaultRoot),
@@ -86,14 +88,18 @@ async function withFixture(fn){
         sandboxOnly:true,rlsEnforcedByDataApi:true,
         writeEnabled:false,fullInventory:true}),
     });
-    await adoptM5CurrentEquality({
-      sandboxOwnerJwt:jwt,slug:original.slug,
-      sha256:fp(original).sha256,remoteRevision:fp(original).revision,
-      typedConfirmation:"ADOPT M5 SANDBOX "+original.slug+" "+
-        fp(original).sha256.slice(0,12),
-    },{...options,readPreview:readInitial});
-    const p=await readM5ApprovedReview({sandboxOwnerJwt:jwt},options);
-    assert.equal(p.summary["review-download"],1);
+    if(!missingLocal){
+      await adoptM5CurrentEquality({
+        sandboxOwnerJwt:jwt,slug:original.slug,
+        sha256:fp(original).sha256,remoteRevision:fp(original).revision,
+        typedConfirmation:"ADOPT M5 SANDBOX "+original.slug+" "+
+          fp(original).sha256.slice(0,12),
+      },{...options,readPreview:readInitial});
+    }
+    const p=missingLocal?
+      await readPreview({baseline:[]}):
+      await readM5ApprovedReview({sandboxOwnerJwt:jwt},options);
+    assert.equal(p.summary[missingLocal?"review-missing-local":"review-download"],1);
     const handoff=JSON.parse(serializeManualM4IncomingIntent(
       p,chooseReviewIntent(p,{},original.slug,"download"),original.slug,
     ));
@@ -163,6 +169,12 @@ function recoveryScript(){
     "process.stdout.write(JSON.stringify(result));",
   ].join("\n");
 }
+function firstDownloadRecoveryScript(){
+  return recoveryScript()
+    .replaceAll("inspectInterruptedM4LocalApply","inspectInterruptedM4NewNote")
+    .replace("{sandboxOwnerJwt:x.jwt}",
+      "{sandboxOwnerJwt:x.jwt,handoff:x.handoff,receiptPath:x.receiptPath}");
+}
 function call(code,data){
   return spawnSync(process.execPath,[
     "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
@@ -202,6 +214,92 @@ test("M6 REAL child process exits 77 after local rename but before M5 journal, a
     assert.equal(await readFile(originalBackup,"utf8"),md(original));
     assert.deepEqual(await readdir(path.join(root,"records")),["000001.json"]);
   });
+});
+
+test("M6 new-file crash: a real child creates a note then exits 77 before the first Baseline; fresh process inspects without writing",async()=>{
+  await withFixture(async({root,vaultRoot,localFile,options,handoff,receiptPath})=>{
+    assert.equal(handoff.decision.choice,"review-missing-local");
+    assertManualM6Invocation("win32","MSI",[M6_NEW_NOTE_FLAG],false);
+    const data={root,vaultRoot,jwt,handoff,receiptPath,remote:fp(updated),
+      confirmation:"APPLY M5 SANDBOX "+updated.slug+" "+
+        fp(updated).sha256.slice(0,12)};
+    const request={sandboxOwnerJwt:jwt,handoff,receiptPath};
+    assert.deepEqual(await readM6NewNoteRequest([JSON.stringify(request)]),request);
+    const child=call(childCrashScript(),data);
+    assert.equal(child.status,77,child.stderr);
+    assert.equal(await readFile(localFile,"utf8"),md(updated),
+      "the real OS new file was committed before abrupt process exit");
+    assert.deepEqual(await readdir(root),["journal.lock"],
+      "no backup or DPAPI journal exists before the first M5 signed event");
+    await assert.rejects(readM5ApprovedReview({sandboxOwnerJwt:jwt},options),
+      /no approved baseline journal/);
+    const restarted=call(firstDownloadRecoveryScript(),data);
+    assert.equal(restarted.status,0,restarted.stderr);
+    assert.deepEqual(JSON.parse(restarted.stdout),{
+      currentLocalState:"matches-reviewed-incoming",
+      currentRemoteState:"matches-reviewed-revision",
+      staleLocalLockPresent:true,currentObservationOnly:true,
+      previousTransferProven:false,baselineSaved:false,
+      autoRetryAllowed:false,autoRestoreAllowed:false,
+    });
+    assert.equal(await readFile(localFile,"utf8"),md(updated));
+    assert.deepEqual(await readdir(root),["journal.lock"],
+      "the recovery observer never clears a lock or mints a Baseline");
+  },{missingLocal:true});
+});
+
+test("M6 new-file recovery rejects stale review, source drift and altered Incoming without replay",async()=>{
+  await withFixture(async({root,vaultRoot,localFile,options,handoff,receiptPath})=>{
+    const data={root,vaultRoot,jwt,handoff,receiptPath,remote:fp(updated),
+      confirmation:"APPLY M5 SANDBOX "+updated.slug+" "+
+        fp(updated).sha256.slice(0,12)};
+    assert.equal(call(childCrashScript(),data).status,77);
+    const request={sandboxOwnerJwt:jwt,handoff,receiptPath};
+    for(const invalid of [
+      {...request,unknown:"forbidden"},
+      {...request,handoff:{...handoff,format:"wrong"}},
+      {...request,handoff:{...handoff,decision:{
+        ...handoff.decision,choice:"review-download"
+      }}},
+      {...request,receiptPath:receiptPath+"\nforbidden"},
+    ]){
+      await assert.rejects(readM6NewNoteRequest([JSON.stringify(invalid)]));
+    }
+    let count=0;
+    await assert.rejects(inspectInterruptedM4NewNote(request,{
+      ...options,readPreview:async args=>{
+        count++;
+        const p=await options.readPreview(args);
+        return count===2?{...p,decisions:p.decisions.map(row=>({
+          ...row,expectedRemoteRevision:sha("concurrent remote edit"),
+        }))}:p;
+      },
+    }),/sources changed during recovery inspection/);
+    assert.equal(count,2);
+    await assert.rejects(inspectInterruptedM4NewNote(request,{
+      ...options,readPreview:async()=>{throw Error("simulated Owner RLS disconnection");},
+    }),/Owner RLS disconnection/);
+    const different=await inspectInterruptedM4NewNote(request,{
+      ...options,readPreview:async args=>{
+        const p=await options.readPreview(args);
+        return {...p,decisions:p.decisions.map(row=>({
+          ...row,expectedRemoteRevision:sha("remote edited while offline"),
+        }))};
+      },
+    });
+    assert.equal(different.currentRemoteState,"changed-now");
+    assert.equal(different.previousTransferProven,false);
+    assert.equal(different.baselineSaved,false);
+    await writeFile(localFile,"unexpected local edit after crash");
+    const locallyChanged=await inspectInterruptedM4NewNote(request,options);
+    assert.equal(locallyChanged.currentLocalState,"different-now");
+    assert.equal(locallyChanged.autoRetryAllowed,false);
+    await writeFile(path.join(path.dirname(receiptPath),updated.slug+".md"),
+      "tampered Incoming copy");
+    await assert.rejects(inspectInterruptedM4NewNote(request,options),
+      /Incoming copy no longer matches/);
+    assert.deepEqual(await readdir(root),["journal.lock"]);
+  },{missingLocal:true});
 });
 
 test("M6 orphan inspection rejects tampered backup, extra unknown backup, or an unavailable live Owner reader",async()=>{
