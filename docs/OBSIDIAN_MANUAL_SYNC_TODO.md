@@ -1,6 +1,13 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
-## 2026-10-28 M7 Production SQL003 Migration 已完成（最新狀態）
+## 2026-10-28 M7 新增 Production Owner-RLS 唯讀入口（最新候選）
+
+- **沿用既有架構，不啟動正式同步**：新增 `lib/obsidian-m7-production-owner-readonly.ts`，獨立釘選正式 Neon Branch/HTTPS Data API（直接沿用 `lib/neon/production-release.ts`），只接受短效 Production Owner JWT，先以真正 Data API 及 `blog_admins` 本人 RLS 驗證站長，再對 `knowledge_notes` 只查 `id` 和精確列數。沒有讀取 Markdown 正文、slug、沒有寫入、沒有完整遠端 Inventory；**即使查到 0 筆，也不判定已同步或取得逐篇操作權**。既有 Sandbox-only M1–M6 Adapter 完全不變，Production JWT 不會被送去 Sandbox。
+- **人工 MSI 腳本**：新增 `npm run verify:obsidian:m7:owner:readonly`。必須在指定的 MSI Windows 上使用唯一 `--m7-production-owner-readonly` 旗標，從私人 stdin 管線提供短效 **Production** Owner JWT（不得放在指令參數、環境變數、檔案或聊天）。取得真正 Owner-RLS 計數後，再沿用既有 Obsidian GUI Vault 註冊與唯讀 Manifest 檢查，只輸出摘要數量，`remoteFullInventoryRead=false`、`comparisonPerformed=false`、`localWrites=remoteWrites=0`。
+- **離線測試／真實驗收的界線**：新增 `tests/obsidian-m7-production-owner-readonly.test.mjs`，測試精確 Production URL、只送 GET、不接受非 Owner、逾期 JWT、SSO 轉址、未知遠端列數、不完整清單及不安全 Vault 等拒絕。**測試只用合成 JWT 與隔離 Fake HTTP，並未取得本人真人 Production JWT／Session**；因此不可把單元測試 PASS 當作正式站長登入的 Live E2E，更沒有真正筆記上下載／備份／復原驗收。
+- **下一個實際驗收**：在使用者正式登入且已有合格短效 Production Owner JWT 時，才能人工執行一次此純唯讀入口；後續建立完整非空遠端 Inventory 和正式單篇同步 Adapter，仍須明確指定可測試的筆記、備份策略和操作授權。**不重跑 SQL003、不自動同步／發布／刪除。**
+
+## 2026-10-28 M7 Production SQL003 Migration 已完成（以下為既有完成紀錄）
 
 - **執行目標與授權**：經 Owner 本次明確同意，只在 Neon Project `bitter-silence-36632892` 的 Production `br-aged-sound-b43h5r2c` / `neondb` 安裝 SQL003 `update_knowledge_note_cas_with_links`。來源為已合併 GitHub `main 0995a6e48bc7ee738f640d1a4f22d4d4ff489fce` 的 `neon/migrations/003_m3_wikilink_cas_candidate.sql`（blob `a0fbb10ddbaaeafa5c809c4c18111f489cf274ba`）。只執行原檔的 `CREATE FUNCTION`、`REVOKE` 和 `GRANT`，在**同一資料庫交易**原子提交，未重跑 001/002 或修改其他 RPC。
 - **實際階段驗證**：Neon Migration 準備介面的 SQL 分段解析不支援此 PL/pgSQL dollar-quoted body，故該工具首次準備報 `unterminated dollar-quoted string`，**沒有改動 Production**。隨後臨時建立 Production 衍生分支 `br-jolly-shadow-b4kqien4`，用 `run_sql_transaction` 實際測試相同三個 DDL/ACL 指令，M7 Schema Gate **PASS**，比較顯示只增加 SQL003 函式及其權限；Production 以相同單一交易執行成功。部署後再次驗證 Production Gate **`m7_schema_ready=true`**、與臨時測試分支 Schema 差異 **0**；臨時分支已刪除並透過 Neon 分支列表確認不存在。
