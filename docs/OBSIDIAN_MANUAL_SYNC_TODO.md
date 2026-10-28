@@ -1,6 +1,14 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
-## 2026-10-28 M6 真正 Neon Sandbox 故障驗收結果（最新，優先於下列歷史）
+## 2026-10-28 M7 起跑：正式 Schema 唯讀閘門（最新狀態）
+
+- **M6 合併**：PR #53 已於 2026-10-28 合併至 `main 0995a6e48bc7ee738f640d1a4f22d4d4ff489fce`，精確 HEAD `fe1e56e` 的 [CI #40643116866](https://github.com/Naos2w/Naosledge/actions/runs/40643116866) SUCCESS。一次性真實 Sandbox E2E、故障注入及臨時身分清理已完成；實體 TCP 斷線／長時間離線尚非全部驗證。這次合併**不等於**在正式 Vault 或 Production 啟用雙向同步。
+- **Production 實際缺口**：2026-10-28 對固定 Neon Project `bitter-silence-36632892` 做 **唯讀** Schema 查核：Integration Sandbox `br-quiet-sunset-b4xx4pnx` 有 SQL003 `update_knowledge_note_cas_with_links`，Production `br-aged-sound-b43h5r2c` **沒有**。兩端均有 `knowledge_notes`、`knowledge_links` 和既有 `save_knowledge_note`。Production 在獲得 SQL003 個別授權、驗證與執行前不可宣稱 WikiLink CAS 更新已可用。
+- **本次開發的可重複門檻**：`neon/m7_schema_readiness_readonly.sql` 僅 SELECT `pg_catalog`：確認私人表存在並啟用 RLS、SQL003 **完整 11 參數簽章**、`SECURITY INVOKER`、受限 `search_path`、authenticated EXECUTE 和 anonymous 無權執行。`npm run verify:obsidian:m7:schema:offline` 使用 PGlite 真正執行 001/002 與 003、以及權限／RLS 反例，沒有碰正式資料庫。`m7_schema_ready=true` **只代表 Schema/ACL 結構合格**，不是 Owner-RLS 真人驗收、實際筆記授權或開放同步。
+- **首次 Gate 實測**：直接在兩個 Neon 分支執行同一份唯讀 SQL：Sandbox 的 `m7_schema_ready=true`，Production 的 `m7_schema_ready=false`（RPC 缺失；私人表、RLS 均存在）。MSI `npm run verify:obsidian:vault:msi` 也已實際通過 GUI Vault 註冊與本機清單查核：Markdown=0、未掃描子目錄=0、不支援檔名=0、讀寫操作=0。這些結果**不代表**已有正式兩端非空筆記同步實測。
+- **M7 待完成**：先在得到獨立 Production Migration 核准後單次套用並重新唯讀驗證 SQL003；再明確指定真人站長登入、真實 Vault 的測試筆記範圍、備份位置／保存策略、雙向逐篇人工操作、衝突／中斷後的恢復驗收與精確部署 SHA。先完成只讀檢查再討論正式寫入；保持既有 M2–M6 同一路徑，不增加新的同步服務、Agent、排程、自動覆寫或自動刪除。
+
+## 2026-10-28 M6 真正 Neon Sandbox 故障驗收結果（以下為既有證據）
 
 - **已完成一次性 Owner 授權的真實 API/實機故障驗收**：執行 MSI `npm run verify:obsidian:m6:real:sandbox:owner:e2e`（須額外設定 `NAOSLEDGE_SYNTHETIC_SANDBOX_WRITE_APPROVED=SYNTHETIC_SANDBOX_ONLY` 與 `NAOSLEDGE_M6_REAL_E2E_APPROVED=M6_SANDBOX_FAULT_ONLY_20261028`），`M6_REAL_SANDBOX_FAULT_E2E_PASS`、**Exit Code 0**。固定 Neon Integration Sandbox `bitter-silence-36632892` / `br-quiet-sunset-b4xx4pnx`，一次性合成 Auth Owner、真實 RLS 和 API。
 - **明確故障覆蓋**：真實 Neon POST 已 **201 commit**，但故意丟棄回應讓 M3 報寫入結果不明；實際 Owner-RLS 完整清單再次確認只有一篇指定合成筆記、SHA 一致，M6 唯讀工具回報目前遠端相符，**不把這視為先前操作成功的可信證明、不重試、不寫 Baseline**。在真實 GET 收到遠端回應後，故意取消其 response body 並拋出連線讀取錯誤，必須拒絕不完整回應。此為**真實遠端伺服器＋受控用戶端回應中斷注入**，非網卡實體斷線或 DNS/TCP 層故障。
