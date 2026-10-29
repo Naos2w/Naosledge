@@ -306,22 +306,26 @@ test("expired or changed Owner tokens cannot trigger a remote write or leak auth
 
 test("controller refuses real Vault path passed as a fake testRoot",async()=>{
   const remote=fakeOwner([]);
-  const agent=createM8WindowsReadOnlyAgent({
-    requestFreshJwt:async()=>tok(),
-    testOnly:{
-      root:"C:\\Naos\\Obsidian\\Naosledge",
-      journal:{
-        testRoot:"C:\\Naos\\Obsidian\\Naosledge",
-        testProtector:protector,
-        testReadLocal:async()=>({
-          fingerprints:[],unsupportedMarkdownFiles:0,otherFiles:0,
-          directoriesNotScanned:0,autoApplyAllowed:false,
-        }),
+  await assert.rejects(async()=>{
+    // Linux rejects the Windows path during construction; MSI rejects it
+    // during the OS Temp test-root preflight. Both are fail-closed.
+    const agent=createM8WindowsReadOnlyAgent({
+      requestFreshJwt:async()=>tok(),
+      testOnly:{
+        root:"C:\\Naos\\Obsidian\\Naosledge",
+        journal:{
+          testRoot:"C:\\Naos\\Obsidian\\Naosledge",
+          testProtector:protector,
+          testReadLocal:async()=>({
+            fingerprints:[],unsupportedMarkdownFiles:0,otherFiles:0,
+            directoriesNotScanned:0,autoApplyAllowed:false,
+          }),
+        },
+        fetcher:remote.fetcher,
       },
-      fetcher:remote.fetcher,
-    },
-  });
-  await assert.rejects(agent.start(),/unavailable/);
+    });
+    await agent.start();
+  },/unavailable|absolute approved root/);
   assert.equal(remote.requestCount,0);
 });
 
