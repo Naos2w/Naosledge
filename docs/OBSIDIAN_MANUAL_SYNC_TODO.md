@@ -1,6 +1,17 @@
 # NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
 
-## 2026-10-28 M7 網站登入 Session → Production RLS 唯讀狀態（最新候選）
+## 2026-10-29 M7 真實 Production 單篇合成筆記驗收（最新，已完成清理）
+
+- **限縮授權與環境**：Owner 明確同意在 Neon Production `bitter-silence-36632892` / `br-aged-sound-b43h5r2c` 只測試合成筆記 `m7-e2e-test-20261029`，產生時 UUID `5818c47d-aa2b-4738-aadc-91f9fa0b18ec`。正式網站部署採已合併 `main 917b552606d3eac53f1736cb9ec41dd582fa66d3`，未因本輪測試部署新版本、改動 Production Schema 或使用 Neon SQL 管理身分代替站長 CRUD。
+- **真正 Owner Session 建立**：在 MSI 上既有的、已登入的 Microsoft Edge，透過網站 `/vault/new` 和原生 `saveVaultNote` → `save_knowledge_note` 執行一次性新增。Neon 管理端**只做事前／事後唯讀核對**：原先私人筆記 0 篇；新增後指定 UUID/slug、合成標題／摘要／正文均相符，`knowledge_notes=1`，合成 WikiLink `m7-e2e-target` 1 筆。
+- **真實瀏覽器匯出與隔離備份**：在同一個網站私人編輯器呼叫 `Obsidian .md`，實際下載 357 bytes，經 `parseObsidianMarkdown` 完整核對屬性、正文、slug，SHA-256 `fd06cd51b362363aa6165aa13172bc1f03dc81e6e3cfa594b1baa93675cdb1c0`。再呼叫 `下載 .md 備份` 實際下載 327 bytes，經 `parseMarkdownBackup` 核對同一 V1 內容，SHA-256 `97499ff0667b4834d404eaa7b1bd0b15ddccaedc0679fc771e85dd3c26a7d75e`。兩份只含合成文字，暫存於隔離 OS Temp，未存入真實 Obsidian Vault。
+- **真正 Owner Session 遠端更新**：在正式私人編輯器把同一個 UUID 的合成正文修改為 V2、WikiLink 換成 `m7-e2e-target-v2`，按「儲存私人筆記」後 Neon 唯讀確認 V2 正文存在、新 WikiLink 1 筆、舊 WikiLink 0 筆；重新自正式網站匯出 V2，SHA-256 `37108c87e60bdb17246c95510b835d777f466582c848758a989639cd2db6511e`。
+- **單篇差異與備份復原**：以真實匯出的遠端 V1/V2 指紋及 OS Temp 合成 Local V3，呼叫既有純函式 `planObsidianReconciliation`：Local 維持 V1 時得 `review-download`，Local 與遠端各自修改時得 `conflict`，兩者均 `autoApplyAllowed=false`，未自動覆寫。驗證 V1 備份可逆向解析後，在既有正式網站編輯器**人工載回已驗證的 V1 正文並儲存**；Neon 唯讀確認原文字和 `m7-e2e-target` 恢復，V2 連結為 0。Windows 原生「匯入 Markdown」選檔對話框雖有開啟，但自動操作未成功完成，已關閉；**不能宣稱檔案輸入 UI 的完整匯入測試通過**。
+- **精確刪除與清理 DONE**：在同一個 Owner 網站編輯頁，針對該筆 UUID/slug 點「刪除私人筆記」並核准網站原生確認。最後 Neon Production 唯讀 SQL：`knowledge_notes=0`、指定 UUID/slug 殘留 0、`knowledge_links=0`、指定 WikiLink 殘留 0、`knowledge_publication_sources=0`、`blog_admins=1`、SQL003 仍存在。四個隔離暫存測試檔均經指定 SHA-256 比對後精確清除，Downloads 裡無本次 `m7-e2e-test-20261029*.md`。
+- **真實 Vault 非授權內容保留**：MSI 的 `C:\Naos\Obsidian\Naosledge` 原先清單 0 篇；測後出現 1 篇**不是**本次指定 slug 的 Markdown。只核對是否等於測試 slug，沒有查看正文、修改或刪除此未知筆記，也**無法證明**該檔案來源。本輪測試程式／網站沒有將合成筆記寫入該 Vault，不能把未知檔案列入本輪完成清理的範圍。
+- **仍未完成，不能宣稱 M7 雙向同步 DONE**：這次正式站長 CRUD 走現有網站 `save_knowledge_note`，**沒有**以真人 Owner JWT 對正式 SQL003 `update_knowledge_note_cas_with_links` 執行 CAS／stale-loss E2E；尚未完成真正 Production 全量 RLS Inventory、正式 M2→M3/M4 逐篇 WikiLink CAS Transfer Adapter、真實 Vault Backup／Incoming 寫入及 M5 Baseline／斷線復原。前述單篇差異計算與人工還原不等於自動或完整雙向同步。不新增排程或無條件覆寫；正式筆記的後續寫入須另行限縮授權。
+
+## 2026-10-28 M7 網站登入 Session → Production RLS 唯讀狀態（以下為前次候選紀錄）
 
 - **現有登入即可驗證，不另取 JWT**：在原有站長限定的 `/vault/sync` Server Component 先呼叫 `requireVault()`，保留 Neon Auth Email 驗證、正式簽發的會員 JWT 與 `blog_admins` Owner-RLS 授權鏈。再透過**同一個**經授權的會員資料庫 Client 發出 `knowledge_notes.select("id",{count:"exact"}).eq("owner_id",user.id).limit(1)`，只查本人筆記精確數量，不傳 JWT、id、slug 或正文至瀏覽器，也不建立任何新同步系統。
 - **精確 Production 發布閘門**：新 `lib/obsidian-m7-web-owner-readiness.ts` 使用既有 `validateProductionRelease()` 核對 Vercel 正式版本 SHA、專案、分支、固定 Neon Auth/Data API、HTTPS origin 等設定。非 Production/Sandbox/Local 不執行此查詢；正式設定不一致、遠端失敗、未知或不一致的 count 只回報「未驗證」，**不可推論 0 篇或成功同步**。同時 `remoteFullInventoryRead=false`、`noteBodiesRead=false`、`transferAllowed=false`、`baselineSaved=false`。
