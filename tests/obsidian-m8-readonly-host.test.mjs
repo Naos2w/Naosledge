@@ -103,13 +103,15 @@ test("a confirmed pairing with identical Production and local Markdown is still 
       learned_on:note.learned_on,content_md:note.content_md,
     });
     const sha=createHash("sha256").update(md).digest("hex");
+    const revision=createHash("sha256").update(
+      note.id+":"+note.updated_at).digest("hex");
     await writeFile(path.join(root,"same-note.md"),md);
     const result=mockRemote(note),seen=[];
     const host=createM8ReadOnlySyncHost({
       root,fetcher:result.fetcher,
       getOwnerJwt:async()=>jwt,
       loadPairing:async()=>({
-        baseline:[{slug:"same-note",sha256:sha}],
+        baseline:[{slug:"same-note",sha256:sha,revision}],
         trust:trust(true),
       }),
       onStatus:status=>seen.push(status),

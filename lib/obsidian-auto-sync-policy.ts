@@ -52,7 +52,7 @@ export type AutoSyncAction=
   |"download-new"|"download-replace"
   |"unchanged"
   |"manual-conflict"|"manual-deletion"|"manual-missing-revision"
-  |"blocked";
+  |"manual-checkpoint-recovery"|"blocked";
 
 export type AutoSyncCandidate=Pick<SyncDecision,
   "slug"|"choice"|"expectedLocalSha"|"expectedRemoteSha"|"expectedRemoteRevision"
@@ -119,9 +119,16 @@ function validateTrust(value:unknown):AutoSyncTrust{
 const automatic=new Set<AutoSyncAction>([
   "upload-create","upload-cas","download-new","download-replace",
 ]);
-function chooseAction(d:SyncDecision,hasBaseline:boolean):AutoSyncAction{
+function chooseAction(d:SyncDecision,base:SyncFingerprint|undefined):AutoSyncAction{
+  const hasBaseline=base!==undefined;
   switch(d.choice){
-    case "unchanged":return "unchanged";
+    case "unchanged":
+      // If a Production CAS committed but the process crashed BEFORE M5
+      // checkpoint fsync, both sides match but our trusted Baseline does not.
+      // Never silently classify this as fully synced or auto-adopt the SHA.
+      return base&&base.sha256===d.expectedLocalSha&&
+        base.revision===d.expectedRemoteRevision?
+        "unchanged":"manual-checkpoint-recovery";
     case "conflict":return "manual-conflict";
     case "both-removed":return "manual-deletion";
     case "review-missing-local":
@@ -162,7 +169,7 @@ export function planAutomaticObsidianSync(input:{
   const baseline=input.baseline as SyncFingerprint[];
   // The original M1 validation rejects duplicates/malformed slugs. A Set
   // derived from the validated list is safe for deletion classification.
-  const previouslyPresent=new Set(baseline.map(x=>x.slug));
+  const previousBySlug=new Map(baseline.map(x=>[x.slug,x]));
   const reasons:string[]=[];
   if(!trust.initialPairingApproved)reasons.push("initial-pairing-not-approved");
   if(!trust.durableBaselineVerified)reasons.push("durable-baseline-not-verified");
@@ -174,7 +181,7 @@ export function planAutomaticObsidianSync(input:{
 
   const blocked=reasons.length>0;
   const candidates=plan.decisions.map((d):AutoSyncCandidate=>{
-    const action=blocked?"blocked":chooseAction(d,previouslyPresent.has(d.slug));
+    const action=blocked?"blocked":chooseAction(d,previousBySlug.get(d.slug));
     return {
       slug:d.slug,choice:d.choice,
       expectedLocalSha:d.expectedLocalSha,

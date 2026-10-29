@@ -16,6 +16,8 @@ import {lstat,realpath,readFile,mkdtemp,open,rename,link,unlink,rm}
 import {tmpdir} from "node:os";
 import path from "node:path";
 import {RELEASE_NEON_BRANCH} from "./neon/production-release.ts";
+import {encodeM8ScratchIncomingIntent}
+  from "./obsidian-m8-scratch-incoming-recovery.ts";
 import {
   fetchProductionOwnerRlsFingerprints,fetchVerifiedProductionNoteMarkdown,
 } from "./obsidian-m8-production-inventory-readonly.ts";
@@ -69,6 +71,22 @@ async function currentNote(filename:string,expected:string|null):Promise<Buffer|
      digest(content)!==expected)stop();
   return content;
 }
+async function withScratchLock<T>(root:string,run:()=>Promise<T>):Promise<T>{
+  const lockName=path.join(root,".m8-incoming.lock");
+  let handle;
+  try{handle=await open(lockName,"wx",0o600);}catch{stop();}
+  const owner=await handle.stat();
+  try{
+    await handle.writeFile("m8-os-temp-single-writer");
+    await handle.sync();
+    return await run();
+  }finally{
+    await handle.close();
+    const held=await lstat(lockName).catch(()=>stop());
+    if(!held.isFile()||held.isSymbolicLink()||held.ino!==owner.ino)stop();
+    await unlink(lockName);
+  }
+}
 async function durableWrite(filename:string,bytes:Buffer){
   const handle=await open(filename,"wx",0o600);
   try{
@@ -87,11 +105,14 @@ export async function applyVerifiedProductionIncomingToScratch(args:{
   fetcher?:typeof fetch;
   signal?:AbortSignal;
   /** Only called on isolated OS Temp test roots before the final CAS check. */
-  beforeCommitForTest?:()=>Promise<void>;
+  beforeCommitForTest?:(intentPath:string)=>Promise<void>;
+  /** Fault-injection only: runs after local rename but before readback. */
+  afterCommitForTest?:(intentPath:string)=>Promise<void>;
 }):Promise<{
   slug:string;sha256:string;revision:string;
   localReadbackVerified:true;
   backupPath:string|null;
+  receiptPath:string;
   originalBackupSha256:string|null;
   baselineSaved:false;
   remoteWrites:0;
@@ -112,20 +133,24 @@ export async function applyVerifiedProductionIncomingToScratch(args:{
      (c.expectedLocalSha!==null&&
        (typeof c.expectedLocalSha!=="string"||!SHA.test(c.expectedLocalSha)))||
      (args.beforeCommitForTest!==undefined&&typeof args.beforeCommitForTest!=="function")||
+     (args.afterCommitForTest!==undefined&&typeof args.afterCommitForTest!=="function")||
      args.typedConfirmation!==
        "TEST M8 SCRATCH "+c.action+" "+c.slug+" "+c.expectedRemoteSha.slice(0,12)){
     stop();
   }
   check(args.signal);
   const root=await verifiedScratchRoot(args.scratchVaultRoot);
+  // Exclusive lock spans the cloud read, source recheck and local rename.
+  // An abandoned lock stops later operations rather than guessing success.
+  return withScratchLock(root,async()=>{
   const target=path.join(root,c.slug+".md");
   // Prove the exact reviewed source state before accessing the cloud.
   const before=await currentNote(target,c.expectedLocalSha);
   const fetcher=args.fetcher??fetch;
   const remote=await fetchVerifiedProductionNoteMarkdown({
     branchId:args.branchId,jwt:args.ownerJwt,slug:c.slug,
-    expectedSha256:c.expectedRemoteSha,
-    expectedRevision:c.expectedRemoteRevision,
+    expectedSha256:c.expectedRemoteSha!,
+    expectedRevision:c.expectedRemoteRevision!,
     fetcher,signal:args.signal,
   });
   if(Buffer.byteLength(remote.markdown,"utf8")>MAX_BYTES)stop();
@@ -147,21 +172,30 @@ export async function applyVerifiedProductionIncomingToScratch(args:{
   // irreversible rename happens before a crash. No automatic cleanup of
   // a potentially needed backup after a commit.
   let backupRoot:string|null=null,backupPath:string|null=null;
+  let receiptPath:string|null=null;
   let staged:string|null=null,committed=false;
   try{
+    backupRoot=await mkdtemp(path.join(path.resolve(tmpdir()),
+      "naosledge-m8-scratch-operation-"));
     if(before!==null){
-      backupRoot=await mkdtemp(path.join(path.resolve(tmpdir()),
-        "naosledge-m8-scratch-backup-"));
       backupPath=path.join(backupRoot,c.slug+".md.bak");
       await durableWrite(backupPath,before);
       if(digest(await readFile(backupPath))!==c.expectedLocalSha)stop();
     }
+    // Durable intent exists BEFORE any irreversible local replacement.
+    receiptPath=path.join(backupRoot,"incoming-intent.json");
+    await durableWrite(receiptPath,encodeM8ScratchIncomingIntent({
+      slug:c.slug,action:c.action as "download-new"|"download-replace",
+      beforeSha256:c.expectedLocalSha,
+      remoteSha256:c.expectedRemoteSha,
+      remoteRevision:c.expectedRemoteRevision,
+    }));
     staged=path.join(root,"."+c.slug+".m8-next-"+
       randomBytes(9).toString("hex")+".md");
     await durableWrite(staged,bytes);
     // Injected fault tests simulate an editor modifying the original
     // after the backup, before the final direct file comparison.
-    await args.beforeCommitForTest?.();
+    await args.beforeCommitForTest?.(receiptPath!);
     check(args.signal);
     const justBefore=await currentNote(target,c.expectedLocalSha);
     if((justBefore===null)!==(before===null)||
@@ -180,6 +214,7 @@ export async function applyVerifiedProductionIncomingToScratch(args:{
       committed=true;
       staged=null;
     }
+    await args.afterCommitForTest?.(receiptPath!);
     const actual=await currentNote(target,c.expectedRemoteSha);
     if(!actual||!actual.equals(bytes))uncertain();
     const final=await fetchProductionOwnerRlsFingerprints({
@@ -192,7 +227,8 @@ export async function applyVerifiedProductionIncomingToScratch(args:{
       slug:c.slug,sha256:c.expectedRemoteSha,
       revision:c.expectedRemoteRevision,
       localReadbackVerified:true,
-      backupPath,originalBackupSha256:before?digest(before):null,
+      backupPath,receiptPath:receiptPath!,
+      originalBackupSha256:before?digest(before):null,
       baselineSaved:false,remoteWrites:0,realVaultTouched:false,
     };
   }catch{
@@ -208,4 +244,5 @@ export async function applyVerifiedProductionIncomingToScratch(args:{
   }
   // TypeScript control-flow guard: no completion without verified readback.
   return stop();
+  });
 }

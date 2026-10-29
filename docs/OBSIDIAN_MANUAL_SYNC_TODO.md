@@ -1,6 +1,16 @@
 # NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M8）
 
-## 2026-10-29 M8 P1 Production create-only / SQL003 CAS / 隔離下載備份（最新候選）
+## 2026-10-29 M8 P1b Production M5 持久基準、跨程序鎖與中斷復原（最新已完成的隔離開發）
+
+- **Production 獨立 M5 Journal（新增 `lib/obsidian-m8-production-baseline-journal.ts`）**：沿用既有 Sandbox M5 的 Windows 使用者 DPAPI 鑰匙保護器，但使用**不同的正式環境路徑、獨立 HMAC 金鑰、Version Format 與 `br-aged-sound-b43h5r2c` Owner 綁定**，不接受 Sandbox 事件或 Sandbox 金鑰。初次配對只在本人短效 Production JWT 經完整 Owner-RLS GET 驗證、兩次完整本機 Manifest 和兩次遠端指紋都一致、且人工輸入明確配對確認後，於獨占 `wx` 鎖中 `fsync` 記錄初始快照（含零篇配對）。其他同名、中文未支援檔名、子目錄或異動檔一律拒絕；**真實 MSI 仍未執行任何 Production 首次配對**，測試僅用 OS TEMP 與可注入的合成 Key Protector。
+- **M5 只在遠端已提交且雙端一致後建立 checkpoint**：新增 `recordVerifiedProductionM8Upload` 接受 P1 create-only／SQL003 CAS Adapter 的成功回執，使用已簽章的上個 SHA/revision、同一 Owner-RLS JWT、兩次本機及遠端重讀與跨程序 lock 驗證，最後追加 HMAC 鏈式記錄、再從磁碟讀回驗證；從未由回應碼、瀏覽器 UI 或未核對來源自行推定已同步。簽章篡改、跨 Owner／跨分支、殘留 Lock、缺序號、錯版或中途異動均 fail closed；不能默默重建任何日誌。本模組沒有上傳、下載、排程啟動或自動刪除 API。
+- **本機下載持久收據及跨程序鎖（僅 OS TEMP）**：`lib/obsidian-m8-scratch-incoming-atomic.ts` 現在全程持有獨占 `wx` lock，先 `fsync` 原始備份與 `incoming-intent.json`（原本 SHA／目標 SHA／revision／action），才執行隔離原子替換；用 `lib/obsidian-m8-scratch-incoming-recovery.ts` 從殘留收據及現有檔案唯讀判別 `applied/not-applied/diverged/missing`，**永遠要求人工核對、不自動重試，也不宣稱遠端仍最新**。我在 MSI 真正開啟額外 Node 程序並於 `rename` **之前**／**之後**強制退出，兩次都成功保留備份與收據、留下互斥鎖且復原分類正確；不碰 `C:\Naos\Obsidian\Naosledge`。
+- **修復 M1→M8 的日誌落後判斷**：原有三方比對遇到「本機與雲端 SHA 相同」會回 `unchanged`，但若 POST 已提交而 M5 fsync 前崩潰，兩端即使相同也**不能視為已 checkpoint**。現在 `planAutomaticObsidianSync` 會比對完整 M5 SHA **加 remote revision**；缺基準／版本不一致時改回報 `manual-checkpoint-recovery`、禁止自動傳輸與自動 Baseline 採認；真正一致才顯示 `unchanged`。另新增 `manuallyRecoverProductionM8Checkpoint`，**只在人工逐篇確認及雙端兩次 Owner-RLS/Local SHA 一致**時追補 HMAC 基準，不會重送 Production POST；可處理內容 SHA 相同但遠端 revision 改變。
+- **跨模組 E2E（僅合成資料）**：用實際 OS TEMP 本機 Markdown + Fake Neon Owner-RLS GET/SQL003 POST 驗證完整 `人工首次配對 → CAS Update 或 create-only → 雙端獨立讀回 → 寫 M5 HMAC Journal → 重啟再讀基準`，另覆蓋 POST 已提交但回應遺失（Baseline 留舊版，狀態改為人工修復，不重送），以及**另外人工批准並修復基準**的完整流程、符號連結／權限／併發／讀寫事故。初始 Journal 支援 **500 篇**，特別驗證最大筆數時的單筆簽章紀錄超過 64 KiB 仍可從磁碟讀回驗證。
+- **離線驗證**：`npm run verify:obsidian:m8:p1:journal` 加上整套 `npm run test:unit`、TypeScript 與 Production Build。**尚未**使用真人 Production 短效 Owner JWT 完成真實 CAS/M5 E2E，沒有在真實 Vault 原子下載，也沒有由 Agent 呼叫這些 Adapter；真正 Production M5 仍無配對紀錄，不可啟用自動寫入。
+- **下一階段 P2 前置項目**：以本人授權 Session 可靠刷新短效 JWT、處理實體 Vault 1 篇與 Production 0 篇的初次**非相等**配對審查、真正 Vault 上的跨程序鎖／備份／Crash Recovery、下載成功後的獨立 M5 事件與跨平台更名，最後完成真人逐篇 E2E 及啟用操作。正式站仍受 SHA 閘門保護，本次不部署、不重跑 SQL003。
+
+## 2026-10-29 M8 P1 Production create-only / SQL003 CAS / 隔離下載備份（以下為前次完成紀錄）
 
 - **P1 正式上傳核心（已實作，但絕未對真人 Production 呼叫 POST）**：`lib/obsidian-m8-production-cas-update.ts` 提供兩個**尚未接入網站、Windows watcher 或背景程序**的低階 Adapter。既有單篇更新僅可走已安裝的 `/rpc/update_knowledge_note_cas_with_links`：先用正式 Owner JWT 驗證 `blog_admins` 本人 RLS、完整 Note Inventory 和單篇 SHA / revision / UUID / `updated_at`，比對舊 WikiLink 索引、待上傳 Obsidian Markdown 的精確 SHA、再次確認本機與雲端版本，然後以 SQL003 CAS 在**同一個資料庫交易**更新正文與 outgoing index。新增筆記僅能以 `save_knowledge_note(p_id=null)` 原子 `INSERT`，同名或併發新增由 unique constraint 拒絕，沒有 UPDATE / upsert / PATCH 後備路徑。兩者**都要求 QA 單篇固定核准字串**，沒有自動執行介面，並在更新後透過獨立 Owner-RLS GET 重新確認正文、SHA、revision、WikiLink。結果均 `baselineSaved=false`，不得視為 M5 已提交。
 - **Production 單篇唯讀取得（已實作）**：在 `lib/obsidian-m8-production-inventory-readonly.ts` 增加 `fetchVerifiedProductionNoteMarkdown`，沿用 P0 完整 500 篇／20 篇分頁與 Owner-RLS，指定精確 slug/SHA/revision 單篇 GET 前後重掃遠端，確認未有任何遠端版本異動。回傳的原始 Markdown **僅供受信任 Node 流程記憶體使用**，不輸出至 UI/CLI/Log。

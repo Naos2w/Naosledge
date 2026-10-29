@@ -63,7 +63,8 @@
       "docs/obsidian-m7-single-note-prod-e2e-20261029": false,
       "feat/obsidian-auto-sync-foundation-20261029": false,
       "feat/obsidian-m8-production-inventory-watcher-20261029": false,
-      "feat/obsidian-m8-p1-production-cas-transfer-20261029": false
+      "feat/obsidian-m8-p1-production-cas-transfer-20261029": false,
+      "feat/obsidian-m8-production-baseline-lock-20261029": false
     }
   }
 }
