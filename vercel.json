@@ -65,7 +65,8 @@
       "feat/obsidian-m8-production-inventory-watcher-20261029": false,
       "feat/obsidian-m8-p1-production-cas-transfer-20261029": false,
       "feat/obsidian-m8-production-baseline-lock-20261029": false,
-      "feat/obsidian-m8-p2-windows-agent-20261029": false
+      "feat/obsidian-m8-p2-windows-agent-20261029": false,
+      "feat/obsidian-m8-p2-incoming-m5-20261029": false
     }
   }
 }

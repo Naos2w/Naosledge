@@ -1,6 +1,15 @@
 # NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M8）
 
-## 2026-10-29 M8 P2 Windows 可控唯讀 Agent + 首次非相等配對審查（最新實作）
+## 2026-10-29 M8 P2b Production 新檔下載、持久收據與 M5 下載 checkpoint（最新實作）
+
+- **Production 正式 Vault 的新檔下載 Adapter（已實作，尚未對真實 Vault 執行）**：`lib/obsidian-m8-production-incoming-new.ts` 限定 MSI 已註冊的 `C:\Naos\Obsidian\Naosledge`，或單次 OS TEMP 隔離目錄；只允許 `download-new` + `review-missing-local`，且必須已存在對應 Owner／Production Branch 的**已核准 M5 初始配對**以及精確逐篇人工確認。先核對 M5、完整本機清單與真實 Owner-RLS 的遠端單篇 Markdown SHA／Revision，然後在 Vault 外的 `%LOCALAPPDATA%\Naosledge\m8-production-incoming` 存放 durable intent（`wx`+`fsync`），本機寫入同目錄 staging `.pending` 後採用 **`link()` 原子 create-only**，避免覆寫突然出現的同名筆記；建立後再次獨立確認實際 Markdown 與 Owner-RLS。既有筆記需要覆寫時**一律拒絕**，仍須後續獨立實作真正 Windows 檔案鎖、耐久備份及故障回復。
+- **M5 正式新增下載成功事件**：`lib/obsidian-m8-production-baseline-journal.ts` 新增 HMAC 鏈式 `verified-download-new` 與 `recordVerifiedProductionM8DownloadNew`，在跨程序獨占鎖中，獨立驗證磁碟上的合法 durable intent 路徑／原始 SHA／目標 Revision，並重讀兩次完整本機 Manifest 與 Production Owner-RLS 指紋，才追加磁碟簽章並從磁碟讀回；不能由外部傳入單純 `success=true` 視為成功。空白首次配對後的 remote-only 新檔也可以正確建立 M5 checkpoint；同一篇不會重複追加。
+- **唯讀復原及完成後清理**：`lib/obsidian-m8-production-incoming-recovery.ts` 從隔離或固定 MSI 私有收據目錄，辨識 `applied/not-applied/diverged` 與殘留互斥鎖；不自動重新寫入／自動刪除。只有當 M5 Owner HMAC checkpoint 與最新 Owner-RLS／本機 SHA 都再次相符，才接受精確單篇人工 ACK，僅刪除對應 `incoming-intent.json` 與它的空操作資料夾，釋放下一篇新檔下載機會；其他收據、未知檔案或殘留鎖絕不清除。
+- **明確核准的單篇執行串接**：新增 `lib/obsidian-m8-production-incoming-one-shot.ts`，將 `downloadProductionNewNoteOnce → recordVerifiedProductionM8DownloadNew → acknowledgeM8ProductionIncomingNew` 實際串成一個流程；開始前要求**單篇新下載與收據確認兩組核准字串**。每一步都分別檢查 M5、磁碟 durable intent 與 Owner-RLS，途中若成功與否不確定，保留操作收據、**不重試**，由另一次唯讀人工檢查恢復。此執行入口**沒有**綁到 Windows Agent／排程／網站，因此不會自動處理真實筆記。
+- **隔離 E2E**：`npm run verify:obsidian:m8:p2:incoming:offline` 使用 Windows OS TEMP 真實檔案 + 合成 Owner JWT／Fake Neon RLS API，實際測試 `人工初始空配對 → 雲端新筆記 → 人工單篇下載 → 原子 create-only → 持久收據 → M5 簽章新下載事件 → 重啟唯讀讀回 → 人工 ACK` 以及單一核准命令的完整串接，涵蓋競爭本機檔案、錯身分、同名拒絕、偽造收據／錯誤分支／版本、遠端漂移、殘留 Lock 與不允許重複執行。這些路徑**沒有發送正式 POST、沒有改動真實 Vault，並且尚未連入自動 Agent**。
+- **後續仍必需**：取得可靠的 Neon Owner Session 自動刷新、已存在筆記的真正 Windows 跨程序鎖＋備份＋原子覆寫與 `verified-download-replace` M5 事件，處理真實 Vault 1／Production 0 的初次不相等配對審查、將批准後的自動上傳／下載執行接入單一 Agent、真人 Production E2E，最後才明確啟用常駐同步。不重跑既有 SQL003、不重部署網站，不自動刪除或上傳未配對私人筆記。
+
+## 2026-10-29 M8 P2 Windows 可控唯讀 Agent + 首次非相等配對審查（以下為前次完成紀錄）
 
 - **可控 Windows Agent 核心**：新增 `lib/obsidian-m8-windows-agent-controller.ts`：只有明確呼叫 `start()` 才會啟動，支援 `pause()`、`resume()`、`stop()`，每台 MSI 僅一個 `wx` 獨占 `.m8-readonly-agent.lock`；正常停止核對 inode 才移除 Lock，程序崩潰後殘留鎖需人工檢查，不會搶占。正式模式只接受已註冊的 `C:\Naos\Obsidian\Naosledge`；測試模式只接受 OS TEMP 直接子資料夾 `naosledge-m8-agent-test-*`，在 TEMP 以合成的 Owner-RLS API 實際測試 Windows `fs.watch` 事件喚醒。沒有任何真正的自動上傳、下載、改名、刪除、M5 寫入或開機自啟。
 - **短效 Owner Session 保護**：新增 `lib/obsidian-m8-owner-session-source.ts`，每輪掃描經受信任 Provider **重新要求** JWT，至少保留 90 秒有效時間，綁定同一 Owner UUID；不儲存 JWT、不在狀態中輸出 Owner ID、Token 或錯誤。M8 Host 改為同一輪把**同一張短效 JWT**交給 Production M5 檢查及完整 Owner-RLS 清單，避免兩次請求意外混用 Session。JWT Payload 的主體不是身分證明，只有後續 Neon RLS 驗證才確認授權。
