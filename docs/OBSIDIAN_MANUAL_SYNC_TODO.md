@@ -1,6 +1,15 @@
 # NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M8）
 
-## 2026-10-29 M8 P1b Production M5 持久基準、跨程序鎖與中斷復原（最新已完成的隔離開發）
+## 2026-10-29 M8 P2 Windows 可控唯讀 Agent + 首次非相等配對審查（最新實作）
+
+- **可控 Windows Agent 核心**：新增 `lib/obsidian-m8-windows-agent-controller.ts`：只有明確呼叫 `start()` 才會啟動，支援 `pause()`、`resume()`、`stop()`，每台 MSI 僅一個 `wx` 獨占 `.m8-readonly-agent.lock`；正常停止核對 inode 才移除 Lock，程序崩潰後殘留鎖需人工檢查，不會搶占。正式模式只接受已註冊的 `C:\Naos\Obsidian\Naosledge`；測試模式只接受 OS TEMP 直接子資料夾 `naosledge-m8-agent-test-*`，在 TEMP 以合成的 Owner-RLS API 實際測試 Windows `fs.watch` 事件喚醒。沒有任何真正的自動上傳、下載、改名、刪除、M5 寫入或開機自啟。
+- **短效 Owner Session 保護**：新增 `lib/obsidian-m8-owner-session-source.ts`，每輪掃描經受信任 Provider **重新要求** JWT，至少保留 90 秒有效時間，綁定同一 Owner UUID；不儲存 JWT、不在狀態中輸出 Owner ID、Token 或錯誤。M8 Host 改為同一輪把**同一張短效 JWT**交給 Production M5 檢查及完整 Owner-RLS 清單，避免兩次請求意外混用 Session。JWT Payload 的主體不是身分證明，只有後續 Neon RLS 驗證才確認授權。
+- **MSI 人工前景唯讀入口**：新增 `scripts/obsidian-m8-windows-readonly-agent.ts`／`npm run verify:obsidian:m8:p2:foreground:readonly`，限定 MSI、私人 stdin 與精確唯讀旗標；僅在當次前景程序**記憶體持有**一份短效 Token，每次輪詢重驗到期時間，最晚在到期前 120 秒停止，收到 SIGINT／SIGTERM 也會停止並清理 Lock；狀態只輸出聚合筆數與待審查數。**此入口尚未接上自動 JWT 刷新服務，不能用它宣稱可無人值守長時間自動同步**；也不會從已登入瀏覽器偷取 Cookie／Session。
+- **首次非相等配對審查**：新增純函式 `reviewM8NonEqualInitialPairing`，接受完整本人 Owner-RLS Snapshot 與完整本機 Manifest，區分 `approve-local-only-create`、`approve-remote-only-download`、`approve-equal-note`、`manual-name-collision`；不支援檔名與未掃描目錄則整批標記 `blocked`。目前真實 Vault **1 篇**、Production **0 篇**屬於人工首次配對範圍，**不自動上傳**。
+- **跨模組隔離 E2E**：以 MSI 的 OS TEMP 合成筆記與 Fake Owner-RLS Neon API 實際跑通 `本機 1／雲端 0 → 首次配對審查 → 拒絕未授權上傳 → 人工核准 create-only → 本人 RLS 重讀 → 人工核准相等配對 → M5 HMAC Journal 重啟讀回 → 唯讀 Windows Agent 取得已配對狀態`；自動 Agent 沒有重送新增。另驗證憑證過期、Owner 切換、暫停／恢復、獨占鎖併發與殘留 Lock；`npm run verify:obsidian:m8:p2:offline`。
+- **下一階段真正完成條件**：須由 Windows 可信登入組件提供安全、可更新的短效 Owner JWT；將已通過 P1b 的正式 SQL003 CAS／create-only、真實 Vault 跨程序原子下載＋耐久備份、成功後 M5 基準追加與 Crash Recovery 接到單一 Agent；真人逐篇 E2E＋首次配對實際授權後才啟用。這次**只有讀取與隔離測試寫入**，沒有替真實 Vault 配對、沒有部署網站、沒有啟用持續自動傳輸／刪除。
+
+## 2026-10-29 M8 P1b Production M5 持久基準、跨程序鎖與中斷復原（以下為前次完成紀錄）
 
 - **Production 獨立 M5 Journal（新增 `lib/obsidian-m8-production-baseline-journal.ts`）**：沿用既有 Sandbox M5 的 Windows 使用者 DPAPI 鑰匙保護器，但使用**不同的正式環境路徑、獨立 HMAC 金鑰、Version Format 與 `br-aged-sound-b43h5r2c` Owner 綁定**，不接受 Sandbox 事件或 Sandbox 金鑰。初次配對只在本人短效 Production JWT 經完整 Owner-RLS GET 驗證、兩次完整本機 Manifest 和兩次遠端指紋都一致、且人工輸入明確配對確認後，於獨占 `wx` 鎖中 `fsync` 記錄初始快照（含零篇配對）。其他同名、中文未支援檔名、子目錄或異動檔一律拒絕；**真實 MSI 仍未執行任何 Production 首次配對**，測試僅用 OS TEMP 與可注入的合成 Key Protector。
 - **M5 只在遠端已提交且雙端一致後建立 checkpoint**：新增 `recordVerifiedProductionM8Upload` 接受 P1 create-only／SQL003 CAS Adapter 的成功回執，使用已簽章的上個 SHA/revision、同一 Owner-RLS JWT、兩次本機及遠端重讀與跨程序 lock 驗證，最後追加 HMAC 鏈式記錄、再從磁碟讀回驗證；從未由回應碼、瀏覽器 UI 或未核對來源自行推定已同步。簽章篡改、跨 Owner／跨分支、殘留 Lock、缺序號、錯版或中途異動均 fail closed；不能默默重建任何日誌。本模組沒有上傳、下載、排程啟動或自動刪除 API。
