@@ -61,7 +61,8 @@
       "feat/obsidian-m6-live-sandbox-fault-e2e-20261028": false,
       "feat/obsidian-m7-production-schema-gate-20261028": false,
       "docs/obsidian-m7-single-note-prod-e2e-20261029": false,
-      "feat/obsidian-auto-sync-foundation-20261029": false
+      "feat/obsidian-auto-sync-foundation-20261029": false,
+      "feat/obsidian-m8-production-inventory-watcher-20261029": false
     }
   }
 }
