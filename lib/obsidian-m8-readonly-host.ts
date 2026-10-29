@@ -52,7 +52,7 @@ export function createM8ReadOnlySyncHost(options:{
   /** Issued by real Production Auth, never returned from this host. */
   getOwnerJwt:()=>Promise<string>;
   /** Must be read from the separately verified local M5 journal. */
-  loadPairing:()=>Promise<{baseline:SyncFingerprint[];trust:AutoSyncTrust}>;
+  loadPairing:(jwt:string)=>Promise<{baseline:SyncFingerprint[];trust:AutoSyncTrust}>;
   onStatus?:(status:M8ReadOnlyHostSummary,trigger:AutoSyncScanTrigger)=>void;
   onWatcherError?:()=>void;
   fetcher?:typeof fetch;
@@ -68,10 +68,12 @@ export function createM8ReadOnlySyncHost(options:{
   const wakeup=createObsidianAutoSyncWakeup({
     clock:options.clock,
     onCheck:async(signal,trigger)=>{
-      // Do not make any cloud requests if the local baseline cannot be read.
-      const pairing=await options.loadPairing();
-      if(signal.aborted)return;
+      // Use ONE fresh JWT for both the signed M5 Owner journal and
+      // the subsequent full Owner-RLS inventory. Prevent different
+      // identities or sessions between separate credential callbacks.
       const jwt=await options.getOwnerJwt();
+      if(signal.aborted)return;
+      const pairing=await options.loadPairing(jwt);
       if(signal.aborted)return;
       const scan=await inspectM8ReadOnlyPairing({
         readLocal:()=>readObsidianLocalManifest(options.root),
