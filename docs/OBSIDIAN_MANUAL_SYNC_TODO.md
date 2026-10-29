@@ -1,6 +1,18 @@
-# NaosLedge × Obsidian — 確認版雙向手動同步 TODO (M1–M7)
+# NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M8）
 
-## 2026-10-29 M7 真實 Production 單篇合成筆記驗收（最新，已完成清理）
+## 2026-10-29 M8 需求調整：安全自動雙向同步（最新決策）
+
+**使用者已明確選擇「自動同步比較好」。正式產品目標由逐篇手動同步調整為：首次配對採人工審查；通過後日常新增與單邊修改自動雙向同步；只有雙端衝突、刪除、重新命名／檔名不明及其他不能確定安全性的情況才要求人工處理。** 既有 M1–M7 的手動審查、RLS、SQL003 CAS、加密備份及故障復原都是保護層，**不刪除、不另造第二套同步系統**。
+
+- **Windows 輕量同步器（P0）**：以 MSI 本機單一 Owner 範圍的常駐程序執行（非網站伺服器、非獨立昂貴服務）。本機檔案變更事件合併／去彈跳預設 **800ms**，遠端只做 Metadata/Fingerprint 輪詢預設 **60 秒**，同一時間最多一輪，離線／身分過期停止寫入並以 5 秒起、最高 5 分鐘的退避重試；避免無意義反覆建置、背景寫入、自動刪除與回音式重複上傳。
+- **首次配對與啟用閘門（P0）**：先用正式 Owner JWT + RLS 讀取**完整**遠端 Inventory、掃描本機支援筆記、解決同名衝突／不支援檔名／子目錄。使用者核准初始配對並建立經 Windows DPAPI 保護、綁定 Owner 與分支的持久 M5 基準後才能啟用；**新裝置或未知本機筆記不可在未審查下直接上傳／刪除**。提供暫停、重新配對、狀態與衝突清單。
+- **自動操作的決策（P0 已建立唯讀候選核心）**：重用 `planObsidianReconciliation` 的三方 SHA 比對。既有雙端中只有本機改動 → 候選 `upload-cas`；只有遠端改動 → 候選 `download-replace`（覆寫前耐久備份）；配對完成後真正新生的本機／遠端筆記 → `upload-create`／`download-new`；內容相同 → 不動。雙端各自變更 → `manual-conflict`；**曾存在於 M5 基準而任一端消失** → `manual-deletion`，包括兩端都消失；無可驗證的遠端版本 → `manual-missing-revision`；不自行推測是刪除、改名或首次同步。
+- **兩端交易與資料保護（P1 尚未接線）**：正式遠端傳輸只能沿用 Neon Production + 本人 JWT/RLS；新增採 create-only、更新採已部署 SQL003 的真實 CAS（含 WikiLink），執行前和提交後重新讀取兩端 SHA 與版本。正式本機操作必須防止路徑逃逸／連結檔、先持久備份再同目錄原子替換；**僅在已驗證雙端一致且操作結果確定後**寫入 M5 持久基準。HTTP 回應遺失、程序崩潰或 SHA 變更，一律不重送可能已提交的寫入，而是先唯讀確認。
+- **UI 與驗收（P2）**：網站 `/vault/sync` 保留原本 M2 手動審查作為問題處理畫面；新增「未配對／同步中／已同步／離線／需要處理／暫停」狀態與可視化錯誤，不在公開頁呈現私人筆記。用 OS Temp + 合成 Owner JWT E2E 覆蓋首次配對、雙向修改、斷線續傳、併發 CAS、改名、誤刪保護、Windows 重開機及已處理版本不反覆同步，通過後另行核准真實資料啟用。
+- **已完成的程式雛形（目前只做決策與排程，不做任何傳輸）**：`lib/obsidian-auto-sync-policy.ts` 重用 M1 版本比較，產出精確自動候選／人工處理原因，所有結果仍 `executable=false`，無任何寫入權；`lib/obsidian-auto-sync-wakeup.ts` 提供明確 `start()` 才啟動的事件合併、單飛行檢查、60 秒輪詢與退避重試，**沒有**真實 fs.watch、Neon HTTP、儲存密鑰或自動啟動入口。新增隔離測試 `npm run verify:obsidian:auto:offline`；不改已發布的網站與 SQL。
+- **目前正式環境前提**：2026-10-29 真實 Vault 唯讀掃描曾看到 **1 篇非本次合成 slug 的 Markdown**，目前尚未確定檔名映射或人工核准初始配對；因此即使完成日後 Adapter，**現階段也不能直接替使用者啟用自動寫入或刪除**。先完成 P1、P2 與真人驗收，之後再由使用者在已授權的 MSI 主機明確開啟。
+
+## 2026-10-29 M7 真實 Production 單篇合成筆記驗收（以下為歷史已完成紀錄）
 
 - **限縮授權與環境**：Owner 明確同意在 Neon Production `bitter-silence-36632892` / `br-aged-sound-b43h5r2c` 只測試合成筆記 `m7-e2e-test-20261029`，產生時 UUID `5818c47d-aa2b-4738-aadc-91f9fa0b18ec`。正式網站部署採已合併 `main 917b552606d3eac53f1736cb9ec41dd582fa66d3`，未因本輪測試部署新版本、改動 Production Schema 或使用 Neon SQL 管理身分代替站長 CRUD。
 - **真正 Owner Session 建立**：在 MSI 上既有的、已登入的 Microsoft Edge，透過網站 `/vault/new` 和原生 `saveVaultNote` → `save_knowledge_note` 執行一次性新增。Neon 管理端**只做事前／事後唯讀核對**：原先私人筆記 0 篇；新增後指定 UUID/slug、合成標題／摘要／正文均相符，`knowledge_notes=1`，合成 WikiLink `m7-e2e-target` 1 筆。
