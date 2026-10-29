@@ -103,8 +103,21 @@ test("without a remote revision, update/download is manual even if SHA indicates
   assertNoExecution(v);
 });
 
-test("matching current SHA never triggers an upload or download",()=>{
-  const result=plan([note("match",A)],[note("match",A,"different-revision")],[note("match",B)]);
+test("equal current content with a stale or absent M5 checkpoint requires manual checkpoint recovery",()=>{
+  const result=plan([note("match",A)],[note("match",A,"new-revision")],
+    [note("match",B,"old-revision")]);
+  assert.equal(result.candidates[0].choice,"unchanged");
+  assert.equal(result.candidates[0].action,"manual-checkpoint-recovery");
+  assert.equal(result.autoCandidateCount,0);
+  assert.equal(result.manualReviewCount,1);
+  const absent=plan([note("match",A)],[note("match",A,"new-revision")],[]);
+  assert.equal(absent.candidates[0].action,"manual-checkpoint-recovery");
+  assert.equal(absent.manualReviewCount,1);
+  assertNoExecution(result);
+});
+test("equal SHA and identical durable M5 revision mean no additional transfer or repair",()=>{
+  const result=plan([note("match",A)],[note("match",A,"rev-2")],
+    [note("match",A,"rev-2")]);
   assert.equal(result.candidates[0].action,"unchanged");
   assert.equal(result.autoCandidateCount,0);
   assert.equal(result.manualReviewCount,0);
@@ -224,14 +237,14 @@ test("policy is an inert module: it has no timer, network, filesystem or actual 
   assert.doesNotMatch(source,/function execute|async function run|await /);
 });
 
-test("empty initial pair and all unchanged still have zero operations and no M5 baseline mutation",()=>{
-  for(const input of [
-    {local:local([]),remote:remote([]),baseline:[],trust:trust()},
-    {local:local([note("equal",A)]),remote:remote([note("equal",A,"rev")]),baseline:[],trust:trust()},
-  ]){
-    const p=planAutomaticObsidianSync(input);
-    assert.equal(p.autoCandidateCount,0);
-    assert.equal(p.manualReviewCount,0);
-    assertNoExecution(p);
-  }
+test("empty paired library has zero actions; uncheckpointed equal note needs manual recovery",()=>{
+  const empty=plan([],[],[]);
+  assert.equal(empty.autoCandidateCount,0);
+  assert.equal(empty.manualReviewCount,0);
+  const equal=plan([note("equal",A)],[note("equal",A,"rev")],[]);
+  assert.equal(equal.autoCandidateCount,0);
+  assert.equal(equal.manualReviewCount,1);
+  assert.equal(equal.candidates[0].action,"manual-checkpoint-recovery");
+  assertNoExecution(empty);
+  assertNoExecution(equal);
 });

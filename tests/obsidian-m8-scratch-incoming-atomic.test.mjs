@@ -7,6 +7,9 @@ import path from "node:path";
 import {
   applyVerifiedProductionIncomingToScratch,
 } from "../lib/obsidian-m8-scratch-incoming-atomic.ts";
+import {
+  encodeM8ScratchIncomingIntent,inspectM8ScratchIncomingRecovery,
+} from "../lib/obsidian-m8-scratch-incoming-recovery.ts";
 import {serializeObsidianMarkdown} from "../lib/obsidian-markdown.ts";
 import {RELEASE_DATA_API_URL,RELEASE_NEON_BRANCH}
   from "../lib/neon/production-release.ts";
@@ -98,6 +101,14 @@ test("verified Production RLS download-new is create-only in OS Temp and leaves 
     assert.equal((await readFile(path.join(root,SLUG+".md"),"utf8")),markdown);
     assert.deepEqual(await readdir(root),[SLUG+".md"]);
     assert.ok(owner.count>=6);
+    const recovery=await inspectM8ScratchIncomingRecovery({
+      scratchVaultRoot:root,intentPath:result.receiptPath,
+    });
+    assert.equal(recovery.state,"applied");
+    assert.equal(recovery.backupVerified,false);
+    assert.equal(recovery.baselineSaved,false);
+    assert.equal(recovery.automaticRetryAllowed,false);
+    await rm(path.dirname(result.receiptPath),{recursive:true,force:true});
   });
 });
 
@@ -117,6 +128,12 @@ test("download-replace durably backs up the original, then checks the exact new 
       assert.equal((await lstat(source)).nlink,1);
       assert.deepEqual(await readdir(root),[SLUG+".md"]);
       assert.equal(result.baselineSaved,false);
+      const recovery=await inspectM8ScratchIncomingRecovery({
+        scratchVaultRoot:root,intentPath:result.receiptPath,
+      });
+      assert.equal(recovery.state,"applied");
+      assert.equal(recovery.backupVerified,true);
+      assert.equal(recovery.remoteReadbackPerformed,false);
     }finally{await rm(path.dirname(result.backupPath),{
       recursive:true,force:true,
     });}
