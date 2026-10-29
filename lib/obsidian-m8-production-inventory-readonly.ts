@@ -220,3 +220,69 @@ export async function fetchProductionOwnerRlsFingerprints(args:{
     fullInventory:true,ownerRlsVerified:true,writeEnabled:false,
   };
 }
+
+/**
+ * Private, single-note read for a future approved P1 transport. Unlike the
+ * inventory API, this returns Markdown IN MEMORY to the trusted local caller;
+ * never serialize its result into public pages, logs or status messages.
+ *
+ * The same Owner JWT is checked against the full RLS inventory both before
+ * and after the exact note GET, so an unrelated new/deleted note or revision
+ * change does not quietly turn a stale snapshot into transfer permission.
+ */
+export async function fetchVerifiedProductionNoteMarkdown(args:{
+  branchId:string;
+  jwt:string;
+  slug:string;
+  expectedSha256:string;
+  expectedRevision:string;
+  fetcher?:Fetcher;
+  signal?:AbortSignal;
+}):Promise<{
+  id:string;slug:string;updatedAt:string;markdown:string;
+  sha256:string;revision:string;
+}>{
+  if(!args||args.branchId!==RELEASE_NEON_BRANCH||
+     typeof args.slug!=="string"||args.slug.length<3||
+     args.slug.length>120||!SLUG.test(args.slug)||
+     !/^[0-9a-f]{64}$/.test(args.expectedSha256)||
+     !/^[0-9a-f]{64}$/.test(args.expectedRevision))refuse();
+  checkSignal(args.signal);
+  const fetcher=args.fetcher??fetch;
+  const before=await fetchProductionOwnerRlsFingerprints({
+    branchId:args.branchId,jwt:args.jwt,
+    fetcher,signal:args.signal,
+  });
+  const approved=before.fingerprints.find(x=>x.slug===args.slug);
+  if(!approved||approved.sha256!==args.expectedSha256||
+     approved.revision!==args.expectedRevision)refuse();
+  const url=new URL(productionRoot()+"/knowledge_notes");
+  url.searchParams.set("select",FIELDS.join(","));
+  url.searchParams.set("slug","eq."+args.slug);
+  url.searchParams.set("limit","2");
+  const response=await getJson(url,args.jwt,fetcher,args.signal);
+  if(response.status!==200||response.headers.get("content-range")?.trim()!=="0-0/1")refuse();
+  const payload=await readLimitedJson(response,MAX_MARKDOWN_BYTES+8_192);
+  if(!Array.isArray(payload)||payload.length!==1)refuse();
+  const row=parseRow(payload[0]);
+  if(row.slug!==args.slug)refuse();
+  const current=fingerprint(row);
+  if(current.sha256!==args.expectedSha256||
+     current.revision!==args.expectedRevision)refuse();
+  const markdown=serializeObsidianMarkdown({
+    title:row.title,slug:row.slug,excerpt:row.summary,
+    category:row.category,tags:row.tags,
+    learned_on:row.learned_on,content_md:row.content_md,
+  });
+  if(Buffer.byteLength(markdown,"utf8")>MAX_MARKDOWN_BYTES)refuse();
+  const after=await fetchProductionOwnerRlsFingerprints({
+    branchId:args.branchId,jwt:args.jwt,
+    fetcher,signal:args.signal,
+  });
+  if(JSON.stringify(after.fingerprints)!==JSON.stringify(before.fingerprints))refuse();
+  checkSignal(args.signal);
+  return {
+    id:row.id,slug:row.slug,updatedAt:row.updated_at,
+    markdown,sha256:current.sha256,revision:current.revision!,
+  };
+}
