@@ -59,7 +59,8 @@
       "feat/obsidian-m5-approved-baseline-20261028": false,
       "feat/obsidian-m6-crash-recovery-20261028": false,
       "feat/obsidian-m6-live-sandbox-fault-e2e-20261028": false,
-      "feat/obsidian-m7-production-schema-gate-20261028": false
+      "feat/obsidian-m7-production-schema-gate-20261028": false,
+      "docs/obsidian-m7-single-note-prod-e2e-20261029": false
     }
   }
 }
