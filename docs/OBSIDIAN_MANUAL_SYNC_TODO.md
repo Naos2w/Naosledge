@@ -1,6 +1,15 @@
 # NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M8）
 
-## 2026-10-29 M8 P0 Production 完整唯讀 Inventory + Windows Watcher（最新實作）
+## 2026-10-29 M8 P1 Production create-only / SQL003 CAS / 隔離下載備份（最新候選）
+
+- **P1 正式上傳核心（已實作，但絕未對真人 Production 呼叫 POST）**：`lib/obsidian-m8-production-cas-update.ts` 提供兩個**尚未接入網站、Windows watcher 或背景程序**的低階 Adapter。既有單篇更新僅可走已安裝的 `/rpc/update_knowledge_note_cas_with_links`：先用正式 Owner JWT 驗證 `blog_admins` 本人 RLS、完整 Note Inventory 和單篇 SHA / revision / UUID / `updated_at`，比對舊 WikiLink 索引、待上傳 Obsidian Markdown 的精確 SHA、再次確認本機與雲端版本，然後以 SQL003 CAS 在**同一個資料庫交易**更新正文與 outgoing index。新增筆記僅能以 `save_knowledge_note(p_id=null)` 原子 `INSERT`，同名或併發新增由 unique constraint 拒絕，沒有 UPDATE / upsert / PATCH 後備路徑。兩者**都要求 QA 單篇固定核准字串**，沒有自動執行介面，並在更新後透過獨立 Owner-RLS GET 重新確認正文、SHA、revision、WikiLink。結果均 `baselineSaved=false`，不得視為 M5 已提交。
+- **Production 單篇唯讀取得（已實作）**：在 `lib/obsidian-m8-production-inventory-readonly.ts` 增加 `fetchVerifiedProductionNoteMarkdown`，沿用 P0 完整 500 篇／20 篇分頁與 Owner-RLS，指定精確 slug/SHA/revision 單篇 GET 前後重掃遠端，確認未有任何遠端版本異動。回傳的原始 Markdown **僅供受信任 Node 流程記憶體使用**，不輸出至 UI/CLI/Log。
+- **P1 本機原子下載與備份（**限 OS Temp 隔離驗收，未接真實 Vault**）**：`lib/obsidian-m8-scratch-incoming-atomic.ts` 只允許系統 TEMP 直接子資料夾 `naosledge-m8-vault-test-*`；非其範圍（包含 `C:\Naos\Obsidian\Naosledge`）會在網路存取前拒絕。下載先驗證 Owner-RLS 本文與版號、雙重檔案 SHA／inode／mtime，覆寫前在非 Vault 目錄以 `wx` 與 `fsync` 建立耐久備份，再寫入同一資料夾的暫存檔；首次下載使用 `link()` 防止覆寫競爭新增，已存在的筆記只在隔離測試目錄採 `rename()` 原子替換，且前後重新核對 SHA。**要啟用真正 Vault 替換，仍須跨程序檔案鎖與故障處理**。
+- **不明結果的安全恢復（已實作）**：`lib/obsidian-m8-uncertain-reconciliation.ts` 僅執行 Owner-RLS GET，對 POST 可能已提交但沒有收到成功回覆的狀況，區分遠端目前看見期望正文、仍是舊版、不存在或被第三方修改。這只是唯讀證據，**從不自動重試 POST、刪除資料或自動更新 Baseline**；更新後核對失敗也一律交人工處理。
+- **本次離線測試**：新增 `npm run verify:obsidian:m8:p1:offline`，用合成 Owner JWT / Fake Neon HTTP / 真實 OS Temp 檔案，涵蓋 create-only race、SQL003 CAS stale、WikiLink 索引漂移、遠端／本機 SHA 漂移、POST 已提交但回應遺失、原子備份／重讀與範圍拒絕。Windows 標準使用者沒有 symlink 建立權時，那一項連結測試會明確 SKIP；實際 Vault 路徑拒絕測試仍必須 PASS。**不執行真正的 Production 寫入，不啟用同步排程，不觸及目前真實 Vault 的未知 Markdown**。
+- **尚未完成／下一步 P1→P2**：正式使用者持續安全取得短效 JWT、正式 M5 DPAPI 綁定 Owner／Production 的首次配對與成功證據、真正 Vault 的鎖定／備份／原子更新與 Windows 崩潰後恢復，以及在這些全部通過驗收後才將 Adapter 接上單一 Windows 同步 Host；目前 `AutoSyncCandidate.executable=false`，沒有任何背景自動傳輸、網站變更或正式部署。**SQL003 已存在，不重跑**。
+
+## 2026-10-29 M8 P0 Production 完整唯讀 Inventory + Windows Watcher（以下為前次完成紀錄）
 
 - **完整正式 Owner-RLS 指紋讀取器**：新增 `lib/obsidian-m8-production-inventory-readonly.ts`，沿用 M7 短效正式 JWT 檢查與現有 M3 `serializeObsidianMarkdown` SHA/修訂格式，**先透過同一 signed JWT 取得 `blog_admins` 自身 RLS 授權，再對固定 Production Neon Data API 執行 GET-only 分頁**。20 筆一頁、最多 500 篇，強制驗證 `Content-Range` 精確總數、順序／重複、內容合法與大小；多頁時完整重掃比對 SHA 與 revision，不信任截斷或掃描途中異動；HTTP/JSON/JWT 錯誤不輸出 URL、密碼、原始正文。只回傳 `slug+sha256+revision`，沒有寫入方法，也**不等於有權執行同步**。
 - **初次配對唯讀雙邊比對**：新增 `lib/obsidian-m8-readonly-cycle.ts`，先檢查本機 Markdown 與基準，取得完整 Production RLS Inventory，回頭重新掃描本機；若來源或初次配對信任狀態在異步期間變動，全部拒絕。首次配對即使兩端 SHA 相同仍是 `initial-review`，不會偷偷寫入 M5。對不支援中文檔名／尚未掃描的子目錄只記數並要求人工處理。

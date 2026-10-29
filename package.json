@@ -35,6 +35,7 @@
     "verify:obsidian:m7:owner:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m7-production-preflight.ts --m7-production-owner-readonly",
     "verify:obsidian:auto:offline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/obsidian-auto-sync-*.test.mjs",
     "verify:obsidian:m8:offline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/obsidian-m8-*.test.mjs",
+    "verify:obsidian:m8:p1:offline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/obsidian-m8-production-cas-update.test.mjs tests/obsidian-m8-production-create-only.test.mjs tests/obsidian-m8-scratch-incoming-atomic.test.mjs tests/obsidian-m8-uncertain-reconciliation.test.mjs",
     "verify:obsidian:m8:pairing:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m8-production-pairing-preview.ts --m8-first-pairing-readonly",
     "verify:obsidian:m5:adopt:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-adopt-current-equality",
     "verify:obsidian:m5:inspect:msi": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m5-owner-baseline.ts --m5-inspect-approved-baseline",
