@@ -73,13 +73,19 @@ type Upload=EventBase&{
   previousRevision:string|null;
   sha256:string;remoteRevision:string;
 };
+type DownloadNew=EventBase&{
+  kind:"verified-download-new";
+  slug:string;previousSha256:null;
+  previousRevision:null;
+  sha256:string;remoteRevision:string;
+};
 type ManualRecovery=EventBase&{
   kind:"approved-checkpoint-recovery";
   slug:string;previousSha256:string|null;
   previousRevision:string|null;
   sha256:string;remoteRevision:string;
 };
-type Event=Initial|Upload|ManualRecovery;
+type Event=Initial|Upload|DownloadNew|ManualRecovery;
 type Signed=Event&{mac:string};
 type Loaded={key:Buffer;events:Signed[];latest:Map<string,SyncFingerprint>};
 function reject():never{
@@ -196,7 +202,8 @@ async function lock<T>(root:string,task:()=>Promise<T>):Promise<T>{
 function orderedEntryKeys(row:Record<string,unknown>):boolean{
   const base=["format","seq","previousMac","branch","ownerId","createdAt","kind"];
   const extra=row.kind==="approved-initial-pairing"?["notes"]:
-    ["verified-upload","approved-checkpoint-recovery"].includes(String(row.kind))?
+    ["verified-upload","verified-download-new",
+      "approved-checkpoint-recovery"].includes(String(row.kind))?
       ["slug","previousSha256","previousRevision","sha256","remoteRevision"]:[];
   return JSON.stringify(Object.keys(row))===JSON.stringify([...base,...extra]);
 }
@@ -233,6 +240,7 @@ function validateEntry(value:unknown,seq:number,prev:string,ownerId:string):Even
     if(n.some((x,i)=>!plainHash(x.revision)||
        (i>0&&n[i-1].slug>=x.slug)))reject();
   }else if(row.kind==="verified-upload"||
+           row.kind==="verified-download-new"||
            row.kind==="approved-checkpoint-recovery"){
     if(!validSlug(row.slug)||!plainHash(row.sha256)||
        !plainHash(row.remoteRevision)||
@@ -240,6 +248,8 @@ function validateEntry(value:unknown,seq:number,prev:string,ownerId:string):Even
        (row.previousSha256!==null&&
          (!plainHash(row.previousSha256)||!plainHash(row.previousRevision)))||
        (row.kind==="verified-upload"&&row.previousSha256===row.sha256)||
+       (row.kind==="verified-download-new"&&
+         (row.previousSha256!==null||row.previousRevision!==null))||
        (row.kind==="approved-checkpoint-recovery"&&
          row.previousSha256===row.sha256&&
          row.previousRevision===row.remoteRevision))reject();
@@ -569,5 +579,135 @@ export async function manuallyRecoverProductionM8Checkpoint(args:{
       checkpointRecovered:true,recordCount:event.seq,
       autoSyncEnabled:false,
     };
+  });
+}
+
+/**
+ * Independently verify one durable P2 Incoming intent. The signed journal
+ * never accepts a caller's boolean assertion as proof that a downloaded note
+ * was actually staged. Paths must stay in this Owner's private LocalAppData
+ * root, or a direct OS Temp fixture root for isolated tests.
+ */
+async function verifyProductionIncomingNewIntent(
+  receipt:{intentPath:string;slug:string;sha256:string;revision:string},
+  testOnly:boolean,
+):Promise<void>{
+  const file=receipt.intentPath;
+  if(typeof file!=="string"||!path.isAbsolute(file)||
+     path.basename(file)!=="incoming-intent.json")reject();
+  const operation=path.dirname(file),root=path.dirname(operation);
+  if(!/^op-[a-f0-9]{24}$/.test(path.basename(operation)))reject();
+  if(testOnly){
+    if(path.dirname(path.resolve(root)).toLowerCase()!==
+         path.resolve(tmpdir()).toLowerCase()||
+       !/^naosledge-m8-incoming-test-[a-zA-Z0-9_-]{6,}$/.test(
+         path.basename(root)))reject();
+  }else{
+    const base=process.env.LOCALAPPDATA||
+      path.join(homedir(),"AppData","Local");
+    const expected=path.join(base,"Naosledge","m8-production-incoming");
+    if(path.resolve(root).toLowerCase()!==
+       path.resolve(expected).toLowerCase())reject();
+  }
+  await safeFolder(root);await safeFolder(operation);
+  if(JSON.stringify(await readdir(root))!==
+       JSON.stringify([path.basename(operation)])||
+     JSON.stringify(await readdir(operation))!==
+       JSON.stringify(["incoming-intent.json"]))reject();
+  const bytes=await readSmall(file,4096);
+  let intent:unknown;
+  try{intent=JSON.parse(bytes.toString("utf8")) as unknown;}
+  catch{reject();}
+  if(!intent||typeof intent!=="object"||Array.isArray(intent))reject();
+  const value=intent as Record<string,unknown>;
+  if(JSON.stringify(Object.keys(value))!==JSON.stringify([
+    "format","branch","action","slug","previousLocalSha256",
+    "remoteSha256","remoteRevision",
+  ])||
+     JSON.stringify(value)!==bytes.toString("utf8")||
+     value.format!=="naosledge.m8.production-incoming-new.v1"||
+     value.branch!==RELEASE_NEON_BRANCH||
+     value.action!=="download-new"||
+     value.previousLocalSha256!==null||
+     value.slug!==receipt.slug||
+     value.remoteSha256!==receipt.sha256||
+     value.remoteRevision!==receipt.revision)reject();
+}
+
+/**
+ * M8 verified download-new checkpoint. The existing Production M5 must have
+ * an explicitly approved initial pairing WITHOUT this slug. A download does
+ * not count as synced until a trustworthy Owner-RLS inventory AND the exact
+ * new local Markdown match twice under the exclusive journal lock.
+ *
+ * The receipt is only an execution hint; independent reads are decisive.
+ * Does not perform Incoming, fetch a Markdown body or approve a new device.
+ */
+export async function recordVerifiedProductionM8DownloadNew(args:{
+  ownerJwt:string;
+  receipt:{
+    slug:string;sha256:string;revision:string;
+    localReadbackVerified:true;remoteReadbackVerified:true;
+    originalBackupSha256:null;baselineSaved:false;
+    automaticRetryAllowed:false;intentPath:string;
+  };
+  fetcher?:typeof fetch;
+  options?:ProductionM8JournalOptions;
+}):Promise<{checkpointSaved:true;recordCount:number;autoSyncEnabled:false}>{
+  const ownerId=verifiedOwner(args?.ownerJwt);
+  const receipt=args?.receipt?{...args.receipt}:undefined;
+  if(!receipt||!validSlug(receipt.slug)||
+     !plainHash(receipt.sha256)||!plainHash(receipt.revision)||
+     receipt.localReadbackVerified!==true||
+     receipt.remoteReadbackVerified!==true||
+     receipt.originalBackupSha256!==null||
+     receipt.baselineSaved!==false||
+     receipt.automaticRetryAllowed!==false||
+     typeof receipt.intentPath!=="string"||
+     Object.keys(receipt).some(key=>![
+       "slug","sha256","revision","localReadbackVerified",
+       "remoteReadbackVerified","originalBackupSha256",
+       "baselineSaved","automaticRetryAllowed","intentPath",
+     ].includes(key)))reject();
+  const deps=allowedRoot(args.options);
+  if(!await existingRoot(deps.root))reject();
+  return lock(deps.root,async()=>{
+    const state=await load(deps.root,ownerId,deps.protector);
+    if(!state||state.events.length>=MAX_RECORDS||
+       state.latest.has(receipt.slug))reject();
+    await verifyProductionIncomingNewIntent(receipt,deps.testOnly);
+    const localBefore=await deps.readLocal();
+    const remoteBefore=await remote({jwt:args.ownerJwt,fetcher:args.fetcher});
+    const localNote=validateLocal(localBefore,remoteBefore)
+      .find(note=>note.slug===receipt.slug);
+    const remoteNote=remoteBefore.fingerprints.find(
+      note=>note.slug===receipt.slug);
+    if(!localNote||!remoteNote||
+       localNote.sha256!==receipt.sha256||
+       remoteNote.sha256!==receipt.sha256||
+       remoteNote.revision!==receipt.revision)reject();
+    const snapshotLocal=JSON.stringify(localBefore);
+    const snapshotRemote=JSON.stringify(remoteBefore);
+    const localAfter=await deps.readLocal();
+    const remoteAfter=await remote({jwt:args.ownerJwt,fetcher:args.fetcher});
+    validateLocal(localAfter,remoteAfter);
+    if(JSON.stringify(localAfter)!==snapshotLocal||
+       JSON.stringify(remoteAfter)!==snapshotRemote)reject();
+    await verifyProductionIncomingNewIntent(receipt,deps.testOnly);
+    const event:DownloadNew={
+      format:FORMAT,seq:state.events.length+1,
+      previousMac:state.events.at(-1)!.mac,
+      branch:RELEASE_NEON_BRANCH,ownerId,
+      createdAt:new Date().toISOString(),kind:"verified-download-new",
+      slug:receipt.slug,previousSha256:null,previousRevision:null,
+      sha256:receipt.sha256,remoteRevision:receipt.revision,
+    };
+    await append(deps.root,state.key,event);
+    const replay=await load(deps.root,ownerId,deps.protector);
+    if(!replay||replay.events.length!==event.seq||
+       replay.latest.get(receipt.slug)?.sha256!==receipt.sha256||
+       replay.latest.get(receipt.slug)?.revision!==receipt.revision)reject();
+    return {checkpointSaved:true,recordCount:event.seq,
+      autoSyncEnabled:false};
   });
 }
