@@ -1,6 +1,15 @@
 # NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M8）
 
-## 2026-10-29 M8 需求調整：安全自動雙向同步（最新決策）
+## 2026-10-29 M8 P0 Production 完整唯讀 Inventory + Windows Watcher（最新實作）
+
+- **完整正式 Owner-RLS 指紋讀取器**：新增 `lib/obsidian-m8-production-inventory-readonly.ts`，沿用 M7 短效正式 JWT 檢查與現有 M3 `serializeObsidianMarkdown` SHA/修訂格式，**先透過同一 signed JWT 取得 `blog_admins` 自身 RLS 授權，再對固定 Production Neon Data API 執行 GET-only 分頁**。20 筆一頁、最多 500 篇，強制驗證 `Content-Range` 精確總數、順序／重複、內容合法與大小；多頁時完整重掃比對 SHA 與 revision，不信任截斷或掃描途中異動；HTTP/JSON/JWT 錯誤不輸出 URL、密碼、原始正文。只回傳 `slug+sha256+revision`，沒有寫入方法，也**不等於有權執行同步**。
+- **初次配對唯讀雙邊比對**：新增 `lib/obsidian-m8-readonly-cycle.ts`，先檢查本機 Markdown 與基準，取得完整 Production RLS Inventory，回頭重新掃描本機；若來源或初次配對信任狀態在異步期間變動，全部拒絕。首次配對即使兩端 SHA 相同仍是 `initial-review`，不會偷偷寫入 M5。對不支援中文檔名／尚未掃描的子目錄只記數並要求人工處理。
+- **Windows 檔案監控接線（不啟用正式同步）**：新增 `lib/obsidian-m8-local-watcher-readonly.ts`，安全檢查實體根目錄後才監看 non-recursive `fs.watch`，變更、建立、刪除或未提供檔名的事件都只喚醒全量清單掃描，不拿事件名稱直接操作檔案。新增 `lib/obsidian-m8-readonly-host.ts` 真正串起 Watcher → M8 800ms/60s 單飛行排程 → 本機 Manifest → 模擬或未來正式 Owner-RLS 讀取 → 初次配對分類；必須明確 `start()`，沒有全域啟動、Windows 服務、任務排程、憑證儲存或傳輸函式。
+- **MSI 人工首次配對入口**：新增 `scripts/obsidian-m8-production-pairing-preview.ts` 和 `npm run verify:obsidian:m8:pairing:readonly`：限定指定 MSI 裝置、已註冊 Vault、單一人工 read-only 旗標、短效 Production Owner JWT 私人 stdin；只輸出總數及待審查統計，**絕不印出檔名、正文、JWT 或自動啟用**。目前未取得可供 CLI 使用的真實 Production Token，因此沒有實際執行這支 CLI 的線上分頁 E2E；網頁已登入的 Session 不能直接當 CLI 憑證。
+- **測試界線與狀態**：新增 `npm run verify:obsidian:m8:offline`，在 OS Temp 真正觸發 `fs.watch`、合成 JWT/Owner-RLS GET、跨頁計數、分頁競態與 RLS 權限失敗、兩端版本差異、首次配對和候選禁寫。這輪不重跑 SQL003、不操作 Production 寫入，不讀寫先前實體 Vault 的未知 Markdown，不修改現有網站。
+- **後續 P1/P2**：還需完成持續安全的真人站長 Session 憑證取得／刷新、M5 Owner 綁定初次配對及持久基準、正式 CAS create/update、Local Incoming 與備份原子交換、衝突與離線恢復；之後才用真人 Vault/Neon 進行完整 E2E、另外啟用自動模式。**目前所有 `AutoSyncCandidate.executable=false`；沒有自動傳輸或刪除。**
+
+## 2026-10-29 M8 需求調整：安全自動雙向同步（以下為前次需求決策）
 
 **使用者已明確選擇「自動同步比較好」。正式產品目標由逐篇手動同步調整為：首次配對採人工審查；通過後日常新增與單邊修改自動雙向同步；只有雙端衝突、刪除、重新命名／檔名不明及其他不能確定安全性的情況才要求人工處理。** 既有 M1–M7 的手動審查、RLS、SQL003 CAS、加密備份及故障復原都是保護層，**不刪除、不另造第二套同步系統**。
 
