@@ -14,7 +14,7 @@
  * a process crash: an abandoned lock or partial record stops all writes until
  * a separate operator-led recovery. Threat boundary remains the Windows user.
  */
-import {createHmac,randomBytes,timingSafeEqual} from "node:crypto";
+import {createHash,createHmac,randomBytes,timingSafeEqual} from "node:crypto";
 import {homedir,hostname,tmpdir} from "node:os";
 import {lstat,mkdir,open,readFile,readdir,realpath,unlink}
   from "node:fs/promises";
@@ -79,13 +79,19 @@ type DownloadNew=EventBase&{
   previousRevision:null;
   sha256:string;remoteRevision:string;
 };
+type DownloadReplace=EventBase&{
+  kind:"verified-download-replace";
+  slug:string;previousSha256:string;
+  previousRevision:string;
+  sha256:string;remoteRevision:string;
+};
 type ManualRecovery=EventBase&{
   kind:"approved-checkpoint-recovery";
   slug:string;previousSha256:string|null;
   previousRevision:string|null;
   sha256:string;remoteRevision:string;
 };
-type Event=Initial|Upload|DownloadNew|ManualRecovery;
+type Event=Initial|Upload|DownloadNew|DownloadReplace|ManualRecovery;
 type Signed=Event&{mac:string};
 type Loaded={key:Buffer;events:Signed[];latest:Map<string,SyncFingerprint>};
 function reject():never{
@@ -203,7 +209,7 @@ function orderedEntryKeys(row:Record<string,unknown>):boolean{
   const base=["format","seq","previousMac","branch","ownerId","createdAt","kind"];
   const extra=row.kind==="approved-initial-pairing"?["notes"]:
     ["verified-upload","verified-download-new",
-      "approved-checkpoint-recovery"].includes(String(row.kind))?
+      "verified-download-replace","approved-checkpoint-recovery"].includes(String(row.kind))?
       ["slug","previousSha256","previousRevision","sha256","remoteRevision"]:[];
   return JSON.stringify(Object.keys(row))===JSON.stringify([...base,...extra]);
 }
@@ -241,6 +247,7 @@ function validateEntry(value:unknown,seq:number,prev:string,ownerId:string):Even
        (i>0&&n[i-1].slug>=x.slug)))reject();
   }else if(row.kind==="verified-upload"||
            row.kind==="verified-download-new"||
+           row.kind==="verified-download-replace"||
            row.kind==="approved-checkpoint-recovery"){
     if(!validSlug(row.slug)||!plainHash(row.sha256)||
        !plainHash(row.remoteRevision)||
@@ -250,6 +257,9 @@ function validateEntry(value:unknown,seq:number,prev:string,ownerId:string):Even
        (row.kind==="verified-upload"&&row.previousSha256===row.sha256)||
        (row.kind==="verified-download-new"&&
          (row.previousSha256!==null||row.previousRevision!==null))||
+       (row.kind==="verified-download-replace"&&
+         (row.previousSha256===null||row.previousRevision===null||
+          row.previousSha256===row.sha256))||
        (row.kind==="approved-checkpoint-recovery"&&
          row.previousSha256===row.sha256&&
          row.previousRevision===row.remoteRevision))reject();
@@ -632,6 +642,156 @@ async function verifyProductionIncomingNewIntent(
      value.slug!==receipt.slug||
      value.remoteSha256!==receipt.sha256||
      value.remoteRevision!==receipt.revision)reject();
+}
+
+/**
+ * Independently verify a durable P2 replacement receipt AND the exact
+ * original backup. No caller boolean or synthetic source hash is sufficient.
+ * Every path is confined to one Owner's fixed private LocalAppData root or
+ * one direct-child OS TEMP test fixture.
+ */
+async function verifyProductionIncomingReplaceIntent(
+  receipt:{
+    intentPath:string;backupPath:string;slug:string;
+    originalBackupSha256:string;sha256:string;revision:string;
+  },testOnly:boolean,
+):Promise<void>{
+  const file=receipt.intentPath;
+  if(typeof file!=="string"||!path.isAbsolute(file)||
+     path.basename(file)!=="incoming-intent.json")reject();
+  const operation=path.dirname(file),root=path.dirname(operation);
+  if(!/^op-[a-f0-9]{24}$/.test(path.basename(operation)))reject();
+  const exactBackup=path.join(operation,receipt.slug+".md.bak");
+  if(typeof receipt.backupPath!=="string"||
+     path.resolve(receipt.backupPath).toLowerCase()!==
+       path.resolve(exactBackup).toLowerCase())reject();
+  if(testOnly){
+    if(path.dirname(path.resolve(root)).toLowerCase()!==
+         path.resolve(tmpdir()).toLowerCase()||
+       !/^naosledge-m8-incoming-test-[a-zA-Z0-9_-]{6,}$/.test(
+         path.basename(root)))reject();
+  }else{
+    const base=process.env.LOCALAPPDATA||
+      path.join(homedir(),"AppData","Local");
+    if(path.resolve(root).toLowerCase()!==
+       path.resolve(path.join(base,"Naosledge","m8-production-incoming"))
+       .toLowerCase())reject();
+  }
+  await safeFolder(root);await safeFolder(operation);
+  const expectedFiles=[
+    "incoming-intent.json",receipt.slug+".md.bak",
+    ...(process.platform==="win32"?["windows-native-original.md.bak"]:[]),
+  ].sort();
+  if(JSON.stringify(await readdir(root))!==
+       JSON.stringify([path.basename(operation)])||
+     JSON.stringify((await readdir(operation)).sort())!==
+       JSON.stringify(expectedFiles))reject();
+  const backup=await readSmall(exactBackup,250_000);
+  if(createHash("sha256").update(backup).digest("hex")!==
+     receipt.originalBackupSha256)reject();
+  if(process.platform==="win32"){
+    const winBackup=await readSmall(
+      path.join(operation,"windows-native-original.md.bak"),250_000);
+    if(createHash("sha256").update(winBackup).digest("hex")!==
+       receipt.originalBackupSha256)reject();
+  }
+  const bytes=await readSmall(file,4096);
+  let intent:unknown;
+  try{intent=JSON.parse(bytes.toString("utf8")) as unknown;}
+  catch{reject();}
+  if(!intent||typeof intent!=="object"||Array.isArray(intent))reject();
+  const value=intent as Record<string,unknown>;
+  if(JSON.stringify(Object.keys(value))!==JSON.stringify([
+    "format","branch","action","slug","previousLocalSha256",
+    "remoteSha256","remoteRevision",
+  ])||
+     JSON.stringify(value)!==bytes.toString("utf8")||
+     value.format!=="naosledge.m8.production-incoming-replace.v1"||
+     value.branch!==RELEASE_NEON_BRANCH||
+     value.action!=="download-replace"||
+     value.slug!==receipt.slug||
+     value.previousLocalSha256!==receipt.originalBackupSha256||
+     value.remoteSha256!==receipt.sha256||
+     value.remoteRevision!==receipt.revision)reject();
+}
+
+/**
+ * Record a verified existing-note replacement, never from a caller's
+ * success flag alone. Requires exact original durable backup, previous
+ * signed M5 SHA/revision and two matching Owner-RLS/local snapshots.
+ */
+export async function recordVerifiedProductionM8DownloadReplace(args:{
+  ownerJwt:string;
+  receipt:{
+    slug:string;sha256:string;revision:string;
+    originalBackupSha256:string;
+    backupPath:string;intentPath:string;
+    localReadbackVerified:true;remoteReadbackVerified:true;
+    baselineSaved:false;automaticRetryAllowed:false;
+  };
+  fetcher?:typeof fetch;
+  options?:ProductionM8JournalOptions;
+}):Promise<{checkpointSaved:true;recordCount:number;autoSyncEnabled:false}>{
+  const ownerId=verifiedOwner(args?.ownerJwt);
+  const receipt=args?.receipt?{...args.receipt}:undefined;
+  if(!receipt||!validSlug(receipt.slug)||
+     !plainHash(receipt.sha256)||!plainHash(receipt.revision)||
+     !plainHash(receipt.originalBackupSha256)||
+     receipt.originalBackupSha256===receipt.sha256||
+     typeof receipt.backupPath!=="string"||
+     typeof receipt.intentPath!=="string"||
+     receipt.localReadbackVerified!==true||
+     receipt.remoteReadbackVerified!==true||
+     receipt.baselineSaved!==false||
+     receipt.automaticRetryAllowed!==false||
+     Object.keys(receipt).some(key=>![
+       "slug","sha256","revision","originalBackupSha256",
+       "backupPath","intentPath","localReadbackVerified",
+       "remoteReadbackVerified","baselineSaved","automaticRetryAllowed",
+     ].includes(key)))reject();
+  const deps=allowedRoot(args.options);
+  if(!await existingRoot(deps.root))reject();
+  return lock(deps.root,async()=>{
+    const state=await load(deps.root,ownerId,deps.protector);
+    if(!state||state.events.length>=MAX_RECORDS)reject();
+    const prior=state.latest.get(receipt.slug);
+    if(!prior||prior.sha256!==receipt.originalBackupSha256||
+       !plainHash(prior.revision)||
+       prior.sha256===receipt.sha256)reject();
+    await verifyProductionIncomingReplaceIntent(receipt,deps.testOnly);
+    const localBefore=await deps.readLocal();
+    const remoteBefore=await remote({jwt:args.ownerJwt,fetcher:args.fetcher});
+    const a=validateLocal(localBefore,remoteBefore)
+      .find(note=>note.slug===receipt.slug);
+    const b=remoteBefore.fingerprints.find(note=>note.slug===receipt.slug);
+    if(!a||!b||a.sha256!==receipt.sha256||
+       b.sha256!==receipt.sha256||
+       b.revision!==receipt.revision)reject();
+    const localSnapshot=JSON.stringify(localBefore);
+    const remoteSnapshot=JSON.stringify(remoteBefore);
+    const localAfter=await deps.readLocal();
+    const remoteAfter=await remote({jwt:args.ownerJwt,fetcher:args.fetcher});
+    validateLocal(localAfter,remoteAfter);
+    if(JSON.stringify(localAfter)!==localSnapshot||
+       JSON.stringify(remoteAfter)!==remoteSnapshot)reject();
+    await verifyProductionIncomingReplaceIntent(receipt,deps.testOnly);
+    const event:DownloadReplace={
+      format:FORMAT,seq:state.events.length+1,
+      previousMac:state.events.at(-1)!.mac,
+      branch:RELEASE_NEON_BRANCH,ownerId,
+      createdAt:new Date().toISOString(),kind:"verified-download-replace",
+      slug:receipt.slug,
+      previousSha256:prior.sha256,
+      previousRevision:prior.revision!,
+      sha256:receipt.sha256,remoteRevision:receipt.revision,
+    };
+    await append(deps.root,state.key,event);
+    const reread=await load(deps.root,ownerId,deps.protector);
+    if(!reread||reread.events.length!==event.seq||
+       reread.latest.get(receipt.slug)?.sha256!==receipt.sha256||
+       reread.latest.get(receipt.slug)?.revision!==receipt.revision)reject();
+    return {checkpointSaved:true,recordCount:event.seq,autoSyncEnabled:false};
+  });
 }
 
 /**

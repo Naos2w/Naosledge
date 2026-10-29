@@ -1,6 +1,15 @@
 # NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M8）
 
-## 2026-10-29 M8 P2b Production 新檔下載、持久收據與 M5 下載 checkpoint（最新實作）
+## 2026-10-29 M8 P2c 既有筆記安全替換、原生 Windows 寫入鎖、M5 checkpoint 與耐久備份封存（最新實作）
+
+- **既有筆記 `download-replace`**：新增 `lib/obsidian-m8-production-incoming-replace.ts`，限於指定 MSI 上已註冊的 Vault 或明確的 OS TEMP 測試目錄，要求先有已簽章 Production M5 Owner 配對、精確 `review-download` 版本比對、逐篇核准與完整 Owner-RLS 本人筆記 GET。先以 SHA/mtime/inode 兩次核對原始檔，在 Vault 外的 `%LOCALAPPDATA%\Naosledge\m8-production-incoming\op-*` `wx+fsync` 寫入原始獨立 `.bak` 和 `incoming-intent.json`，再將新 Markdown `wx+fsync` 寫入同一 Vault 目錄的 staging。新檔下載與既有覆寫共用 `.m8-incoming-new.lock`，殘留舊收據／Lock 都阻止繼續，**絕不執行沒有備份的直接覆寫**。
+- **Windows 實際跨程序寫入競爭保護**：新增 `scripts/obsidian-m8-windows-native-replace.ps1`，使用 Windows `FileStream(FileAccess.Read, FileShare.Read | FileShare.Delete)` 排除其他程序的寫入控制權，驗證原檔 SHA 後，以 .NET `File.Replace` 在維持 OS 檔案 handle 的期間原子替換，另外產生 **`windows-native-original.md.bak` 第二份原始系統備份**。已在 MSI OS TEMP 真檔測試：正常替換成功、原始備份 byte-identical、其他程序持有可寫檔案 handle 時被 Windows 拒絕；**正式模式失敗不降級成普通 rename**。Linux CI 僅在嚴格 TestOnly OS TEMP 下使用原生 POSIX rename，相關 Windows 專項標明 SKIP。
+- **M5 正式更新事件**：Production Journal 新增 `verified-download-replace`，只有 M5 原先 SHA/revision 確實等於獨立原始備份、磁碟 intent/雙份 Windows 舊版備份有效、下載後最新本機與 Owner-RLS SHA/revision 兩次獨立核對一致，才在持久獨占鎖內追加 HMAC 紀錄並重啟驗證。偽造、缺失、篡改或不同 Owner 的備份／收據、版本過期、一篇重複更新均不會形成 checkpoint。
+- **唯讀故障復原與長期封存**：新增 `lib/obsidian-m8-production-incoming-replace-recovery.ts`，不修改筆記地依收據及真實檔案分類 `applied / not-applied / diverged / missing`、偵測殘留 Lock，並在完整 M5 簽章與 Owner-RLS／本機版本完全一致、另一次精確人工 ACK 後，**將整個操作資料夾原子移到 `%LOCALAPPDATA%\Naosledge\m8-production-backups`**，保留原始 `.bak`、Windows Native 舊版及 intent，讓待處理目錄不再阻擋下一筆。不能自動清除未知檔案或操作殘留。
+- **單篇核准執行與驗收**：`lib/obsidian-m8-production-incoming-replace-one-shot.ts` 明確要求「覆寫」與「備份封存」兩組精確核准字串才依序執行 `replace → M5 checkpoint → archive`。`npm run verify:obsidian:m8:p2:replace:offline` 用合成 Owner JWT／Fake RLS 與真實 OS TEMP 含 Windows 原生替換完整測試，涵蓋外部編輯器競爭、差異 SHA、簽章偽造、遠端版本變化、操作中斷、備份保留、重複執行、拒絕真實 Vault TestOnly 逃逸。**此單篇 API 目前沒有接到 Windows Agent／Cron／網站，未以真人 Session 在 Production 跑過正式下載，也沒有自動啟用或覆寫真實 Vault**。
+- **下一步 P2→P3**：對已核准的 Owner 配對引入可無人值守且安全刷新短效 JWT、持久同步策略／啟停 UI，將 P1 Production create/CAS 和 P2 New/Replace 備份傳輸接入單一受控 Agent，在真正 Owner Session 與真實 Vault 做首次非相等配對及端到端驗收後才啟用；刪除、改名、雙端衝突仍需人工審查。SQL003 不重跑，正式網站不因本次開發自動部署。
+
+## 2026-10-29 M8 P2b Production 新檔下載、持久收據與 M5 下載 checkpoint（以下為前次完成紀錄）
 
 - **Production 正式 Vault 的新檔下載 Adapter（已實作，尚未對真實 Vault 執行）**：`lib/obsidian-m8-production-incoming-new.ts` 限定 MSI 已註冊的 `C:\Naos\Obsidian\Naosledge`，或單次 OS TEMP 隔離目錄；只允許 `download-new` + `review-missing-local`，且必須已存在對應 Owner／Production Branch 的**已核准 M5 初始配對**以及精確逐篇人工確認。先核對 M5、完整本機清單與真實 Owner-RLS 的遠端單篇 Markdown SHA／Revision，然後在 Vault 外的 `%LOCALAPPDATA%\Naosledge\m8-production-incoming` 存放 durable intent（`wx`+`fsync`），本機寫入同目錄 staging `.pending` 後採用 **`link()` 原子 create-only**，避免覆寫突然出現的同名筆記；建立後再次獨立確認實際 Markdown 與 Owner-RLS。既有筆記需要覆寫時**一律拒絕**，仍須後續獨立實作真正 Windows 檔案鎖、耐久備份及故障回復。
 - **M5 正式新增下載成功事件**：`lib/obsidian-m8-production-baseline-journal.ts` 新增 HMAC 鏈式 `verified-download-new` 與 `recordVerifiedProductionM8DownloadNew`，在跨程序獨占鎖中，獨立驗證磁碟上的合法 durable intent 路徑／原始 SHA／目標 Revision，並重讀兩次完整本機 Manifest 與 Production Owner-RLS 指紋，才追加磁碟簽章並從磁碟讀回；不能由外部傳入單純 `success=true` 視為成功。空白首次配對後的 remote-only 新檔也可以正確建立 M5 checkpoint；同一篇不會重複追加。
