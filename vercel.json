@@ -67,7 +67,8 @@
       "feat/obsidian-m8-production-baseline-lock-20261029": false,
       "feat/obsidian-m8-p2-windows-agent-20261029": false,
       "feat/obsidian-m8-p2-incoming-m5-20261029": false,
-      "feat/obsidian-m8-p2-replace-m5-20261029": false
+      "feat/obsidian-m8-p2-replace-m5-20261029": false,
+      "feat/obsidian-m9-auto-runner-20261031": false
     }
   }
 }
