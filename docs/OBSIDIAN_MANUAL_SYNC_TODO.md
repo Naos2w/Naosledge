@@ -1,4 +1,13 @@
-# NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M8）
+# NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M9）
+
+## 2026-11-01 M9 自動同步執行核心與獨立 Owner Session（開發候選，未正式啟用）
+
+- **M9 自動同步單一執行器**：`lib/obsidian-m9-signed-auto-cycle.ts` 使用已完成的 M8 Production CAS/create、New/Replace Incoming、M5 HMAC Journal 和三方差異規劃；每次最多處理 **1 篇**已配對、未衝突的新增或單邊變更。真正的雙邊衝突、刪除、改名、不支援檔名仍禁止自動執行。POST 結果不明不重送，M5 僅於遠端／本地重新驗證後更新。
+- **必須由 Owner 明確簽署啟用**：`setM9SignedAutomaticMode()` 在獨立 Production M5 HMAC 鏈中寫入 Owner／Branch 綁定的啟用或停用事件；啟用前兩次比對完整 Vault／Owner-RLS、確認已配對且 Incoming 無未結案收據，無任何預設啟用。單篇不相等首次配對可用 `bootstrapM9SingleLocalNote()` 先人工核准、create-only 上傳並認證首次相等 M5；仍不會順手啟用自動模式。
+- **Windows 單一受控 Agent**：`createM9WindowsAutoAgent()` 重用 M8 唯讀 Agent 的獨占 lock、Watcher、800 ms debounce／60 秒輪詢，支援 `start/pause/resume/stop`，每一輪重新取得短效 Owner JWT 並要求由可信來源證實 SQL003 readiness。寫入結果不明時停止輪詢並留下 **`.m9-fault-review-required` 耐久標記**，即使重建 Agent 也不會自動重新寫入；M8 唯讀檢查仍可運行，故障標記須經人工確認後另行解除。
+- **獨立登入，不借用瀏覽器 Cookie**：`lib/obsidian-m9-independent-owner-session.ts` 與 MSI 手動 Wizard／CLI 建立另一個 Neon Auth session，僅將獨立 session cookie 用 Windows 使用者 DPAPI 封存；每次先 `GET /get-session` 驗證 Email 與身分，再透過 `GET /token` 取得當輪 JWT，以 Production Owner-RLS 確認授權。密碼／JWT 不寫入磁碟、環境變數、命令列或日誌。此元件尚未代表真人實際登入已成功。
+- **隔離驗證與目前界線**：`npm run verify:obsidian:m9:offline` 使用 OS TEMP 真檔、合成 Neon Owner-RLS 和隔離檔案測試上下傳、M5、DPAPI 保護介面、輪詢鎖、故障鎖定及身分切換。這是本機**程式候選**：未用真人 Neon Auth Session／實際 Production SQL003 readiness 完成自動執行整合驗收，**尚未提供可持續無人值守的正式啟動 CLI／服務、未啟用 Agent、未寫入真實 Vault 或 Production，也不部署網站**。
+- **後續明確 TODO**：建立可信且可持續的 Production SQL003 readiness 檢查並接上獨立 Session 的前景 Agent 入口及停止控制；首次由本人核准當前 MSI Vault 1／Production 0 的非相等配對（或實際已變更的最新 Inventory）；完成真實 Owner Session + 真實 Vault 的逐篇 E2E、故障人工復原後，才另行授權正式啟用。避免新增第二套同步服務。SQL003 不重跑。
 
 ## 2026-10-29 M8 P2c 既有筆記安全替換、原生 Windows 寫入鎖、M5 checkpoint 與耐久備份封存（最新實作）
 
