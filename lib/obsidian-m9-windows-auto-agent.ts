@@ -75,6 +75,7 @@ export function createM9WindowsAutoAgent(args:{
   let last:M9CycleReport|null=null,faults=0,scans=0;
   let lockHandle:Awaited<ReturnType<typeof open>>|null=null;
   let lockPath:string|null=null,lockInode:number|null=null;
+  let faultLatchInode:number|null=null;
   let scanDrain:Promise<void>=Promise.resolve();
   let unconfirmedWrite=false;
   const assertLock=async()=>{
@@ -126,11 +127,22 @@ export function createM9WindowsAutoAgent(args:{
   const persistFaultLatch=async()=>{
     await assertLock();
     const file=path.join(path.dirname(lockPath!),FAULT_LATCH);
+    // A second call during stop must not overwrite the write-ahead marker.
+    // Only this Agent's own marker may be treated as an existing latch.
+    let existing:Awaited<ReturnType<typeof lstat>>|null=null;
+    try{existing=await lstat(file);}
+    catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")stop();}
+    if(existing){
+      if(!existing.isFile()||existing.isSymbolicLink()||
+         existing.nlink!==1||existing.ino!==faultLatchInode)stop();
+      return;
+    }
     let handle:Awaited<ReturnType<typeof open>>|null=null;
     try{
       handle=await open(file,"wx",0o600);
       await handle.writeFile("m9-uncertain-operation-manual-reconciliation-required");
       await handle.sync();
+      faultLatchInode=(await handle.stat()).ino;
       await handle.close();
     }catch{
       await handle?.close().catch(()=>{});
@@ -138,6 +150,16 @@ export function createM9WindowsAutoAgent(args:{
       // An operator can inspect/resolve both without an automatic retry.
       stop();
     }
+  };
+  const clearVerifiedFaultLatch=async()=>{
+    await assertLock();
+    if(faultLatchInode===null)stop();
+    const file=path.join(path.dirname(lockPath!),FAULT_LATCH);
+    const st=await lstat(file).catch(()=>stop());
+    if(!st.isFile()||st.isSymbolicLink()||st.nlink!==1||
+       st.ino!==faultLatchInode)stop();
+    await unlink(file);
+    faultLatchInode=null;
   };
   const releaseLock=async()=>{
     if(!lockHandle)return;
@@ -170,8 +192,20 @@ export function createM9WindowsAutoAgent(args:{
             journalOptions:test.journalOptions,
           },
           signal,
-          onTransferBegin:()=>{unconfirmedWrite=true;},
-          onTransferVerified:()=>{unconfirmedWrite=false;},
+          onTransferBegin:async()=>{
+            // Durable write-ahead review marker MUST be fsynced before the
+            // first possible Production POST or local atomic replacement.
+            // A process crash must never bypass the in-memory fault flag.
+            unconfirmedWrite=true;
+            await persistFaultLatch();
+          },
+          onTransferVerified:async()=>{
+            // A stop/pause during an in-flight write requires reconciliation
+            // even when a late successful acknowledgement arrives.
+            if(state!=="running")stop();
+            await clearVerifiedFaultLatch();
+            unconfirmedWrite=false;
+          },
         });
         if(state!=="running"||signal.aborted)return;
         scans++;

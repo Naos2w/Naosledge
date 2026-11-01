@@ -111,13 +111,17 @@ export async function runM9SignedAutoCycle(args:{
   fetcher?:typeof fetch;
   testOnly?:M9AutoCycleTestOnly;
   signal?:AbortSignal;
-  /** Synchronous lifecycle hooks for the one-writer Windows host. */
-  onTransferBegin?:()=>void;
-  onTransferVerified?:()=>void;
+  /** Awaited hooks: durable pre-write latch and verified final unlock. */
+  onTransferBegin?:()=>void|Promise<void>;
+  onTransferVerified?:()=>void|Promise<void>;
 }):Promise<M9CycleReport>{
   if(!args||typeof args.ownerJwt!=="string"||
      typeof args.schemaReady!=="boolean")fail();
   const test=args.testOnly;
+  // Production callers must be the single-writer host, not a one-shot
+  // script that can skip durable crash recovery. Tests use OS TEMP fixtures.
+  if(!test&&(typeof args.onTransferBegin!=="function"||
+     typeof args.onTransferVerified!=="function"))fail();
   if(test&&(
     !test.journalOptions?.testRoot||
     !test.journalOptions?.testProtector||
@@ -191,9 +195,11 @@ export async function runM9SignedAutoCycle(args:{
   });
   if(!mode.signedAutoEnabled||mode.recordCount!==consent.recordCount)fail();
   signalCheck(args.signal);
-  // The host must retain its exclusive lock until this operation settles.
-  args.onTransferBegin?.();
+  // The host must fsync its write-ahead fault latch while holding its
+  // exclusive lock BEFORE any possibly committed Production/local write.
   try{
+    await args.onTransferBegin?.();
+    signalCheck(args.signal);
     if(selected.action==="upload-create"||selected.action==="upload-cas"){
       const readLocal=()=>approvedLocalMarkdown(localRoot,selected);
       const receipt=selected.action==="upload-create"?
@@ -252,7 +258,7 @@ export async function runM9SignedAutoCycle(args:{
       selected.expectedLocalSha:selected.expectedRemoteSha;
     if(!confirmed||confirmed.sha256!==shaExpected||
        !confirmed.revision)fail();
-    args.onTransferVerified?.();
+    await args.onTransferVerified?.();
     return make("transferred",selected.action,needsManual,true);
   }catch{fail();}
 }

@@ -181,6 +181,24 @@ test("signed M9 auto upload-create writes one new note and a durable HMAC checkp
   });
 });
 
+test("M9 aborts BEFORE a mutating request when the awaited pre-write latch fails",async()=>{
+  await fixture([],async f=>{
+    await writeFile(path.join(f.vault,"first.md"),markdown(row("first","created")));
+    let entered=false;
+    await assert.rejects(runM9SignedAutoCycle({
+      ...f.params,
+      onTransferBegin:async()=>{
+        entered=true;
+        await Promise.resolve();
+        throw Error("Synthetic write-ahead latch failed");
+      },
+    }),/manual reconciliation|no automatic retry/);
+    assert.equal(entered,true);
+    assert.equal(f.remote.posts,0);
+    assert.equal((await check(f)).recordCount,2);
+  });
+});
+
 test("signed M9 auto upload-cas checks WikiLink CAS and signs new remote version",async()=>{
   await fixture([row("first")],async f=>{
     await writeFile(path.join(f.vault,"first.md"),markdown(row("first","v2")));

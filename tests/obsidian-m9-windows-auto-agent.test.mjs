@@ -251,6 +251,8 @@ test("stop drains a pending POST and leaves a durable review latch",async()=>{
       assert.equal(stopped,false,
         "stop must not release the writer lock before the pending POST settles");
       assert.ok((await readdir(f.vault)).includes(".m8-readonly-agent.lock"));
+      assert.ok((await readdir(f.vault)).includes(".m9-fault-review-required"),
+        "Durable review latch must exist BEFORE the pending POST settles");
     }finally{
       f.remote.releaseWrite();
       await shuttingDown;
