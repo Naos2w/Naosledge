@@ -5,6 +5,13 @@ import {
 } from "node:fs/promises";
 import {tmpdir} from "node:os";
 import path from "node:path";
+import {Readable} from "node:stream";
+import {
+  archiveVerifiedM9FaultAfterManualReview,M9_FAULT_ARCHIVE_CONFIRMATION,
+} from "../lib/obsidian-m9-fault-archive-manual.ts";
+import {
+  assertM9FaultArchiveInvocation,readM9FaultArchiveConsent,
+} from "../scripts/obsidian-m9-fault-archive-manual.ts";
 import {inspectM9FaultReconciliationReadOnly}
   from "../lib/obsidian-m9-fault-reconciliation-readonly.ts";
 import {
@@ -67,7 +74,7 @@ async function fixture(fn){
     typedConfirmation:(enabled?"ENABLE":"DISABLE")+" M9 PRODUCTION AUTO SYNC",
   });
   try{
-    return await fn({assess,latch,pair,enable,testOnly,
+    return await fn({assess,latch,pair,enable,testOnly,fetcher,
       setOffline:value=>{offline=value;},
       get calls(){return calls;}});
   }finally{
@@ -157,4 +164,94 @@ test("reconciliation command is MSI-only, exact flag and never an auto-enable en
   ]){
     assert.throws(()=>assertM9FaultReconcileInvocation(invalid),/MSI/);
   }
+});
+const archive=f=>archiveVerifiedM9FaultAfterManualReview({
+  ownerJwt:JWT,typedConfirmation:M9_FAULT_ARCHIVE_CONFIRMATION,
+  fetcher:f.fetcher,testOnly:f.testOnly,
+});
+
+test("manual Owner fault clearance archives exact marker only after two full equality proofs",async()=>{
+  await fixture(async f=>{
+    await f.pair();await f.latch();
+    const out=await archive(f);
+    assert.equal(out.archivedForManualRecord,true);
+    assert.equal(out.automaticRestartAuthorised,false);
+    assert.equal(out.signedReactivationAuthorised,false);
+    assert.equal(out.noteWritesPerformed,0);
+    assert.equal(out.remoteWritesPerformed,0);
+    const archived=await readdir(path.join(f.testOnly.faultRoot,
+      ".m9-reviewed-fault-archive"));
+    assert.equal(archived.length,1);
+    assert.equal(await readFile(path.join(f.testOnly.faultRoot,
+      ".m9-reviewed-fault-archive",archived[0]),"utf8"),MARKER);
+    assert.equal((await f.assess()).state,"no-latch");
+    await assert.rejects(archive(f),/Owner review/);
+    assert.deepEqual((await readdir(f.testOnly.faultRoot)).sort(),
+      [".m9-reviewed-fault-archive"]);
+    assert.ok(f.calls>=8,"fresh independent remote inventories are required");
+  });
+});
+
+test("fault archive requires exact human ACK and a previously confirmed signed M5 pairing",async()=>{
+  await fixture(async f=>{
+    await f.latch();
+    await assert.rejects(archive(f),/Owner review/);
+    await f.pair();
+    await assert.rejects(archiveVerifiedM9FaultAfterManualReview({
+      ownerJwt:JWT,typedConfirmation:"",fetcher:f.fetcher,testOnly:f.testOnly,
+    }),/Owner review/);
+    assert.equal(await readFile(path.join(f.testOnly.faultRoot,FAULT),"utf8"),MARKER);
+    assert.deepEqual(await readdir(f.testOnly.faultRoot),[FAULT]);
+  });
+});
+
+test("signed mode, writer locks and unresolved incoming all block manual fault archive",async()=>{
+  await fixture(async f=>{
+    await f.pair();await f.enable(true);await f.latch();
+    await assert.rejects(archive(f),/Owner review/);
+    await f.enable(false);
+    const lock=path.join(f.testOnly.faultRoot,LOCK);
+    await writeFile(lock,"other-agent");
+    await assert.rejects(archive(f),/Owner review/);
+    await rm(lock);
+    await writeFile(path.join(f.testOnly.incomingRoot,"intent"),"not-acknowledged");
+    await assert.rejects(archive(f),/Owner review/);
+    assert.equal(await readFile(path.join(f.testOnly.faultRoot,FAULT),"utf8"),MARKER);
+  });
+});
+
+test("divergence, unreachable Owner and tampered markers never release a fault",async()=>{
+  await fixture(async f=>{
+    await f.pair();await f.latch();
+    const note=path.join(f.testOnly.vaultRoot,"diverged.md");
+    await writeFile(note,"unreviewed");
+    await assert.rejects(archive(f),/Owner review/);
+    await rm(note);
+    f.setOffline(true);
+    await assert.rejects(archive(f),/Owner review/);
+    f.setOffline(false);
+    await writeFile(path.join(f.testOnly.faultRoot,FAULT),"tampered");
+    await assert.rejects(archive(f),/Owner review/);
+    assert.equal(await readFile(path.join(f.testOnly.faultRoot,FAULT),"utf8"),"tampered");
+  });
+});
+
+test("manual fault archive CLI accepts only an MSI private pipeline with exact review phrase",async()=>{
+  const input={platform:"win32",hostname:"MSI",
+    flags:["--m9-archive-reviewed-fault"],stdinIsTty:false};
+  assert.doesNotThrow(()=>assertM9FaultArchiveInvocation(input));
+  for(const bad of [
+    {...input,platform:"linux"},
+    {...input,hostname:"PC2"},
+    {...input,stdinIsTty:true},
+    {...input,flags:["--clear"]},
+    {...input,flags:[...input.flags,"--start"]},
+  ])assert.throws(()=>assertM9FaultArchiveInvocation(bad));
+  assert.equal(await readM9FaultArchiveConsent(Readable.from(
+    [M9_FAULT_ARCHIVE_CONFIRMATION+"\n"])),M9_FAULT_ARCHIVE_CONFIRMATION);
+  for(const value of ["", "restart",
+    M9_FAULT_ARCHIVE_CONFIRMATION+"\nDO SOMETHING ELSE",
+    "x".repeat(257),
+  ])await assert.rejects(readM9FaultArchiveConsent(
+    Readable.from([value])),/unavailable/);
 });

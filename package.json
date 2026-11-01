@@ -43,6 +43,7 @@
     "verify:obsidian:m9:offline": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/obsidian-m9-*.test.mjs",
     "verify:obsidian:m9:fault:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m9-fault-readonly.ts --m9-fault-review-readonly",
     "verify:obsidian:m9:fault:reconcile:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m9-fault-reconcile-readonly.ts --m9-fault-reconcile-readonly",
+    "verify:obsidian:m9:fault:archive:manual": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m9-fault-archive-manual.ts --m9-archive-reviewed-fault",
     "obsidian:m9:foreground:operator": "pwsh -NoProfile -File scripts/obsidian-m9-windows-foreground-auto-agent.ps1",
     "verify:obsidian:m8:p2:foreground:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m8-windows-readonly-agent.ts --m8-readonly-foreground-agent",
     "verify:obsidian:m8:pairing:readonly": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/obsidian-m8-production-pairing-preview.ts --m8-first-pairing-readonly",

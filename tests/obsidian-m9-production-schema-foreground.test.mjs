@@ -97,8 +97,12 @@ test("SQL003 schema-reader must be a genuinely unprivileged catalog-only login",
 test("SQL003 runtime uses the reviewed SQL text, without changing the production migration",async()=>{
   const sql=await readFile(new URL(
     "../neon/m7_schema_readiness_readonly.sql",import.meta.url),"utf8");
-  assert.equal(createHash("sha256").update(sql).digest("hex"),
-    "3e6fbc5a78a57d0e25e276d8b40e2add48ec66a935cd330afed57c884d88130e");
+  const canonical=sql.replace(/\r\n/g,"\n");
+  assert.equal(createHash("sha256").update(canonical).digest("hex"),
+    "873e5baf96f4da8173da0d3eb69276314ace6004d5944b9caec84081af21e0d7");
+  assert.equal(createHash("sha256").update(canonical.replace(/\n/g,"\r\n")).digest("hex")!==
+    createHash("sha256").update(canonical).digest("hex"),true,
+    "the checked hash is canonical across Windows and Linux");
   assert.match(sql,/m7_schema_ready/);
   assert.doesNotMatch(sql,/\b(DELETE|INSERT|TRUNCATE|DROP|ALTER|CREATE)\s+(?:TABLE|FUNCTION|INTO|FROM)\b/i);
 });

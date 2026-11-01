@@ -306,6 +306,20 @@ test("identity switch after startup causes fault, without leaking token or trigg
   });
 });
 
+test("manual clearance lock blocks automatic writer startup until the operator has finished",async()=>{
+  await scratch(async f=>{
+    const clearance=path.join(f.vault,".m9-fault-clearance.lock");
+    await writeFile(clearance,"review-in-progress");
+    const a=agent(f);
+    await assert.rejects(a.start(),/manual review/);
+    assert.equal(a.status().state,"stopped");
+    assert.equal(f.remote.posts,0);
+    await rm(clearance);
+    await a.start();
+    try{await until(()=>a.status().last?.status==="idle");}
+    finally{await a.stop();}
+  });
+});
 test("auto Agent is not imported by site routes; no Windows Service installation",async()=>{
   const {readFile}=await import("node:fs/promises");
   const [website,entry,agentSource]=await Promise.all([

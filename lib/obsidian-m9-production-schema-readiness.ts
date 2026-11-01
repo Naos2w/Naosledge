@@ -19,7 +19,7 @@ import {validateProductionOwnerJwt}
 
 export const M9_SCHEMA_READER_ROLE="naosledge_m9_schema_reader";
 const EXPECTED_SQL_SHA256=
-  "3e6fbc5a78a57d0e25e276d8b40e2add48ec66a935cd330afed57c884d88130e";
+  "873e5baf96f4da8173da0d3eb69276314ace6004d5944b9caec84081af21e0d7";
 const REQUIRED_TRUE=[
   "notes_present","links_present","notes_rls_enabled","links_rls_enabled",
   "cas_rpc_present","cas_security_invoker","cas_pinned_search_path",
@@ -118,9 +118,11 @@ export function createM9ProductionSql003ReadinessProvider(connection:string){
   return async(ownerJwt:string):Promise<boolean>=>{
     try{
       validateProductionOwnerJwt(ownerJwt);
-      const statement=await readFile(new URL(
+      // GitHub Linux checks out LF; MSI Windows autocrlf may use CRLF.
+      // Pin the exact canonical LF source, not platform-specific line endings.
+      const statement=(await readFile(new URL(
         "../neon/m7_schema_readiness_readonly.sql",import.meta.url
-      ),"utf8");
+      ),"utf8")).replace(/\r\n/g,"\n");
       const hash=createHash("sha256").update(statement).digest("hex");
       if(hash!==EXPECTED_SQL_SHA256)return false;
       const [rows,role]=await sql.transaction([

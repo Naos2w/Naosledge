@@ -31,6 +31,7 @@ const LOCK=".m8-readonly-agent.lock";
 // Durable review marker is separate from the shared M8 instance lock, so
 // read-only inspection can still run after an uncertain M9 transfer.
 const FAULT_LATCH=".m9-fault-review-required";
+const CLEARANCE_LOCK=".m9-fault-clearance.lock";
 function stop():never{
   throw Error("M9 Windows agent stopped; manual review required");
 }
@@ -106,9 +107,12 @@ export function createM9WindowsAutoAgent(args:{
   };
   const acquireLock=async()=>{
     const folder=await lockRoot();
-    // Even a new process must not auto-restart after an uncertain transfer.
-    try{await lstat(path.join(folder,FAULT_LATCH));stop();}
-    catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")stop();}
+    // Neither an uncertain transfer nor an in-progress manual clearance
+    // can race a new automatic writer into a restart.
+    for(const marker of [FAULT_LATCH,CLEARANCE_LOCK]){
+      try{await lstat(path.join(folder,marker));stop();}
+      catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")stop();}
+    }
     const file=path.join(folder,LOCK);
     let handle:Awaited<ReturnType<typeof open>>;
     try{handle=await open(file,"wx",0o600);}
