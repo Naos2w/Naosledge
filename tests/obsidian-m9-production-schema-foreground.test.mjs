@@ -71,8 +71,11 @@ function knownReader(){
     reader_role:M9_SCHEMA_READER_ROLE,can_login:true,
     transaction_read_only:true,is_superuser:false,
     can_create_db_role:false,can_create_role:false,can_replicate:false,
-    bypasses_rls:false,all_data_writer:false,can_create_database:false,
-    can_create_public:false,can_read_notes:false,can_write_notes:false,
+    bypasses_rls:false,all_data_reader:false,all_data_writer:false,
+    can_read_server_files:false,can_write_server_files:false,
+    can_run_server_programs:false,any_user_relation_access:false,
+    can_create_database:false,can_create_public:false,
+    can_read_notes:false,can_write_notes:false,
     can_read_links:false,can_write_links:false,
   };
 }

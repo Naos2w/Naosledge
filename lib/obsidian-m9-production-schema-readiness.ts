@@ -26,26 +26,53 @@ const REQUIRED_TRUE=[
   "authenticated_can_execute","m7_schema_ready",
 ] as const;
 const REQUIRED_FALSE="anonymous_can_execute";
-const READER_ROLE_SQL=[
+/** Auditable catalog-only privilege proof, executed in the same read-only transaction. */
+export const M9_SCHEMA_READER_INSPECTION_SQL=[
   "SELECT r.rolname AS reader_role, r.rolcanlogin AS can_login,",
   "r.rolsuper AS is_superuser, r.rolcreatedb AS can_create_db_role,",
   "r.rolcreaterole AS can_create_role, r.rolreplication AS can_replicate,",
   "r.rolbypassrls AS bypasses_rls,",
   "current_setting('transaction_read_only')='on' AS transaction_read_only,",
+  "pg_has_role(current_user,'pg_read_all_data','member') AS all_data_reader,",
   "pg_has_role(current_user,'pg_write_all_data','member') AS all_data_writer,",
+  "pg_has_role(current_user,'pg_read_server_files','member') AS can_read_server_files,",
+  "pg_has_role(current_user,'pg_write_server_files','member') AS can_write_server_files,",
+  "pg_has_role(current_user,'pg_execute_server_program','member') AS can_run_server_programs,",
   "has_database_privilege(current_user,current_database(),'CREATE') AS can_create_database,",
   "has_schema_privilege(current_user,'public','CREATE') AS can_create_public,",
   "has_table_privilege(current_user,'public.knowledge_notes','SELECT') AS can_read_notes,",
   "has_table_privilege(current_user,'public.knowledge_notes','INSERT,UPDATE,DELETE') AS can_write_notes,",
   "has_table_privilege(current_user,'public.knowledge_links','SELECT') AS can_read_links,",
-  "has_table_privilege(current_user,'public.knowledge_links','INSERT,UPDATE,DELETE') AS can_write_links",
+  "has_table_privilege(current_user,'public.knowledge_links','INSERT,UPDATE,DELETE') AS can_write_links,",
+  // A login can have no access to notes/links but still read posts, secrets
+  // or another user relation. Validate every non-system table AND sequence.
+  "EXISTS (SELECT 1 FROM pg_catalog.pg_class AS c",
+  "JOIN pg_catalog.pg_namespace AS n ON n.oid=c.relnamespace",
+  "WHERE n.nspname NOT IN ('pg_catalog','information_schema')",
+  "AND n.nspname NOT LIKE 'pg_toast%'",
+  "AND n.nspname NOT LIKE 'pg_temp_%'",
+  "AND ((c.relkind IN ('r','p','v','m','f') AND (",
+  "has_table_privilege(current_user,c.oid,'SELECT') OR",
+  "has_table_privilege(current_user,c.oid,'INSERT') OR",
+  "has_table_privilege(current_user,c.oid,'UPDATE') OR",
+  "has_table_privilege(current_user,c.oid,'DELETE') OR",
+  "has_table_privilege(current_user,c.oid,'TRUNCATE') OR",
+  "has_table_privilege(current_user,c.oid,'REFERENCES') OR",
+  "has_table_privilege(current_user,c.oid,'TRIGGER')",
+  ")) OR (c.relkind='S' AND (",
+  "has_sequence_privilege(current_user,c.oid,'SELECT') OR",
+  "has_sequence_privilege(current_user,c.oid,'UPDATE') OR",
+  "has_sequence_privilege(current_user,c.oid,'USAGE')",
+  ")))) AS any_user_relation_access",
   "FROM pg_catalog.pg_roles AS r WHERE r.rolname=current_user",
 ].join(" ");
 const READER_DENIED=[
   "is_superuser","can_create_db_role","can_create_role","can_replicate",
-  "bypasses_rls","all_data_writer","can_create_database",
-  "can_create_public","can_read_notes","can_write_notes",
-  "can_read_links","can_write_links",
+  "bypasses_rls","all_data_reader","all_data_writer",
+  "can_read_server_files","can_write_server_files",
+  "can_run_server_programs","any_user_relation_access",
+  "can_create_database","can_create_public",
+  "can_read_notes","can_write_notes","can_read_links","can_write_links",
 ] as const;
 
 function refuse():never{
@@ -126,7 +153,7 @@ export function createM9ProductionSql003ReadinessProvider(connection:string){
       const hash=createHash("sha256").update(statement).digest("hex");
       if(hash!==EXPECTED_SQL_SHA256)return false;
       const [rows,role]=await sql.transaction([
-        sql.query(statement,[]),sql.query(READER_ROLE_SQL,[]),
+        sql.query(statement,[]),sql.query(M9_SCHEMA_READER_INSPECTION_SQL,[]),
       ],{
         readOnly:true,
         fetchOptions:{signal:AbortSignal.timeout(15_000)},
