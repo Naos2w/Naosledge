@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "qaMode": "repository",
+  "checks": [
+    {
+      "id": "typecheck",
+      "kind": "build",
+      "command": [
+        "npm",
+        "run",
+        "typecheck"
+      ]
+    },
+    {
+      "id": "production-build",
+      "kind": "build",
+      "command": [
+        "npm",
+        "run",
+        "build"
+      ]
+    },
+    {
+      "id": "unit",
+      "kind": "test",
+      "command": [
+        "npm",
+        "run",
+        "test:unit"
+      ]
+    },
+    {
+      "id": "production-closed",
+      "kind": "test",
+      "command": [
+        "npm",
+        "run",
+        "test:release:closed:local"
+      ]
+    }
+  ]
+}
