@@ -91,9 +91,18 @@ type ManualRecovery=EventBase&{
   previousRevision:string|null;
   sha256:string;remoteRevision:string;
 };
-type Event=Initial|Upload|DownloadNew|DownloadReplace|ManualRecovery;
+type M9ModeChange=EventBase&{
+  kind:"signed-auto-mode";
+  enabled:boolean;
+  scope:"paired-two-way-no-delete-v1";
+  maxTransfersPerCycle:1;
+};
+type Event=Initial|Upload|DownloadNew|DownloadReplace|ManualRecovery|M9ModeChange;
 type Signed=Event&{mac:string};
-type Loaded={key:Buffer;events:Signed[];latest:Map<string,SyncFingerprint>};
+type Loaded={
+  key:Buffer;events:Signed[];latest:Map<string,SyncFingerprint>;
+  signedAutoEnabled:boolean;
+};
 function reject():never{
   throw Error("M8 Production baseline unavailable; no automatic sync");
 }
@@ -208,6 +217,7 @@ async function lock<T>(root:string,task:()=>Promise<T>):Promise<T>{
 function orderedEntryKeys(row:Record<string,unknown>):boolean{
   const base=["format","seq","previousMac","branch","ownerId","createdAt","kind"];
   const extra=row.kind==="approved-initial-pairing"?["notes"]:
+    row.kind==="signed-auto-mode"?["enabled","scope","maxTransfersPerCycle"]:
     ["verified-upload","verified-download-new",
       "verified-download-replace","approved-checkpoint-recovery"].includes(String(row.kind))?
       ["slug","previousSha256","previousRevision","sha256","remoteRevision"]:[];
@@ -245,6 +255,10 @@ function validateEntry(value:unknown,seq:number,prev:string,ownerId:string):Even
     const n=row.notes as SyncFingerprint[];
     if(n.some((x,i)=>!plainHash(x.revision)||
        (i>0&&n[i-1].slug>=x.slug)))reject();
+  }else if(row.kind==="signed-auto-mode"){
+    if(seq<2||typeof row.enabled!=="boolean"||
+       row.scope!=="paired-two-way-no-delete-v1"||
+       row.maxTransfersPerCycle!==1)reject();
   }else if(row.kind==="verified-upload"||
            row.kind==="verified-download-new"||
            row.kind==="verified-download-replace"||
@@ -295,6 +309,7 @@ Promise<Loaded|null>{
      files.some((name,i)=>name!==String(i+1).padStart(6,"0")+".json"))reject();
   const events:Signed[]=[];
   const latest=new Map<string,SyncFingerprint>();
+  let signedAutoEnabled=false;
   let previous=GENESIS;
   for(let i=0;i<files.length;i++){
     const bytes=await readSmall(path.join(root,RECORDS,files[i]),MAX_RECORD_BYTES);
@@ -312,6 +327,9 @@ Promise<Loaded|null>{
     if(event.kind==="approved-initial-pairing"){
       if(i!==0)reject();
       for(const note of event.notes)latest.set(note.slug,{...note});
+    }else if(event.kind==="signed-auto-mode"){
+      if(i===0)reject();
+      signedAutoEnabled=event.enabled;
     }else{
       if(i===0)reject();
       const before=latest.get(event.slug);
@@ -326,7 +344,7 @@ Promise<Loaded|null>{
     previous=signature as string;
   }
   if((await readdir(path.join(root,RECORDS))).length!==files.length)reject();
-  return {key,events,latest};
+  return {key,events,latest,signedAutoEnabled};
 }
 async function initialize(root:string,protector:ProductionM8KeyProtector):
 Promise<Buffer>{
@@ -869,5 +887,128 @@ export async function recordVerifiedProductionM8DownloadNew(args:{
        replay.latest.get(receipt.slug)?.revision!==receipt.revision)reject();
     return {checkpointSaved:true,recordCount:event.seq,
       autoSyncEnabled:false};
+  });
+}
+
+/**
+ * M9 signed opt-in: no automatic startup, deletions or rename.
+ * The approved profile is replayed from the Owner/Branch-bound HMAC chain.
+ */
+export type M9SignedAutoState={
+  paired:boolean;signedAutoEnabled:boolean;
+  branch:typeof RELEASE_NEON_BRANCH;
+  maxTransfersPerCycle:1;allowDeletion:false;recordCount:number;
+  ownerRlsVerified:true;fingerprintCount:number;
+};
+async function assertNoPendingM9Incoming(
+  options?:ProductionM8JournalOptions,testIncomingRoot?:string,
+):Promise<void>{
+  let root:string;
+  if(options?.testRoot){
+    if(!testIncomingRoot||!path.isAbsolute(testIncomingRoot)||
+       path.dirname(path.resolve(testIncomingRoot)).toLowerCase()!==
+         path.resolve(tmpdir()).toLowerCase()||
+       !/^naosledge-m8-incoming-test-[a-zA-Z0-9_-]{6,}$/.test(
+         path.basename(testIncomingRoot)))reject();
+    root=path.resolve(testIncomingRoot);
+  }else{
+    if(testIncomingRoot!==undefined)reject();
+    const base=process.env.LOCALAPPDATA||
+      path.join(homedir(),"AppData","Local");
+    root=path.join(base,"Naosledge","m8-production-incoming");
+  }
+  let entries:string[];
+  try{
+    await safeFolder(root);
+    entries=await readdir(root);
+  }catch(error){
+    if((error as NodeJS.ErrnoException).code==="ENOENT"&&!options?.testRoot)return;
+    reject();
+  }
+  if(entries.length!==0)reject();
+}
+export async function inspectM9SignedAutoState(args:{
+  ownerJwt:string;fetcher?:typeof fetch;
+  options?:ProductionM8JournalOptions;
+}):Promise<M9SignedAutoState>{
+  const ownerId=verifiedOwner(args?.ownerJwt);
+  const deps=allowedRoot(args.options);
+  const r=await remote({jwt:args.ownerJwt,fetcher:args.fetcher});
+  if(!await existingRoot(deps.root)){
+    return {paired:false,signedAutoEnabled:false,
+      branch:RELEASE_NEON_BRANCH,maxTransfersPerCycle:1,
+      allowDeletion:false,recordCount:0,ownerRlsVerified:true,
+      fingerprintCount:r.numberOfNotes};
+  }
+  if((await readdir(deps.root)).includes(LOCK))reject();
+  const loaded=await load(deps.root,ownerId,deps.protector);
+  return {
+    paired:loaded!==null,
+    signedAutoEnabled:loaded?.signedAutoEnabled??false,
+    branch:RELEASE_NEON_BRANCH,maxTransfersPerCycle:1,
+    allowDeletion:false,recordCount:loaded?.events.length??0,
+    ownerRlsVerified:true,fingerprintCount:r.numberOfNotes,
+  };
+}
+/**
+ * Human Owner must explicitly approve after equality with a signed M5
+ * snapshot, twice-checked full RLS and local coverage, and zero pending
+ * Incoming operations. Disabling never requires those contents to match.
+ */
+export async function setM9SignedAutomaticMode(args:{
+  ownerJwt:string;enabled:boolean;typedConfirmation:string;
+  schemaReady:boolean;fetcher?:typeof fetch;
+  options?:ProductionM8JournalOptions;
+  testIncomingRoot?:string;
+}):Promise<{signedAutoEnabled:boolean;recordCount:number;
+  automaticTransferExecuted:false}>{
+  const ownerId=verifiedOwner(args?.ownerJwt);
+  if(typeof args.enabled!=="boolean"||(args.enabled&&args.schemaReady!==true)||
+     args.typedConfirmation!==(
+       args.enabled?"ENABLE M9 PRODUCTION AUTO SYNC":
+                    "DISABLE M9 PRODUCTION AUTO SYNC"))reject();
+  const deps=allowedRoot(args.options);
+  if(!await existingRoot(deps.root))reject();
+  return lock(deps.root,async()=>{
+    const loaded=await load(deps.root,ownerId,deps.protector);
+    if(!loaded||loaded.events.length>=MAX_RECORDS||
+       loaded.signedAutoEnabled===args.enabled)reject();
+    if(args.enabled){
+      await assertNoPendingM9Incoming(args.options,args.testIncomingRoot);
+      const firstLocal=await deps.readLocal();
+      const firstRemote=await remote({jwt:args.ownerJwt,fetcher:args.fetcher});
+      const currentLocal=validateLocal(firstLocal,firstRemote);
+      const reference=[...loaded.latest.values()].sort(
+        (a,b)=>a.slug.localeCompare(b.slug,"en"));
+      if(reference.length!==firstRemote.numberOfNotes||
+         currentLocal.length!==reference.length||
+         currentLocal.some((n,i)=>n.slug!==reference[i].slug||
+           n.sha256!==reference[i].sha256)||
+         firstRemote.fingerprints.some((n,i)=>n.slug!==reference[i].slug||
+           n.sha256!==reference[i].sha256||
+           n.revision!==reference[i].revision))reject();
+      const secondLocal=await deps.readLocal();
+      const secondRemote=await remote({jwt:args.ownerJwt,fetcher:args.fetcher});
+      validateLocal(secondLocal,secondRemote);
+      if(JSON.stringify(firstLocal)!==JSON.stringify(secondLocal)||
+         JSON.stringify(firstRemote)!==JSON.stringify(secondRemote))reject();
+      await assertNoPendingM9Incoming(args.options,args.testIncomingRoot);
+    }else{
+      await remote({jwt:args.ownerJwt,fetcher:args.fetcher});
+    }
+    const event:M9ModeChange={
+      format:FORMAT,seq:loaded.events.length+1,
+      previousMac:loaded.events.at(-1)!.mac,
+      branch:RELEASE_NEON_BRANCH,ownerId,
+      createdAt:new Date().toISOString(),kind:"signed-auto-mode",
+      enabled:args.enabled,scope:"paired-two-way-no-delete-v1",
+      maxTransfersPerCycle:1,
+    };
+    await append(deps.root,loaded.key,event);
+    const after=await load(deps.root,ownerId,deps.protector);
+    if(!after||after.events.length!==event.seq||
+       after.signedAutoEnabled!==args.enabled)reject();
+    return {signedAutoEnabled:args.enabled,recordCount:event.seq,
+      automaticTransferExecuted:false};
   });
 }
