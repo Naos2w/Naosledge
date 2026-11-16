@@ -1,6 +1,13 @@
 # NaosLedge × Obsidian — 自動雙向同步需求與驗收 TODO（M1–M8）
 
-## 2026-10-29 M8 P2c 既有筆記安全替換、原生 Windows 寫入鎖、M5 checkpoint 與耐久備份封存（最新實作）
+## 2026-11-16 M8 P3a 同步偏好與安全停止意圖持久化（本批候選）
+
+- **本批完成範圍**：新增版本 1、固定欄位的本機同步偏好（`enabled`）與 `stopped`／`paused`／`running` 使用者意圖持久化；首次缺檔固定回傳 disabled/stopped。只允許固定私人設定目錄，測試只允許 OS TEMP 的直接、特定前綴子目錄；檔案以私人權限、fsync 後原子替換，拒絕 symlink／junction、不安全路徑、錯版、損毀、缺欄、多欄及非 canonical／部分 JSON，讀取失敗不會默默改寫。
+- **安全啟動邊界**：已儲存的 `enabled` 或 `running` 只是供後續 UI 顯示的偏好，不是執行授權。控制器重新建立並讀回偏好後仍是 `stopped`；每次正式 `start()` 仍須呼叫者當次明確呼叫，並重新通過既有 Owner Session、M5 journal、配對與 Production schema 守門。本批沒有啟動背景服務、排程或傳輸。
+- **隱私與驗收邊界**：格式不能保存 JWT、Owner UUID、筆記正文或 Vault 清單。合成測試僅使用 OS TEMP，涵蓋跨 reader 還原、停止／暫停／running 意圖不自啟、所有嚴格拒絕案例、寫入故障保留舊值與狀態／檔案不洩漏私密資料；沒有接觸 Production、私人 Vault 或網站發布，也沒有自動合併。
+- **P3 仍待完成**：安全登入與短效 JWT 刷新、實際啟停 UI、把 P1/P2 傳輸 Adapter 接入單一受控 Agent，以及在真人 Owner Session／真實 Vault 下執行首次非相等配對與 E2E。這批離線持久化不能宣稱整個 P3 或長時間自動同步已完成。
+
+## 2026-10-29 M8 P2c 既有筆記安全替換、原生 Windows 寫入鎖、M5 checkpoint 與耐久備份封存（前次完成紀錄）
 
 - **既有筆記 `download-replace`**：新增 `lib/obsidian-m8-production-incoming-replace.ts`，限於指定 MSI 上已註冊的 Vault 或明確的 OS TEMP 測試目錄，要求先有已簽章 Production M5 Owner 配對、精確 `review-download` 版本比對、逐篇核准與完整 Owner-RLS 本人筆記 GET。先以 SHA/mtime/inode 兩次核對原始檔，在 Vault 外的 `%LOCALAPPDATA%\Naosledge\m8-production-incoming\op-*` `wx+fsync` 寫入原始獨立 `.bak` 和 `incoming-intent.json`，再將新 Markdown `wx+fsync` 寫入同一 Vault 目錄的 staging。新檔下載與既有覆寫共用 `.m8-incoming-new.lock`，殘留舊收據／Lock 都阻止繼續，**絕不執行沒有備份的直接覆寫**。
 - **Windows 實際跨程序寫入競爭保護**：新增 `scripts/obsidian-m8-windows-native-replace.ps1`，使用 Windows `FileStream(FileAccess.Read, FileShare.Read | FileShare.Delete)` 排除其他程序的寫入控制權，驗證原檔 SHA 後，以 .NET `File.Replace` 在維持 OS 檔案 handle 的期間原子替換，另外產生 **`windows-native-original.md.bak` 第二份原始系統備份**。已在 MSI OS TEMP 真檔測試：正常替換成功、原始備份 byte-identical、其他程序持有可寫檔案 handle 時被 Windows 拒絕；**正式模式失敗不降級成普通 rename**。Linux CI 僅在嚴格 TestOnly OS TEMP 下使用原生 POSIX rename，相關 Windows 專項標明 SKIP。

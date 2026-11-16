@@ -22,6 +22,8 @@ import {verifyMsiVaultRegistration,APPROVED_MSI_VAULT}
 import type {AutoSyncClock,AutoSyncScanTrigger}
   from "./obsidian-auto-sync-wakeup.ts";
 import type {WatchFactory} from "./obsidian-m8-local-watcher-readonly.ts";
+import type {M8SyncPreferenceStore}
+  from "./obsidian-m8-sync-preferences.ts";
 
 const TEST_PREFIX="naosledge-m8-agent-test-";
 const LOCK=".m8-readonly-agent.lock";
@@ -76,11 +78,16 @@ export function createM8WindowsReadOnlyAgent(options:{
   onWatcherError?:()=>void;
   /** Isolated fake Owner API / OS Temp only. Real mode has no overrides. */
   testOnly?:TestDependencies;
+  /** Preference IO only; loading it can never start or resume this Agent. */
+  preferences?:M8SyncPreferenceStore;
 }){
   if(!options||typeof options.requestFreshJwt!=="function"||
      (options.onStatus!==undefined&&typeof options.onStatus!=="function")||
      (options.onWatcherError!==undefined&&
-       typeof options.onWatcherError!=="function"))deny();
+       typeof options.onWatcherError!=="function")||
+     (options.preferences!==undefined&&
+       (typeof options.preferences.load!=="function"||
+        typeof options.preferences.save!=="function")))deny();
   const test=options.testOnly;
   if(test&&(
      typeof test.root!=="string"||
@@ -167,6 +174,17 @@ export function createM8WindowsReadOnlyAgent(options:{
     }
   }
   return {
+    async loadPreferences(){
+      // This is intentionally data-only. Even persisted `running` remains a
+      // preference until a caller explicitly invokes start() and all M5/Owner
+      // gates pass again in that invocation.
+      if(!options.preferences)deny();
+      return options.preferences.load();
+    },
+    async savePreferences(value:unknown){
+      if(!options.preferences)deny();
+      return options.preferences.save(value);
+    },
     async start():Promise<void>{
       if(state!=="stopped"||starting)deny();
       starting=true;
